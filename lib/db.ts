@@ -219,6 +219,20 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   return pool.query<T>(text, params as never[])
 }
 
+/**
+ * Запрос в переданной транзакции или сам по себе.
+ *
+ * Нужен там, где одна и та же вставка иногда обязана лечь рядом с соседней
+ * (грант тестового периода и работа копирования шаблонов — либо обе, либо ни
+ * одной), а иногда живёт отдельно и своей транзакции не заслуживает.
+ */
+export function queryVia(client?: PoolClient) {
+  return <T extends QueryResultRow = QueryResultRow>(
+    text: string,
+    params: unknown[] = [],
+  ) => (client ? client.query<T>(text, params as never[]) : query<T>(text, params))
+}
+
 export async function withTransaction<T>(
   fn: (client: PoolClient) => Promise<T>,
 ) {

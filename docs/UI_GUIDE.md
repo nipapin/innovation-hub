@@ -10,7 +10,7 @@
 
 ---
 
-## 0. TL;DR — 12 жёстких правил
+## 0. TL;DR — 13 жёстких правил
 
 1. **Tailwind utility-first.** Никаких `.css`-файлов, CSS-модулей, styled-components, `style={{}}` (исключение — вычисляемая геометрия: координаты контекстного меню, ширины из props).
 2. **Цвет — только через семантический токен**: `bg-card`, `text-muted-foreground`, `border-border`, `bg-primary/15`. Хардкод `#hex` / `rgba()` в новом коде запрещён.
@@ -24,6 +24,7 @@
 10. **Иконки — только `lucide-react`.** Размер: `h-4 w-4` в примитивах, `h-5 w-5` в навигации.
 11. **Ошибка API → `toast.error()`** (sonner). Не `alert()`, не молчаливый `return`.
 12. **Скролл-контейнеры соблюдают цепочку** `overflow-hidden` → `min-h-0 flex-1` → `overflow-y-auto` (см. [§8](#8-layout-и-контракт-скролла)).
+13. **Вход в справку — иконка сразу после названия инструмента**, без подписи, с чипом `F1`. Ставится пропом `help` у `AdminPageHeader` / `AccountPageHeader` — не своей вёрсткой и не в другом месте шапки. Объяснение отдельного параметра — знак «?» (`<HelpDot>`) вплотную к нему. Полный контракт — [HELP_SYSTEM.md](./HELP_SYSTEM.md).
 
 ---
 
@@ -668,6 +669,8 @@ npm run i18n:check
 - [ ] Контракт скролла соблюдён (`min-h-0` в цепочке)
 - [ ] Проверено на `sm` / `md` / `lg`
 - [ ] Пункт добавлен в `nav-config.ts` (админка) с `labelKey`, а не строкой
+- [ ] Есть статья справки о разделе и `help="<id>"` в шапке — или осознано, что раздел объяснять нечем
+- [ ] `npm run help:check` проходит
 
 ### Ревью CSS
 
@@ -719,3 +722,4 @@ npm run i18n:check
 - [STORAGE_API.md](./STORAGE_API.md) — API файлового хранилища, которое использует воркспейс
 - [STORAGE_SYNC_CONTRACT.md](./STORAGE_SYNC_CONTRACT.md) — правила синхронизации (дельта-поллинг в UI)
 - [REMOTE_ACCESS_API.md](./REMOTE_ACCESS_API.md) — API раздела `/admin/remote-access`
+- [HELP_SYSTEM.md](./HELP_SYSTEM.md) — справка: реестр тем, статьи, два вида якорей, права

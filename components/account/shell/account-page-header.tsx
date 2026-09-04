@@ -1,11 +1,26 @@
+import { HelpPageButton } from "@/components/help/help-page-button"
+import type { HelpTopicId } from "@/lib/help/topics"
+
 type Props = {
   eyebrow?: string
   title: string
   description?: string
   actions?: React.ReactNode
+  /**
+   * Статья справки об этом разделе. Место входа то же, что в админке —
+   * иконка сразу после названия: стиль подсказок один на весь продукт, и
+   * человек не должен искать справку заново в каждой зоне (UI_GUIDE §0.13).
+   */
+  help?: HelpTopicId
 }
 
-export function AccountPageHeader({ eyebrow, title, description, actions }: Props) {
+export function AccountPageHeader({
+  eyebrow,
+  title,
+  description,
+  actions,
+  help,
+}: Props) {
   return (
     <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
       <div className="space-y-2.5">
@@ -15,9 +30,12 @@ export function AccountPageHeader({ eyebrow, title, description, actions }: Prop
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-          {title}
-        </h1>
+        <div className="flex items-center gap-3">
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
+            {title}
+          </h1>
+          {help ? <HelpPageButton id={help} /> : null}
+        </div>
         {description ? (
           <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-[15px]">
             {description}

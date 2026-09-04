@@ -360,7 +360,7 @@ CREATE TABLE IF NOT EXISTS storage_jobs (
   id           TEXT PRIMARY KEY,
   user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   project_id   TEXT REFERENCES projects(id) ON DELETE CASCADE,
-  kind         TEXT NOT NULL CHECK (kind IN ('copy','move','purge','recatalog')),
+  kind         TEXT NOT NULL CHECK (kind IN ('copy','move','purge','recatalog','trial-provision')),
   state        TEXT NOT NULL CHECK (state IN ('queued','running','done','failed','cancelled')),
   total        INTEGER NOT NULL DEFAULT 0,
   done         INTEGER NOT NULL DEFAULT 0,

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireAdminApi } from "@/lib/admin-auth"
+import { loadInStatus } from "@/lib/pipeline/in-status"
 import { loadProjectStorageState } from "@/lib/project-storage"
 import { findProjectById } from "@/lib/repositories/projects"
 import { isS3Configured } from "@/lib/s3-client"
@@ -30,11 +31,18 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    const state = await loadProjectStorageState(project.storageOwnerId, project.id, {
-      includeServiceFiles: true,
-    })
+    const [state, inStatus] = await Promise.all([
+      loadProjectStorageState(project.storageOwnerId, project.id, {
+        includeServiceFiles: true,
+      }),
+      loadInStatus({
+        projectId: project.id,
+        storageOwnerId: project.storageOwnerId,
+      }),
+    ])
     return NextResponse.json({
       ...state,
+      inStatus,
       storageAvailable: state.available,
     })
   } catch (error) {

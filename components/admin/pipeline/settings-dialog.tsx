@@ -16,10 +16,12 @@ import { toast } from "sonner"
 
 import { tf, useAdminI18n, type AdminDict } from "@/components/admin/admin-dict"
 import { useI18n, type Lang } from "@/components/account/i18n"
+import { HelpDot } from "@/components/help/help-dot"
 import { SKIP_LABEL } from "./skip-labels"
 import { cn } from "@/lib/utils"
 import type { SkippedProject } from "@/lib/pipeline/scan"
 import type { PipelineState } from "@/lib/pipeline/state"
+import type { HelpTopicId } from "@/lib/help/topics"
 import {
   DOMAIN_LABELS,
   SETTINGS_DOMAINS,
@@ -46,6 +48,19 @@ import {
 
 /** Закладки: домены словарей плюс обход, у которого своё хранилище. */
 type Tab = SettingsDomain | "sweep"
+
+/**
+ * Закладка → статья справки. Карта здесь, а не в реестре тем: она про этот
+ * диалог, а реестр про справку в целом. Проверка «у темы есть якорь в коде»
+ * (`npm run help:check`) видит id и отсюда — ей достаточно строки в исходнике.
+ */
+const HELP_BY_TAB: Record<Tab, HelpTopicId> = {
+  fileType: "pipeline.settings.file-type",
+  nodeType: "pipeline.settings.node-type",
+  dataType: "pipeline.settings.data-type",
+  pathPattern: "pipeline.settings.path-pattern",
+  sweep: "pipeline.settings.sweep",
+}
 
 /**
  * `<input type="color">` понимает только `#rrggbb`, а в словаре может лежать
@@ -198,6 +213,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       >
         <div className="flex shrink-0 items-center gap-3 border-b border-white/[0.07] px-5 py-3.5">
           <h2 className="text-[16px] font-semibold text-ws-1">{t.settingsTitle}</h2>
+          <HelpDot id="pipeline.settings" />
           {revision != null ? (
             <span className="text-[12.5px] text-ws-4">
               {tf(t.settingsRevision, { revision })}
@@ -251,8 +267,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
-          <p className="mb-3.5 text-[12.5px] leading-relaxed text-ws-4">
-            {t[hintKey as keyof AdminDict]}
+          {/* Подсказка отвечает «что это», якорь рядом — «почему так»: в две
+              строки второе не влезает, а без него настройку правят наугад. */}
+          <p className="mb-3.5 flex items-start gap-2 text-[12.5px] leading-relaxed text-ws-4">
+            <span>{t[hintKey as keyof AdminDict]}</span>
+            <HelpDot id={HELP_BY_TAB[tab]} className="mt-0.5" align="end" />
           </p>
 
           {sweepTab ? (

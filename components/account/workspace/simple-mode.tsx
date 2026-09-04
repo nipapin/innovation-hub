@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   Download,
   FolderOpen,
@@ -225,8 +225,15 @@ export function SimpleProject() {
    *
    * Первый узел цепочки — сама панель, остальное её внутренний путь.
    */
+  const revealDone = useRef<DriveFile[] | null>(null)
   useEffect(() => {
     if (!revealPath || revealPath.length === 0) return
+    // Ровно один раз на просьбу. Список папок пересобирается на каждое чтение
+    // дерева — раз в несколько секунд, — и без отметки очередное чтение
+    // возвращало бы человека в присланную папку из той, куда он с тех пор ушёл.
+    if (revealDone.current === revealPath) return
+    revealDone.current = revealPath
+
     const [head, ...rest] = revealPath
     if (inFolder && head.id === inFolder.id) {
       setInPath(rest)

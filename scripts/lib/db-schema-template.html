@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Схема базы FF Works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root {
+    --bg:#e9eeef; --surface:#ffffff; --surface2:#f3f7f7; --sunk:#dfe7e8;
+    --ink:#0f1c1e; --ink2:#28393b; --muted:#5c6f71; --faint:#8a9b9d;
+    --line:#d2dcdd; --hair:#e3ebeb;
+    --accent:#0a6b62; --brass:#8f6415;
+    --d-people:#0a6b62; --d-storage:#39509e; --d-pipeline:#8a5a12;
+    --d-money:#3d6a2c; --d-vendor:#7a3560; --d-site:#9c4a2a; --d-system:#4a5b62;
+    --shadow:0 1px 2px rgba(15,28,30,.05), 0 8px 24px -16px rgba(15,28,30,.28);
+    --r:7px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0c1214; --surface:#131c1e; --surface2:#182224; --sunk:#0a1011;
+      --ink:#e5eded; --ink2:#c3d2d2; --muted:#8ca0a2; --faint:#6b7f81;
+      --line:#243133; --hair:#1c2729;
+      --accent:#4ac9b7; --brass:#d5a355;
+      --d-people:#4ac9b7; --d-storage:#8ea4f2; --d-pipeline:#e0a95c;
+      --d-money:#8fc772; --d-vendor:#d98fbc; --d-site:#e89a74; --d-system:#9fb3ba;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 28px -18px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0c1214; --surface:#131c1e; --surface2:#182224; --sunk:#0a1011;
+    --ink:#e5eded; --ink2:#c3d2d2; --muted:#8ca0a2; --faint:#6b7f81;
+    --line:#243133; --hair:#1c2729;
+    --accent:#4ac9b7; --brass:#d5a355;
+    --d-people:#4ac9b7; --d-storage:#8ea4f2; --d-pipeline:#e0a95c;
+    --d-money:#8fc772; --d-vendor:#d98fbc; --d-site:#e89a74; --d-system:#9fb3ba;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 28px -18px rgba(0,0,0,.8);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size:14px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 22px 88px; }
+
+  /* ---------- шапка ---------- */
+  .masthead { padding:44px 0 26px; }
+  .eyebrow {
+    font-family:"JetBrains Mono", ui-monospace, monospace;
+    font-size:11px; letter-spacing:.13em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 14px;
+  }
+  h1 {
+    font-family:"Golos Text", ui-sans-serif, system-ui, sans-serif;
+    font-weight:700; font-size:clamp(30px, 4.6vw, 46px); line-height:1.06;
+    letter-spacing:-.022em; margin:0 0 12px; text-wrap:balance;
+  }
+  .lede { color:var(--muted); max-width:62ch; margin:0 0 26px; font-size:15px; }
+  .lede b { color:var(--ink2); font-weight:500; }
+
+  .stats { display:flex; flex-wrap:wrap; gap:0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+  .stat { flex:1 1 130px; padding:14px 18px 13px; border-right:1px solid var(--hair); }
+  .stat:last-child { border-right:0; }
+  .stat .v {
+    font-family:"Golos Text", sans-serif; font-weight:600; font-size:25px;
+    letter-spacing:-.02em; font-variant-numeric:tabular-nums; display:block; line-height:1.15;
+  }
+  .stat .k {
+    font-family:"JetBrains Mono", monospace; font-size:10.5px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--faint); margin-top:3px; display:block;
+  }
+
+  /* ---------- секции ---------- */
+  section { margin-top:52px; }
+  h2 {
+    font-family:"Golos Text", sans-serif; font-weight:600; font-size:21px;
+    letter-spacing:-.015em; margin:0 0 6px;
+  }
+  .sub { color:var(--muted); margin:0 0 20px; max-width:66ch; font-size:13.5px; }
+
+  /* ---------- схема ---------- */
+  figure { margin:0; }
+  .figbox {
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--r);
+    padding:22px 18px 14px; overflow-x:auto; box-shadow:var(--shadow);
+  }
+  .figbox svg { display:block; width:100%; min-width:600px; max-width:700px; height:auto; margin:0 auto; }
+  figcaption { color:var(--muted); font-size:12.5px; margin-top:12px; max-width:70ch; }
+  .svg-box { fill:var(--surface2); stroke:var(--line); }
+  .svg-box-hi { fill:var(--surface2); stroke:var(--d-pipeline); stroke-width:1.5; }
+  .svg-side { fill:var(--sunk); stroke:var(--line); stroke-dasharray:3 2.5; }
+  .svg-t { font-family:"JetBrains Mono", monospace; font-size:11.5px; fill:var(--ink); }
+  .svg-n { font-family:"JetBrains Mono", monospace; font-size:9.5px; fill:var(--faint); }
+  .svg-l { font-family:"IBM Plex Sans", sans-serif; font-size:11px; fill:var(--muted); }
+  .svg-cap { font-family:"IBM Plex Sans", sans-serif; font-size:10px; fill:var(--faint); }
+  .svg-line { stroke:currentColor; stroke-width:1.3; fill:none; opacity:.55; }
+
+  /* ---------- панель фильтров ---------- */
+  .toolbar {
+    position:sticky; top:0; z-index:20; margin-top:44px;
+    background:color-mix(in srgb, var(--bg) 90%, transparent);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line); padding:11px 0 10px;
+    display:flex; flex-wrap:wrap; gap:9px; align-items:center;
+  }
+  .search {
+    font-family:"JetBrains Mono", monospace; font-size:12.5px;
+    background:var(--surface); color:var(--ink);
+    border:1px solid var(--line); border-radius:5px; padding:7px 11px;
+    min-width:220px; flex:0 1 280px;
+  }
+  .search::placeholder { color:var(--faint); }
+  .search:focus-visible, .chip:focus-visible, .tlink:focus-visible {
+    outline:2px solid var(--accent); outline-offset:2px;
+  }
+  .chip {
+    font-family:"JetBrains Mono", monospace; font-size:11px; letter-spacing:.02em;
+    background:transparent; color:var(--muted);
+    border:1px solid var(--line); border-radius:20px; padding:5px 11px;
+    cursor:pointer; display:inline-flex; align-items:center; gap:6px;
+    transition:border-color .12s, color .12s;
+  }
+  .chip .dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .chip[aria-pressed="true"] { color:var(--ink); border-color:currentColor; }
+  .chip[aria-pressed="false"] { opacity:.45; }
+  .chip .dot { color:inherit; }
+  .hitcount { margin-left:auto; font-family:"JetBrains Mono", monospace; font-size:11px; color:var(--faint); }
+
+  /* ---------- карта ---------- */
+  .maptable-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:var(--r); background:var(--surface); box-shadow:var(--shadow); }
+  table.map { border-collapse:collapse; width:100%; min-width:620px; font-size:13px; }
+  table.map th {
+    text-align:left; font-family:"JetBrains Mono", monospace; font-weight:500;
+    font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--faint);
+    padding:11px 14px; border-bottom:1px solid var(--line); white-space:nowrap;
+    position:sticky; top:0; background:var(--surface);
+  }
+  table.map td { padding:8px 14px; border-bottom:1px solid var(--hair); vertical-align:baseline; }
+  table.map tr:last-child td { border-bottom:0; }
+  table.map tr:hover td { background:var(--surface2); }
+  td.num { text-align:right; font-family:"JetBrains Mono", monospace; font-variant-numeric:tabular-nums; color:var(--ink2); white-space:nowrap; }
+  td.zero { color:var(--faint); }
+  .tlink {
+    font-family:"JetBrains Mono", monospace; font-size:12.5px; font-weight:500;
+    color:var(--ink); text-decoration:none; border-bottom:1px solid transparent;
+  }
+  .tlink:hover { border-bottom-color:var(--accent); color:var(--accent); }
+  .dom {
+    font-size:11.5px; color:var(--dc); display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+  }
+  .dom::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--dc); flex:none; }
+  td.note { color:var(--muted); font-size:12.5px; }
+
+  /* ---------- домены и карточки ---------- */
+  .domain { margin-top:46px; scroll-margin-top:70px; }
+  .domain-head { border-top:2px solid var(--dc); padding-top:12px; margin-bottom:18px; }
+  .domain-head h3 {
+    font-family:"Golos Text", sans-serif; font-weight:600; font-size:18px;
+    margin:0 0 4px; letter-spacing:-.012em;
+  }
+  .domain-head .meta {
+    font-family:"JetBrains Mono", monospace; font-size:10.5px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--dc);
+  }
+  .domain-head p { margin:6px 0 0; color:var(--muted); font-size:13.5px; max-width:70ch; }
+
+  .cards { display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
+  @media (min-width:900px) { .cards { grid-template-columns:1fr 1fr; } }
+
+  .card {
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--r);
+    padding:14px 15px 6px; scroll-margin-top:76px;
+  }
+  .card:target { border-color:var(--dc); box-shadow:0 0 0 3px color-mix(in srgb, var(--dc) 16%, transparent); }
+  .card-head { display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; margin-bottom:3px; }
+  .card-head .tname {
+    font-family:"JetBrains Mono", monospace; font-weight:700; font-size:14px;
+    color:var(--dc); letter-spacing:-.01em;
+  }
+  .card-head .facts {
+    font-family:"JetBrains Mono", monospace; font-size:10.5px; color:var(--faint);
+    font-variant-numeric:tabular-nums; margin-left:auto; white-space:nowrap;
+  }
+  .card > .desc { color:var(--muted); font-size:12.5px; margin:0 0 10px; }
+
+  .cols { display:flex; flex-direction:column; }
+  .col {
+    display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr) minmax(0,1.7fr);
+    gap:6px 10px; padding:4px 0; border-bottom:1px solid var(--hair); align-items:baseline;
+  }
+  .col:last-child { border-bottom:0; }
+  .cn { font-family:"JetBrains Mono", monospace; font-size:12px; color:var(--ink); overflow-wrap:anywhere; }
+  .col.nullable .cn { color:var(--muted); }
+  .ct { font-family:"JetBrains Mono", monospace; font-size:11px; color:var(--faint); overflow-wrap:anywhere; }
+  .cm { display:flex; flex-wrap:wrap; gap:4px; align-items:baseline; }
+  .b {
+    font-family:"JetBrains Mono", monospace; font-size:9.5px; letter-spacing:.05em;
+    padding:1px 5px; border-radius:3px; border:1px solid var(--hair); color:var(--faint);
+    white-space:nowrap;
+  }
+  .b.pk { color:var(--brass); border-color:color-mix(in srgb, var(--brass) 40%, transparent); font-weight:700; }
+  .b.uq { color:var(--ink2); }
+  .b.def { border-color:transparent; color:var(--faint); padding-left:0; }
+  .b.en { color:var(--ink2); background:var(--surface2); border-color:var(--hair); }
+  a.b.fk { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 35%, transparent); text-decoration:none; }
+  a.b.fk:hover { background:color-mix(in srgb, var(--accent) 12%, transparent); }
+  .b.cascade { color:var(--faint); border-color:transparent; padding-left:0; }
+  .card .checks {
+    font-family:"JetBrains Mono", monospace; font-size:10px; color:var(--faint);
+    border-top:1px solid var(--hair); padding:7px 0 8px; margin-top:2px; overflow-wrap:anywhere;
+  }
+  .card .refs {
+    font-size:11.5px; color:var(--muted); border-top:1px solid var(--hair);
+    padding:7px 0 9px; margin-top:2px;
+  }
+  .card .refs b { font-weight:500; color:var(--ink2); }
+
+  .empty-note {
+    margin-top:26px; padding:14px 16px; border:1px dashed var(--line); border-radius:var(--r);
+    color:var(--muted); font-size:13px;
+  }
+  footer {
+    margin-top:60px; padding-top:18px; border-top:1px solid var(--line);
+    color:var(--faint); font-size:12px; font-family:"JetBrains Mono", monospace;
+  }
+  .svg-h { font-family:"JetBrains Mono", monospace; font-size:10px; letter-spacing:.1em; fill:var(--faint); }
+  .svg-faded { fill:var(--sunk); stroke:var(--line); stroke-dasharray:3 3; opacity:.55; }
+  .svg-box-acc { fill:var(--surface2); stroke:var(--accent); stroke-width:1.5; }
+
+  .tree {
+    font-family:"JetBrains Mono", monospace; font-size:11.5px; line-height:1.85;
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--r);
+    padding:16px 18px; overflow-x:auto; white-space:pre; color:var(--ink2);
+    box-shadow:var(--shadow);
+  }
+  .tree .tk { color:var(--ink); font-weight:500; }
+  .tree .tc { color:var(--faint); }
+
+  .facts-grid { display:grid; grid-template-columns:1fr; gap:12px; margin-top:16px; }
+  @media (min-width:760px) { .facts-grid { grid-template-columns:repeat(4,1fr); } }
+  .fact { border-top:2px solid var(--line); padding-top:10px; }
+  .fact .fv {
+    font-family:"Golos Text", sans-serif; font-weight:600; font-size:20px;
+    letter-spacing:-.02em; display:block; font-variant-numeric:tabular-nums;
+  }
+  .fact .fk {
+    font-family:"JetBrains Mono", monospace; font-size:10px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--faint); display:block; margin-top:2px;
+  }
+  .fact p { margin:8px 0 0; font-size:12.5px; color:var(--muted); }
+
+  .levels { display:flex; flex-direction:column; gap:0; margin-top:26px; }
+  .level { border-top:1px solid var(--line); padding:14px 0 14px 0; display:grid; gap:2px 18px; }
+  @media (min-width:760px) { .level { grid-template-columns:150px 1fr; } .level p { grid-column:2; } .level .lstate { grid-column:2; } }
+  .level:last-child { border-bottom:1px solid var(--line); }
+  .level .lv {
+    font-family:"Golos Text", sans-serif; font-weight:600; font-size:16px;
+    letter-spacing:-.01em; color:var(--ink2);
+  }
+  .level.here .lv { color:var(--accent); }
+  .level .lstate {
+    font-family:"JetBrains Mono", monospace; font-size:10.5px; letter-spacing:.05em;
+    color:var(--faint); text-transform:uppercase;
+  }
+  .level.here .lstate { color:var(--accent); }
+  .level p { margin:6px 0 0; color:var(--muted); font-size:13.5px; max-width:70ch; }
+
+  ol.todo { margin:0; padding-left:1.1em; display:flex; flex-direction:column; gap:12px; }
+  ol.todo li { color:var(--muted); font-size:13.5px; max-width:76ch; }
+  ol.todo b { color:var(--ink); font-weight:500; }
+  code {
+    font-family:"JetBrains Mono", monospace; font-size:.92em;
+    background:var(--surface2); border:1px solid var(--hair);
+    border-radius:3px; padding:.5px 4px; color:var(--ink2);
+  }
+
+  [hidden] { display:none !important; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow" id="eyebrow"></p>
+    <h1>Схема базы FF Works</h1>
+    <p class="lede" id="lede"></p>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <section>
+    <h2>Путь одного файла</h2>
+    <p class="sub">Главный сценарий системы проходит через шесть таблиц подряд. Пунктиром — то, что подключается сбоку: кто владеет, где курсор сканера, каким токеном зашла машина.</p>
+    <figure>
+      <div class="figbox"><svg viewBox="0 0 680 566" role="img" aria-label="Схема: файл попадает в project_files, запись журналируется в storage_changes, сканер создаёт задачу в tasks, машина из remote_computers её берёт, результат уходит в processing_stats и billing_transactions">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,1 L9,5 L0,9 z" fill="currentColor" opacity=".55"/>
+            </marker>
+          </defs>
+
+          <!-- боковые -->
+          <rect class="svg-side" x="14" y="20" width="140" height="34" rx="5"/>
+          <text class="svg-t" x="84" y="41" text-anchor="middle">users</text>
+          <text class="svg-cap" x="84" y="68" text-anchor="middle">владелец проекта</text>
+          <path class="svg-line" d="M154,37 H170" marker-end="url(#ah)"/>
+
+          <rect class="svg-side" x="14" y="290" width="140" height="34" rx="5"/>
+          <text class="svg-t" x="84" y="311" text-anchor="middle">…scan_state</text>
+          <text class="svg-cap" x="84" y="338" text-anchor="middle">курсор сканера</text>
+          <path class="svg-line" d="M154,307 H170" marker-end="url(#ah)"/>
+
+          <rect class="svg-side" x="14" y="380" width="140" height="34" rx="5"/>
+          <text class="svg-t" x="84" y="401" text-anchor="middle">machine_tokens</text>
+          <text class="svg-cap" x="84" y="428" text-anchor="middle">чем машина зашла</text>
+          <path class="svg-line" d="M154,397 H170" marker-end="url(#ah)"/>
+
+          <!-- спина -->
+          <rect class="svg-box" x="170" y="16" width="250" height="44" rx="6"/>
+          <text class="svg-t" x="295" y="37" text-anchor="middle">projects</text>
+          <text class="svg-n" x="295" y="51" text-anchor="middle" id="sv-projects"></text>
+
+          <rect class="svg-box" x="170" y="106" width="250" height="44" rx="6"/>
+          <text class="svg-t" x="295" y="127" text-anchor="middle">project_files</text>
+          <text class="svg-n" x="295" y="141" text-anchor="middle" id="sv-files"></text>
+
+          <rect class="svg-box" x="170" y="196" width="250" height="44" rx="6"/>
+          <text class="svg-t" x="295" y="217" text-anchor="middle">storage_changes</text>
+          <text class="svg-n" x="295" y="231" text-anchor="middle" id="sv-changes"></text>
+
+          <rect class="svg-box-hi" x="170" y="286" width="250" height="44" rx="6"/>
+          <text class="svg-t" x="295" y="307" text-anchor="middle">tasks</text>
+          <text class="svg-n" x="295" y="321" text-anchor="middle" id="sv-tasks"></text>
+
+          <rect class="svg-box-hi" x="170" y="376" width="250" height="44" rx="6"/>
+          <text class="svg-t" x="295" y="397" text-anchor="middle">remote_computers</text>
+          <text class="svg-n" x="295" y="411" text-anchor="middle" id="sv-machines"></text>
+
+          <rect class="svg-box" x="170" y="480" width="118" height="40" rx="6"/>
+          <text class="svg-t" x="229" y="498" text-anchor="middle" font-size="10">processing_stats</text>
+          <text class="svg-n" x="229" y="511" text-anchor="middle">тайминги</text>
+
+          <rect class="svg-box" x="302" y="480" width="118" height="40" rx="6"/>
+          <text class="svg-t" x="361" y="498" text-anchor="middle" font-size="9.5">billing_transactions</text>
+          <text class="svg-n" x="361" y="511" text-anchor="middle">деньги</text>
+
+          <!-- стрелки спины -->
+          <path class="svg-line" d="M295,60 V106" marker-end="url(#ah)"/>
+          <text class="svg-l" x="432" y="87">файл лёг в папку IN</text>
+
+          <path class="svg-line" d="M295,150 V196" marker-end="url(#ah)"/>
+          <text class="svg-l" x="432" y="171">put / move / delete → строка</text>
+
+          <path class="svg-line" d="M295,240 V286" marker-end="url(#ah)"/>
+          <text class="svg-l" x="432" y="261">seq &gt; last_seq → задача</text>
+
+          <path class="svg-line" d="M295,330 V376" marker-end="url(#ah)"/>
+          <text class="svg-l" x="432" y="345">claimed_by, аренда</text>
+          <text class="svg-l" x="432" y="362">продлевается ударом</text>
+
+          <path class="svg-line" d="M295,420 V452"/>
+          <path class="svg-line" d="M229,452 H361"/>
+          <path class="svg-line" d="M229,452 V480" marker-end="url(#ah)"/>
+          <path class="svg-line" d="M361,452 V480" marker-end="url(#ah)"/>
+          <text class="svg-l" x="432" y="443">машина отчиталась</text>
+        </svg></div>
+      <figcaption>Шесть таблиц одного витка обработки. <code>tasks</code> и <code>remote_computers</code> выделены: на них держится аренда — задача принадлежит машине, пока та продлевает <code>lease_expires_at</code>, иначе возвращается в очередь.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Где это лежит физически</h2>
+    <p class="sub" id="phys-sub"></p>
+    <div class="tree" id="tree"></div>
+    <div class="facts-grid" id="facts"></div>
+  </section>
+
+  <section>
+    <h2>Разрезать на файлы — не то же самое, что ускорить</h2>
+    <p class="sub">Файлы уже нарезаны, и скорости это не даёт: планировщик работает не с файлами, а со страницами через индекс. Ускорение даёт другое разбиение — партиционирование, когда таблица объявлена набором кусков по диапазону дат и планировщик умеет целые куски не трогать.</p>
+    <figure>
+      <div class="figbox"><svg viewBox="0 0 700 292" role="img" aria-label="Сравнение: нарезка на сегменты по 1 ГБ прозрачна для планировщика, а партиционирование по месяцам позволяет ему отбросить ненужные партиции целиком">
+          <defs>
+            <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,1 L9,5 L0,9 z" fill="currentColor" opacity=".55"/>
+            </marker>
+          </defs>
+          <line x1="350" y1="6" x2="350" y2="286" stroke="currentColor" stroke-width="1" opacity=".18"/>
+
+          <text class="svg-h" x="25" y="20">СЕГМЕНТЫ · САМО СОБОЙ</text>
+          <rect class="svg-side" x="25" y="32" width="300" height="28" rx="4"/>
+          <text class="svg-n" x="175" y="50" text-anchor="middle">WHERE created_at &gt;= '2026-09-01'</text>
+          <path class="svg-line" d="M175,60 V90" marker-end="url(#ah2)"/>
+          <rect class="svg-box" x="25" y="90" width="300" height="38" rx="6"/>
+          <text class="svg-t" x="175" y="108" text-anchor="middle">visitor_events</text>
+          <text class="svg-n" x="175" y="121" text-anchor="middle">одна таблица, обычные индексы</text>
+          <path class="svg-line" d="M175,128 V150 M70,150 H280 M70,150 V180 M175,150 V180 M280,150 V180"/>
+          <rect class="svg-box" x="25" y="180" width="90" height="40" rx="5"/>
+          <rect class="svg-box" x="130" y="180" width="90" height="40" rx="5"/>
+          <rect class="svg-box" x="235" y="180" width="90" height="40" rx="5"/>
+          <text class="svg-t" x="70" y="199" text-anchor="middle" font-size="10">16570</text>
+          <text class="svg-t" x="175" y="199" text-anchor="middle" font-size="10">16570.1</text>
+          <text class="svg-t" x="280" y="199" text-anchor="middle" font-size="10">16570.2</text>
+          <text class="svg-n" x="70" y="212" text-anchor="middle">1 ГБ</text>
+          <text class="svg-n" x="175" y="212" text-anchor="middle">1 ГБ</text>
+          <text class="svg-n" x="280" y="212" text-anchor="middle">хвост</text>
+          <text class="svg-cap" x="175" y="244" text-anchor="middle">Все три — один объект для планировщика.</text>
+          <text class="svg-cap" x="175" y="258" text-anchor="middle">Отбор строк делает индекс, а не нарезка файлов.</text>
+
+          <text class="svg-h" x="375" y="20">ПАРТИЦИИ · РУКАМИ</text>
+          <rect class="svg-side" x="375" y="32" width="300" height="28" rx="4"/>
+          <text class="svg-n" x="525" y="50" text-anchor="middle">WHERE created_at &gt;= '2026-09-01'</text>
+          <path class="svg-line" d="M525,60 V90" marker-end="url(#ah2)"/>
+          <rect class="svg-box" x="375" y="90" width="300" height="38" rx="6"/>
+          <text class="svg-t" x="525" y="108" text-anchor="middle">visitor_events</text>
+          <text class="svg-n" x="525" y="121" text-anchor="middle">PARTITION BY RANGE (created_at)</text>
+          <path class="svg-line" d="M525,128 V150 M420,150 H630" />
+          <path class="svg-line" d="M420,150 V180" opacity=".18"/>
+          <path class="svg-line" d="M525,150 V180" opacity=".18"/>
+          <path class="svg-line" d="M630,150 V180" marker-end="url(#ah2)"/>
+          <rect class="svg-faded" x="375" y="180" width="90" height="40" rx="5"/>
+          <rect class="svg-faded" x="480" y="180" width="90" height="40" rx="5"/>
+          <rect class="svg-box-acc" x="585" y="180" width="90" height="40" rx="5"/>
+          <text class="svg-n" x="420" y="199" text-anchor="middle">_2026_07</text>
+          <text class="svg-n" x="525" y="199" text-anchor="middle">_2026_08</text>
+          <text class="svg-t" x="630" y="199" text-anchor="middle" font-size="10">_2026_09</text>
+          <text class="svg-n" x="420" y="212" text-anchor="middle">не читается</text>
+          <text class="svg-n" x="525" y="212" text-anchor="middle">не читается</text>
+          <text class="svg-n" x="630" y="212" text-anchor="middle">читается</text>
+          <text class="svg-cap" x="525" y="244" text-anchor="middle">Планировщик отбрасывает партиции целиком, до чтения.</text>
+          <text class="svg-cap" x="525" y="258" text-anchor="middle">Плюс DROP старого месяца вместо долгого DELETE.</text>
+        </svg></div>
+      <figcaption>Разница ровно в одном: во втором случае две трети данных не читаются вообще. Выигрыш появляется там, где отбрасывать есть что — на десятках миллионов строк; на нынешних <span id="fig2-rows"></span> партиционирование только добавит объектов.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Когда станет тесно</h2>
+    <p class="sub">Порог задаёт не размер файла, а помещается ли горячая часть данных вместе с индексами в память. Ниже — измеренный темп прироста по датам самих строк и во что он выливается за пять лет.</p>
+    <div class="maptable-wrap">
+      <table class="map">
+        <thead><tr>
+          <th scope="col">Таблица</th><th scope="col">Наблюдение</th>
+          <th scope="col" style="text-align:right">Строк/сутки</th>
+          <th scope="col" style="text-align:right">Байт/строка</th>
+          <th scope="col" style="text-align:right">Через 5 лет</th>
+          <th scope="col">Чем ограничена</th>
+        </tr></thead>
+        <tbody id="growth-rows"></tbody>
+      </table>
+    </div>
+    <p class="sub" style="margin-top:12px" id="growth-note"></p>
+    <div class="levels" id="levels"></div>
+  </section>
+
+  <section>
+    <h2>Что даст эффект раньше, чем размер станет проблемой</h2>
+    <p class="sub">Три вещи, которые видно прямо в статистике сервера — все три дешевле любого партиционирования.</p>
+    <ol class="todo" id="todo"></ol>
+    <p class="sub" style="margin-top:14px" id="conn-note"></p>
+  </section>
+
+  <div class="toolbar">
+    <input class="search" id="q" type="search" placeholder="поиск: таблица или колонка" aria-label="Поиск по таблицам и колонкам">
+    <span id="chips" style="display:contents"></span>
+    <span class="hitcount" id="hits"></span>
+  </div>
+
+  <section style="margin-top:22px">
+    <h2>Карта таблиц</h2>
+    <p class="sub" id="map-sub"></p>
+    <div class="maptable-wrap">
+      <table class="map">
+        <thead>
+          <tr>
+            <th scope="col">Таблица</th>
+            <th scope="col">Область</th>
+            <th scope="col">Зачем</th>
+            <th scope="col" style="text-align:right">Строк</th>
+            <th scope="col" style="text-align:right">Кол.</th>
+            <th scope="col" style="text-align:right">Инд.</th>
+            <th scope="col" style="text-align:right">Размер</th>
+          </tr>
+        </thead>
+        <tbody id="maprows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Справочник колонок</h2>
+    <p class="sub">Колонки в порядке физического хранения — новые всегда снизу, так что хвост каждой таблицы читается как её история. Бледное имя значит, что колонка допускает NULL.</p>
+    <div id="domains"></div>
+    <p class="empty-note" id="nothing" hidden>Ничего не нашлось. Попробуйте другой запрос или включите все области.</p>
+  </section>
+
+  <footer id="footer"></footer>
+</div>
+
+<script id="schema" type="application/json">__DATA__</script>
+<script>
+(function () {
+  var DATA = JSON.parse(document.getElementById('schema').textContent);
+  var T = DATA.tables, M = DATA.meta, TOT = DATA.totals;
+
+var DOMAINS = [
+    { id:'people', name:'Люди и доступ', color:'var(--d-people)',
+      intro:'Аккаунт, его права и то, кого он пустил в свои проекты. Владелец проекта живёт не здесь, а в projects.user_id — строки на него в project_members нет, иначе было бы два источника правды о хозяине папки.',
+      tables:['users','project_members','share_contacts','admin_capabilities','admin_audit_log','push_subscriptions','user_tools'] },
+    { id:'storage', name:'Проекты, файлы, хранилище', color:'var(--d-storage)',
+      intro:'Проект — это папка в R2. Каталог её содержимого лежит в project_files, а каждая запись в хранилище дополнительно журналируется в storage_changes: по возрастающему seq конвейер и понимает, что появилось нового.',
+      tables:['projects','clients','project_files','storage_changes','storage_jobs','storage_snapshots','project_media','project_chat_messages','project_messages'] },
+    { id:'pipeline', name:'Конвейер обработки', color:'var(--d-pipeline)',
+      intro:'Очередь задач и парк машин. Задача выдаётся машине в аренду на время: не продлила — вернулась в очередь. Прогресс шагов самоочищается, а итоги уезжают в архив статистики.',
+      tables:['tasks','task_progress','remote_computers','machine_tokens','automation_scan_state','automation_settings','processing_stats','stats_import_state'] },
+    { id:'money', name:'Деньги', color:'var(--d-money)',
+      intro:'Два кошелька у пользователя (свой и подарочный), гранты с сроком жизни и журнал движений, где отдельно посчитаны наша часть, вендорская и маржа. Вендорские суммы приходят в валюте — курс дня берётся из currency_rates.',
+      tables:['billing_grants','billing_grant_projects','billing_transactions','billing_settings','currency_rates'] },
+    { id:'vendor', name:'Вендоры и ключи', color:'var(--d-vendor)',
+      intro:'Внешние сервисы, аккаунты внутри них и зашифрованные ключи с версиями. Ключ выдаётся машине на TTL, расход пишется в vendor_usage и оттуда превращается в себестоимость транзакции.',
+      tables:['vendor_services','vendor_accounts','vendor_service_secrets','vendor_account_secrets','vendor_service_prices','vendor_usage','vendor_vault_state'] },
+    { id:'site', name:'Витрина сайта', color:'var(--d-site)',
+      intro:'Публичная часть: ролики и идеи с одинаковой формой полей, плюс запомненные значения для комбобоксов админки. Категория постепенно уступает место массиву тегов — обе колонки пока живут рядом.',
+      tables:['videos','ideas','tag_suggestions'] },
+    { id:'system', name:'Служебное', color:'var(--d-system)',
+      intro:'Аналитика посещений и учёт применённых миграций. У visitor_events нет внешнего ключа на users намеренно: история просмотров переживает удаление аккаунта.',
+      tables:['visitor_events','schema_migrations'] }
+  ];
+
+var DESC = {
+    users:'Аккаунты: локальный пароль или OAuth, роль, два кошелька, гейт конвейера и contact_name — подпись, по которой группируется статистика обработки.',
+    project_members:'Кого пустили в чужой проект и с какой ролью. Приглашающий сохраняется, чтобы владелец видел, откуда взялся человек.',
+    share_contacts:'Адресная книга «кому уже шарили»: не набирать почту заново при следующем приглашении.',
+    admin_capabilities:'Точечные права поверх роли — что именно этому админу разрешено.',
+    admin_audit_log:'Что делали админы: действие, объект, IP, время. Единственная таблица с bigserial-идентификатором.',
+    push_subscriptions:'Подписки на web-push — по одной на браузер и устройство.',
+    user_tools:'Инструменты, которые человек добавил себе из каталога в коде, вместе с их настройками и порядком на полке.',
+    projects:'Проект = папка. Владелец, пауза слежения, архив, мягкое удаление, тариф и отдельный storage_owner_id: где лежат байты, в отличие от того, кому проект принадлежит.',
+    clients:'Логическая группировка проектов по клиенту. Только иерархия в интерфейсе, раскладку ключей в R2 не меняет.',
+    project_files:'Каталог файлов и папок: путь, ключ в R2, размер, хеш, кто залил и кто отправил в корзину. Ограничение следит, что у папки нет s3_key, а у файла есть.',
+    storage_changes:'Журнал записей в хранилище: put, delete, move. Растущий seq — это курсор, по которому сканер конвейера догоняет новое. Актор нужен, чтобы понять, кто снял «минус» с имени папки.',
+    storage_jobs:'Фоновые операции над хранилищем: copy, move, purge, recatalog — с прогрессом и ошибкой.',
+    storage_snapshots:'Ежедневный срез объёма: проект × день. Внешних ключей нет намеренно — история должна пережить удаление проекта.',
+    project_media:'Вложения проекта, лежащие в Google Drive.',
+    project_chat_messages:'Чат проекта, зеркалится с YouGile в обе стороны: client — с сайта, team — из вебхука.',
+    project_messages:'Ранняя лента сообщений проекта. Пустая: её заменил чат с YouGile.',
+    tasks:'Очередь обработки. Внутри payload нет ни presigned-ссылок, ни локальных путей — только идентичность файлов, иначе задача, простоявшая час, приезжала бы с истёкшими ссылками.',
+    task_progress:'Шаги выполняемой задачи. Самоочищается: задача закончилась — строки удалены, разбор падений идёт по tasks.error.',
+    remote_computers:'Машины парка. Три отметки времени раздельно: любое обращение, опрос очереди и удар пульса — машина может быть на связи, но обработку не вести.',
+    machine_tokens:'Токены, под которыми машины регистрируются. Один токен — много машин.',
+    automation_scan_state:'Синглтон на одну строку: курсор событийной линии, флаг «конвейер включён» и параметры страховочного обхода каталога.',
+    automation_settings:'Синглтон общих словарей — типы файлов, цвета нод. revision растёт на каждую запись: это версия для оптимистической блокировки, а не хеш.',
+    processing_stats:'Архив обработок, импортированный с машин: тайминги, тип входа и выхода, себестоимость.',
+    stats_import_state:'Докуда дочитан каждый объект архива в S3, чтобы не импортировать строки дважды.',
+    billing_grants:'Начисления и подарки: сумма, срок годности, статус, кто выдал и когда обнулили.',
+    billing_grant_projects:'Ограничение гранта списком проектов — на что именно его можно тратить.',
+    billing_transactions:'Движение денег по задаче: сумма, наша часть, вендорская, маржа, валюта и курс с источником.',
+    billing_settings:'Синглтон настроек тарификации.',
+    currency_rates:'Курсы валют по дням — по ним вендорские счета переводятся в центы.',
+    vendor_services:'Внешние сервисы: адаптер, модель оплаты, способ доставки ключа, TTL и дневной лимит.',
+    vendor_accounts:'Аккаунты внутри сервиса — со своим base_url и собственным TTL ключа.',
+    vendor_service_secrets:'Ключи сервиса: шифротекст, версия, подсказка для опознания, отзыв.',
+    vendor_account_secrets:'То же для конкретного аккаунта.',
+    vendor_service_prices:'Прайс за единицу с датой вступления в силу — история цен, а не одна текущая.',
+    vendor_usage:'Расход у вендора: единицы, цена, курс, во что это вылилось в центах и на какой задаче.',
+    vendor_vault_state:'Синглтон-ревизия хранилища ключей.',
+    videos:'Ролики витрины: обложка, ссылка, длительность, порядок, теги.',
+    ideas:'Идеи. Та же форма полей, что у роликов — админка редактирует их одной формой.',
+    tag_suggestions:'Запомненные значения комбобоксов админки, по одному счётчику на поле.',
+    visitor_events:'Просмотры страниц. user_id — мягкая ссылка без внешнего ключа, имя и почта продублированы, отпечаток группирует анонимные сессии.',
+    schema_migrations:'Какие миграции уже применены.'
+  };
+
+  // таблицы, которым не назначили область, не должны молча пропадать
+  var assigned = {};
+  DOMAINS.forEach(function (d) { d.tables.forEach(function (t) { assigned[t] = true; }); });
+  var orphans = Object.keys(T).filter(function (t) { return !assigned[t]; }).sort();
+  if (orphans.length) {
+    DOMAINS.push({ id:'other', name:'Без области', color:'var(--d-system)',
+      intro:'Появились в базе после того, как писалась эта страница. Разнесите их по областям в scripts/lib/db-schema-template.html.',
+      tables:orphans });
+  }
+  DOMAINS.forEach(function (d) {
+    d.tables = d.tables.filter(function (t) { return T[t]; });
+  });
+
+  var domainOf = {};
+  DOMAINS.forEach(function (d) { d.tables.forEach(function (t) { domainOf[t] = d; }); });
+
+  // Таблица с двумя ключами на users ссылается на неё один раз, а не дважды.
+  var incoming = {};
+  Object.keys(T).forEach(function (name) {
+    T[name].cols.forEach(function (c) {
+      if (!c.fk) return;
+      var list = (incoming[c.fk.table] = incoming[c.fk.table] || []);
+      if (list.indexOf(name) === -1) list.push(name);
+    });
+  });
+
+  function plural(n, forms) {
+    var n10 = n % 10, n100 = n % 100;
+    if (n10 === 1 && n100 !== 11) return forms[0];
+    if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return forms[1];
+    return forms[2];
+  }
+  var TABLE_FORMS = ['таблица', 'таблицы', 'таблиц'];
+
+  var nf = new Intl.NumberFormat('ru-RU');
+  var nf1 = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 });
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (m) {
+      return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' })[m];
+    });
+  }
+  function size(bytes) {
+    if (bytes >= 1073741824) return nf1.format(bytes / 1073741824) + ' ГБ';
+    if (bytes >= 1048576) return nf1.format(bytes / 1048576) + ' МБ';
+    if (bytes >= 1024) return Math.round(bytes / 1024) + ' КБ';
+    return bytes + ' Б';
+  }
+  function set(id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html; }
+  function txt(id, s) { var el = document.getElementById(id); if (el) el.textContent = s; }
+
+  // ---------- шапка ----------
+  txt('eyebrow', M.server + ' · ' + M.database + '@' + M.host + ' · снимок ' + M.takenAtHuman);
+  set('lede', 'Живой слепок продакшн-базы: <b>' + TOT.tables + ' ' + plural(TOT.tables, TABLE_FORMS) +
+    '</b> в схеме <b>public</b>, снятая через <code>pg_catalog</code>. Всё держится на двух корнях — <b>users</b> и <b>projects</b>; остальные ' +
+    (TOT.tables - 2) + ' так или иначе висят на них.');
+  set('stats', [
+    [TOT.tables, plural(TOT.tables, TABLE_FORMS)],
+    [nf.format(TOT.rows), 'строк'],
+    [size(TOT.bytes), 'на диске'],
+    [TOT.fks, 'внешних ключа'],
+    [TOT.indexes, 'индексов'],
+    [M.migrations, 'миграций']
+  ].map(function (s) {
+    return '<div class="stat"><span class="v">' + s[0] + '</span><span class="k">' + s[1] + '</span></div>';
+  }).join(''));
+  txt('footer', 'снято ' + M.takenAt + ' · pg_catalog · схема public · пересобрать: npm run db:schema-doc');
+  txt('map-sub', 'Все ' + TOT.tables + ' — с числом строк, колонок и размером на диске. Имя кликабельно: ведёт к полному описанию колонок ниже.');
+
+  // счётчики в первой схеме
+  [['sv-projects','projects','папка в R2'],['sv-files','project_files','каталог файлов'],
+   ['sv-changes','storage_changes','журнал по seq'],['sv-tasks','tasks','очередь'],
+   ['sv-machines','remote_computers','heartbeat']].forEach(function (p) {
+    var t = T[p[1]]; if (!t) return;
+    txt(p[0], nf.format(t.rows) + (p[1] === 'remote_computers' ? ' машин' : ' строк') + ' · ' + p[2]);
+  });
+
+  // ---------- физическое хранение ----------
+  var big = M.sample;
+  txt('fig2-rows', nf.format(T[big.table] ? T[big.table].rows : 0) + ' строк');
+  set('phys-sub', M.server + ' на одном сервере ' + M.host + '. База <code>' + M.database +
+    '</code> — это каталог с числовым именем, а каждая таблица, каждый индекс и каждое хранилище длинных значений внутри него — отдельный файл. Разбиение, о котором обычно спрашивают, уже сделано и делается само.');
+  set('tree',
+    '<span class="tc">' + esc(M.dataDirectory) + '</span>\n' +
+    '├── <span class="tk">' + esc(big.dir) + '</span>            <span class="tc">← вся база ' + M.database + ': ' + TOT.tables + ' таблиц, ' + M.dbSize + '</span>\n' +
+    '│     ├── <span class="tk">' + big.node + '</span>            <span class="tc">' + big.table + ', сами строки — ' + size(big.heapBytes) + '</span>\n' +
+    '│     ├── <span class="tk">' + big.node + '_fsm</span>        <span class="tc">карта свободного места внутри страниц</span>\n' +
+    '│     ├── <span class="tk">' + big.node + '_vm</span>         <span class="tc">карта видимости, по ней работает vacuum</span>\n' +
+    '│     ├── <span class="tk">ещё ' + big.indexes + ' ' + plural(big.indexes, ['файл', 'файла', 'файлов']) +
+      '</span>     <span class="tc">индексы этой таблицы, ещё ' + size(big.indexBytes) + '</span>\n' +
+    '│     ├── <span class="tk">' + esc(big.toast) + '</span>   <span class="tc">значения длиннее 2 КБ, вынесены вбок</span>\n' +
+    '│     └── <span class="tc">… ещё ~' + M.fileCount + ' таких файлов на остальные ' + (TOT.tables - 1) + ' таблиц</span>\n' +
+    '├── <span class="tk">pg_wal/</span>                <span class="tc">журнал предзаписи, сегменты ровно по ' + M.walSegment + '</span>\n' +
+    '└── <span class="tk">global/</span>               <span class="tc">общее на кластер: роли, список баз</span>');
+  set('facts', [
+    [M.blockSize, 'страница', 'Минимальная единица чтения. Postgres никогда не читает файл целиком — только нужные страницы, найденные по индексу.'],
+    [M.segmentSize, 'сегмент', 'Дорастая до этого размера, файл продолжается как <code>' + big.node + '.1</code>, <code>' + big.node + '.2</code> и так далее. Автоматически, без участия приложения.'],
+    ['2 КБ', 'порог TOAST', 'Длинный <code>payload jsonb</code> или текст ошибки уезжает в отдельную таблицу и сжимается. Строка задачи весит десятки килобайт именно поэтому.'],
+    [M.cacheHit + ' %', 'попаданий в кэш', 'Вся рабочая часть базы сейчас в оперативке: с диска не читается практически ничего.']
+  ].map(function (f) {
+    return '<div class="fact"><span class="fv">' + f[0] + '</span><span class="fk">' + f[1] + '</span><p>' + f[2] + '</p></div>';
+  }).join(''));
+
+  // ---------- рост ----------
+  set('growth-rows', DATA.growth.map(function (g) {
+    return '<tr><td><span class="tlink">' + g.table + '</span></td>' +
+      '<td class="note">' + g.days + ' сут наблюдения</td>' +
+      '<td class="num">' + nf1.format(g.perDay) + '</td>' +
+      '<td class="num">' + nf.format(g.bytesPerRow) + '</td>' +
+      '<td class="num">' + size(g.fiveYearBytes) + '</td>' +
+      '<td class="note">' + esc(g.limit) + '</td></tr>';
+  }).join(''));
+  var fiveYear = DATA.growth.reduce(function (a, g) { return a + g.fiveYearBytes; }, TOT.bytes);
+  set('growth-note', 'Байт на строку у мелких таблиц завышен: там ещё не окупились индексы и минимальная страница. Суммарный прогноз честнее считать по верхней границе — <b>около ' +
+    size(fiveYear) + ' через пять лет</b>, то есть база и тогда целиком поместится в память.');
+
+  var GB = 1073741824;
+  var LEVELS = [
+    { lv:'до 1 ГБ', max:GB, state:'', p:'Вся база в кэше. План запроса почти не важен: даже последовательное чтение таблицы — это чтение из оперативки. Ничего делать не нужно.' },
+    { lv:'1 – 10 ГБ', max:10 * GB, state:'при нынешнем темпе — не в этом десятилетии', p:'Нужен индекс под каждый горячий запрос — их уже ' + TOT.indexes + '. Стоит поднять <code>shared_buffers</code>: сейчас это ' + M.sharedBuffers + ', а разумно — четверть оперативки сервера.' },
+    { lv:'10 – 100 ГБ', max:100 * GB, state:'только при взрывном росте парка', p:'Появляется ретеншен: старое из журналов и аналитики удаляется. Тяжёлые отчёты уезжают на реплику. За <code>autovacuum</code> надо следить, а не надеяться на него.' },
+    { lv:'100 ГБ+', max:Infinity, state:'или больше 50 млн строк в одной таблице', p:'Вот здесь партиционирование по времени начинает окупаться — и в первую очередь не скоростью выборки, а тем, что удаление старого месяца становится мгновенным <code>DROP</code>.' }
+  ];
+  var here = LEVELS.findIndex(function (l) { return TOT.bytes < l.max; });
+  set('levels', LEVELS.map(function (l, i) {
+    var state = i === here ? 'вы здесь · ' + size(TOT.bytes) : l.state;
+    return '<div class="level' + (i === here ? ' here' : '') + '">' +
+      '<span class="lv">' + l.lv + '</span>' +
+      '<span class="lstate">' + esc(state) + '</span><p>' + l.p + '</p></div>';
+  }).join(''));
+
+  // ---------- что сделать ----------
+  var unused = DATA.unusedIndexes.filter(function (u) { return !/_pkey$/.test(u.index); });
+  set('todo', [
+    '<b>Ретеншен на журналы.</b> ' + DATA.growth.slice(0, 2).map(function (g) { return '<code>' + g.table + '</code>'; }).join(' и ') +
+      ' растут линейно и не чистятся ничем. Удаление строк старше полугода одной ночной задачей держит их размер постоянным — и это единственная механика, которая вообще нужна при нынешнем темпе.',
+    '<b>Настройки сервера — дефолтные.</b> <code>shared_buffers = ' + M.sharedBuffers + '</code>, <code>work_mem = ' + M.workMem +
+      '</code>, <code>effective_cache_size = ' + M.effectiveCacheSize + '</code> — значения из коробки. Пока база ' + size(TOT.bytes) + ', разницы нет; на первых гигабайтах она появится.',
+    (unused.length
+      ? '<b>' + unused.length + ' ' + plural(unused.length, ['индекс', 'индекса', 'индексов']) +
+        ' ни разу не использовал' + (unused.length === 1 ? 'ся' : 'ись') + '.</b> По <code>pg_stat_user_indexes</code> ноль обращений у ' +
+        unused.slice(0, 5).map(function (u) { return '<code>' + u.index + '</code>'; }).join(', ') +
+        (unused.length > 5 ? ' и ещё ' + (unused.length - 5) : '') +
+        '. Каждый такой индекс — замедление всех записей в таблицу. Счётчики обнуляются при перезапуске сервера, так что сверяйтесь с живой статистикой.'
+      : '<b>Неиспользуемых индексов нет.</b> Все индексы имеют обращения по <code>pg_stat_user_indexes</code>.')
+  ].map(function (s) { return '<li>' + s + '</li>'; }).join(''));
+  set('conn-note', 'Отдельно про подключения: пул в <code>lib/db.ts</code> ограничен тремя соединениями на контейнер при <code>max_connections = ' +
+    M.maxConnections + '</code> на сервере. Это запас примерно на ' + Math.floor(M.maxConnections / 3) +
+    ' параллельных инстансов — раньше упрётся он, чем объём данных.');
+
+  // ---------- карта ----------
+  var rows = [];
+  DOMAINS.forEach(function (d) {
+    d.tables.forEach(function (name) {
+      var t = T[name];
+      rows.push('<tr data-table="' + name + '" data-domain="' + d.id + '">' +
+        '<td><a class="tlink" href="#t-' + name + '">' + name + '</a></td>' +
+        '<td><span class="dom" style="--dc:' + d.color + '">' + d.name + '</span></td>' +
+        '<td class="note">' + esc((DESC[name] || '').split('.')[0]) + '</td>' +
+        '<td class="num' + (t.rows ? '' : ' zero') + '">' + nf.format(t.rows) + '</td>' +
+        '<td class="num">' + t.cols.length + '</td>' +
+        '<td class="num">' + t.indexes + '</td>' +
+        '<td class="num">' + size(t.bytes) + '</td></tr>');
+    });
+  });
+  set('maprows', rows.join(''));
+
+  // ---------- карточки ----------
+  function colHtml(c) {
+    var m = [];
+    if (c.pk) m.push('<span class="b pk">PK</span>');
+    if (c.u && !c.pk) m.push('<span class="b uq">uniq</span>');
+    if (c.fk) m.push('<a class="b fk" href="#t-' + c.fk.table + '">→ ' + c.fk.table + '.' + c.fk.col + '</a>');
+    if (c.fk && c.fk.onDelete !== 'NO ACTION') m.push('<span class="b cascade">' + c.fk.onDelete.toLowerCase() + '</span>');
+    if (c.enum) c.enum.forEach(function (v) { m.push('<span class="b en">' + esc(v) + '</span>'); });
+    if (c.d) m.push('<span class="b def">= ' + esc(c.d) + '</span>');
+    return '<div class="col' + (c.nn ? '' : ' nullable') + '">' +
+      '<span class="cn">' + c.n + '</span>' +
+      '<span class="ct">' + esc(c.t) + '</span>' +
+      '<span class="cm">' + m.join('') + '</span></div>';
+  }
+
+  set('domains', DOMAINS.map(function (d) {
+    var cards = d.tables.map(function (name) {
+      var t = T[name];
+      var inc = incoming[name] || [];
+      return '<article class="card" id="t-' + name + '" data-table="' + name + '" style="--dc:' + d.color + '">' +
+        '<div class="card-head"><span class="tname">' + name + '</span>' +
+        '<span class="facts">' + nf.format(t.rows) + ' стр · ' + t.cols.length + ' кол · ' + t.indexes + ' инд</span></div>' +
+        (DESC[name] ? '<p class="desc">' + esc(DESC[name]) + '</p>' : '') +
+        '<div class="cols">' + t.cols.map(colHtml).join('') + '</div>' +
+        (t.checks.length ? '<div class="checks">' + t.checks.map(esc).join('<br>') + '</div>' : '') +
+        (inc.length ? '<div class="refs"><b>ссылаются:</b> ' + inc.map(function (x) {
+          return '<a class="tlink" style="font-size:11.5px" href="#t-' + x + '">' + x + '</a>';
+        }).join(', ') + '</div>' : '') + '</article>';
+    }).join('');
+    return '<div class="domain" data-domain="' + d.id + '" style="--dc:' + d.color + '">' +
+      '<div class="domain-head"><div class="meta">' + d.tables.length + ' ' + plural(d.tables.length, TABLE_FORMS) + '</div>' +
+      '<h3>' + d.name + '</h3><p>' + esc(d.intro) + '</p></div>' +
+      '<div class="cards">' + cards + '</div></div>';
+  }).join(''));
+
+  // ---------- фильтры ----------
+  set('chips', DOMAINS.map(function (d) {
+    return '<button class="chip" type="button" aria-pressed="true" data-domain="' + d.id + '" style="color:' + d.color + '">' +
+      '<span class="dot"></span>' + d.name + '</button>';
+  }).join(''));
+
+  var active = {};
+  DOMAINS.forEach(function (d) { active[d.id] = true; });
+  var q = document.getElementById('q');
+  var hits = document.getElementById('hits');
+
+  function matches(name, term) {
+    if (!term) return true;
+    if (name.indexOf(term) !== -1) return true;
+    if ((DESC[name] || '').toLowerCase().indexOf(term) !== -1) return true;
+    return T[name].cols.some(function (c) { return c.n.indexOf(term) !== -1 || c.t.indexOf(term) !== -1; });
+  }
+
+  function apply() {
+    var term = q.value.trim().toLowerCase();
+    var shown = 0;
+    Object.keys(T).forEach(function (name) {
+      var d = domainOf[name];
+      var ok = !!d && active[d.id] && matches(name, term);
+      if (ok) shown++;
+      var card = document.getElementById('t-' + name);
+      if (card) card.hidden = !ok;
+      var row = document.querySelector('tr[data-table="' + name + '"]');
+      if (row) row.hidden = !ok;
+    });
+    document.querySelectorAll('.domain').forEach(function (el) {
+      el.hidden = !el.querySelector('.card:not([hidden])');
+    });
+    document.getElementById('nothing').hidden = shown !== 0;
+    hits.textContent = shown === TOT.tables
+      ? TOT.tables + ' ' + plural(TOT.tables, TABLE_FORMS)
+      : 'найдено: ' + shown;
+  }
+
+  document.getElementById('chips').addEventListener('click', function (e) {
+    var b = e.target.closest('.chip');
+    if (!b) return;
+    active[b.dataset.domain] = !active[b.dataset.domain];
+    b.setAttribute('aria-pressed', String(active[b.dataset.domain]));
+    apply();
+  });
+  q.addEventListener('input', apply);
+  apply();
+})();
+
+</script>
+</body>
+</html>

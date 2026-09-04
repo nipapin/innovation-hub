@@ -46,6 +46,8 @@ export function TrialCard({
   const [data, setData] = useState<TrialResponse | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [activating, setActivating] = useState(false)
+  /** Копирование идёт заметно дольше обычного — предлагаем дожать вручную. */
+  const [stalled, setStalled] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -66,6 +68,36 @@ export function TrialCard({
     if (autoOpen && data?.trial.status === "available") setDialogOpen(true)
   }, [autoOpen, data])
 
+  /**
+   * Пока копии едут — переспрашиваем. Одного отложенного запроса не хватает:
+   * набор шаблонов копируется дольше пары секунд, а карточка, застрявшая на
+   * «копируются» до перезагрузки страницы, читается как поломка.
+   *
+   * Через ~20 секунд рядом появляется «Повторить»: выдача может встать
+   * (упавшая работа, перезапуск сервера), и тогда единственный выход отсюда —
+   * повторный запрос, который дожмёт незаконченную выдачу. Показывать кнопку
+   * сразу нельзя — она бы предлагала чинить то, что идёт нормально.
+   */
+  useEffect(() => {
+    if (data?.trial.status !== "provisioning") {
+      setStalled(false)
+      return
+    }
+    let ticks = 0
+    const timer = setInterval(() => {
+      ticks++
+      if (ticks === 7) setStalled(true)
+      // Три минуты — и хватит: дальше человек либо нажмёт «Повторить», либо
+      // вернётся позже, и опрос начнётся заново.
+      if (ticks > 60) {
+        clearInterval(timer)
+        return
+      }
+      void load()
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [data?.trial.status, load])
+
   const activate = async () => {
     setActivating(true)
     try {
@@ -78,7 +110,10 @@ export function TrialCard({
         return
       }
       if (!res.ok) throw new Error(String(res.status))
-      toast.success(t.trialActivated)
+      // Дожали незаконченную выдачу — это не активация, и поздравлять с ней
+      // человека, у которого период уже есть, значит сбивать с толку.
+      const body = (await res.json()) as { resumed?: boolean }
+      toast.success(body.resumed ? t.trialResumeStarted : t.trialActivated)
       setDialogOpen(false)
       // Копии ещё едут: перечитываем сразу, чтобы показать «готовим проекты»,
       // и ещё раз позже — к тому моменту работа обычно завершилась.
@@ -154,6 +189,16 @@ export function TrialCard({
           <span className="inline-flex items-center gap-2 text-[12.5px] text-muted-foreground">
             <Loader2 className="h-[15px] w-[15px] animate-spin" />
             {t.trialProvisioning}
+            {stalled ? (
+              <button
+                type="button"
+                onClick={activate}
+                disabled={activating}
+                className="rounded-lg bg-foreground/10 px-2 py-1 text-[12px] hover:bg-foreground/[0.18] disabled:opacity-60"
+              >
+                {t.trialResume}
+              </button>
+            ) : null}
           </span>
         ) : null}
 

@@ -59,8 +59,12 @@ export async function POST(request: NextRequest) {
 
   // 202: проекты ещё копируются. Отвечать 200 значило бы обещать готовый
   // кабинет, которого пару секунд не будет.
+  //
+  // `resumed` — это тот же 202, но по другому поводу: период уже был выдан, а
+  // копии не доехали, и мы дожали прошлую попытку. Интерфейсу нужно различать,
+  // чтобы не поздравлять человека с активацией второй раз.
   return NextResponse.json(
-    { grantId: result.grant.id, jobId: result.jobId },
+    { grantId: result.grant.id, jobId: result.jobId, resumed: result.resumed },
     { status: 202 },
   )
 }

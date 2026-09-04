@@ -11,6 +11,17 @@ export type DriveFile = {
   children?: DriveFile[]
 }
 
+/**
+ * Состояние обработки элемента верхнего уровня папки IN.
+ *
+ * `null` (элемента нет в карте) значит «задачи по нему не было» — то есть он
+ * ещё поедет. Всё остальное значит, что задача была, и сам по себе он больше
+ * не поедет никогда: обе линии сборки берут только то, по чему задачи не
+ * существовало вовсе (docs/PIPELINE.md §3). Словарь совпадает с серверным —
+ * lib/pipeline/in-status.ts.
+ */
+export type InItemStatus = "queued" | "running" | "done" | "failed"
+
 export type ProjectGroupName = "personal" | "shared" | "tools" | "archive"
 
 export type Project = {

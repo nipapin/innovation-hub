@@ -72,6 +72,7 @@ export function PipelineContent() {
         eyebrow={t.adminPipelineEyebrow}
         title={t.adminPipeline}
         description={t.adminPipelineDesc}
+        help="pipeline.overview"
       />
       <RunPanel tick={tick} onState={onState} />
       <TasksPanel

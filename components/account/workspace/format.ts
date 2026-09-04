@@ -106,6 +106,92 @@ export function resolveFolderPathByName(
 }
 
 /**
+ * Элемент с таким именем в списке: точное совпадение, затем без учёта регистра.
+ *
+ * `filesOnly` — для поиска по всему дереву: там имя ищется вслепую, и папка,
+ * случайно названная так же, увела бы человека совсем не туда. В своей же папке
+ * совпадение однозначно, и папка — законная цель: задача бывает и по папке
+ * целиком, тогда «открыть» значит подсветить её саму.
+ */
+function itemByName(
+  list: DriveFile[],
+  name: string,
+  filesOnly = false,
+): DriveFile | null {
+  const lower = name.toLowerCase()
+  const fits = (f: DriveFile) => !filesOnly || !f.isFolder
+  return (
+    list.find((f) => fits(f) && f.name === name) ??
+    list.find((f) => fits(f) && f.name.toLowerCase() === lower) ??
+    null
+  )
+}
+
+/** Файл с таким именем где угодно в дереве + цепочка папок до него. */
+function findFileAnywhere(
+  root: DriveFile[],
+  name: string,
+): { nodes: DriveFile[]; file: DriveFile } | null {
+  const walk = (
+    list: DriveFile[],
+    prefix: DriveFile[],
+  ): { nodes: DriveFile[]; file: DriveFile } | null => {
+    const here = itemByName(list, name, true)
+    if (here) return { nodes: prefix, file: here }
+    for (const item of list) {
+      if (!item.isFolder) continue
+      const found = walk(item.children ?? [], [...prefix, item])
+      if (found) return found
+    }
+    return null
+  }
+  return walk(root, [])
+}
+
+/**
+ * Куда ведёт переход «открыть вот этот файл»: цепочка папок и сам файл.
+ *
+ * Снаружи (из индикатора обработки) приходит текст — «OUT/08 August» и
+ * «20.08-09.14_zzz.mp4», — а узлы с их id знает только загруженное дерево.
+ * Уложить текст на дерево нужно бережно: между отчётом машины и кликом человека
+ * проходит время, за которое папку переименовывают, а файл переносят. Строгое
+ * совпадение в этих случаях возвращало в корень проекта — то есть в упрощённом
+ * режиме в тот же самый OUT, из которого человек и хотел попасть к результату.
+ *
+ * Поэтому три попытки, от точной к приблизительной:
+ *
+ * 1. путь целиком и файл в нём — обычный случай;
+ * 2. элемента там нет (или нет самой папки) — ищем файл по имени во всём
+ *    дереве: он мог переехать, но он существует, и нужен человеку именно он;
+ * 3. не нашёлся нигде — ведём в самую глубокую существующую часть пути. Пусть
+ *    это будет OUT вместо `OUT/08 August`, но не корень проекта.
+ */
+export function resolveRevealTarget(
+  root: DriveFile[],
+  folderPath: string,
+  fileName: string | null,
+): { nodes: DriveFile[]; file: DriveFile | null } {
+  const segments = folderPath.split("/").filter(Boolean)
+  const nodes: DriveFile[] = []
+  let children = root
+  for (const segment of segments) {
+    const found = findChildByName(children, segment)
+    if (!found) break
+    nodes.push(found)
+    children = found.children ?? []
+  }
+
+  if (!fileName) return { nodes, file: null }
+
+  if (nodes.length === segments.length) {
+    const item = itemByName(children, fileName)
+    if (item) return { nodes, file: item }
+  }
+
+  return findFileAnywhere(root, fileName) ?? { nodes, file: null }
+}
+
+/**
  * Логический путь папки, в которой лежит элемент: `IN`, `OUT/готовое`, `` — корень.
  *
  * Ищем по всему дереву, а не по текущему пути: меню одно на все режимы, а путь

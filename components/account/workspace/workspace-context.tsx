@@ -30,6 +30,7 @@ import {
   pathToFolderPath,
   resolveFolderPathByName,
   resolvePath,
+  resolveRevealTarget,
   siblingFiles,
 } from "./format"
 import { projectCapabilities } from "./access"
@@ -44,6 +45,7 @@ import type {
   ContextMenuState,
   Density,
   DriveFile,
+  InItemStatus,
   Project,
   UploadConflict,
   UploadConflictAction,
@@ -168,6 +170,15 @@ type WorkspaceValue = {
   refreshDrive: () => void
   inFolder: DriveFile | null
   outFolder: DriveFile | null
+  /**
+   * Была ли по элементу папки IN задача и чем она кончилась. `null` — задачи не
+   * было, элемент ещё поедет.
+   *
+   * Спрашивается по элементу, а не хранится в самом `DriveFile`, потому что
+   * дерево приходит из каталога, а это знание — из очереди: сшивать их в один
+   * узел значило бы дать файловому дереву поле, которого у файла нет.
+   */
+  inStatusOf: (file: DriveFile) => InItemStatus | null
 
   // параметры обработки, открытые клиенту (exposedToSite в options.json)
   exposedOptions: ExposedOption[]
@@ -199,6 +210,15 @@ type WorkspaceValue = {
    * новая, даже если папка та же.
    */
   revealPath: DriveFile[] | null
+  /**
+   * Файл из той же просьбы: его строка не только выделяется, но и прокручивается
+   * в видимую часть списка. Рисуют файлы все виды сразу (мобильная разметка
+   * висит в DOM рядом с десктопной), поэтому это признак «покажи», а не команда
+   * прокрутки: сработает та копия строки, которая видна.
+   */
+  revealFileId: string | null
+  /** «Показали» — просьба исполнена, второй раз к файлу не прыгаем. */
+  consumeReveal: () => void
 
   // выделение файлов
   /** Всё выделенное; последний элемент — тот, что показан в превью. */
@@ -450,11 +470,33 @@ export function WorkspaceProvider({
   )
 
   const [rootFiles, setRootFiles] = useState<DriveFile[]>([])
+  /**
+   * Что конвейер уже знает про элементы папки IN: id строки каталога → статус
+   * последней задачи. В карте только верхний уровень IN — глубже задач не
+   * бывает, — поэтому проверять путь при поиске не нужно.
+   */
+  const [inStatus, setInStatus] = useState<Record<string, InItemStatus>>({})
   const [exposedOptions, setExposedOptions] = useState<ExposedOption[]>([])
   const [driveAvailable, setDriveAvailable] = useState(true)
   const [loadingFiles, setLoadingFiles] = useState(false)
   const [path, setPath] = useState<DriveFile[]>([])
+  /**
+   * Чьё дерево сейчас лежит в `rootFiles`.
+   *
+   * Смена проекта и приход его дерева разнесены во времени: `selectedId`
+   * меняется мгновенно, а `loadDrive` идёт по сети. Всё, что укладывает
+   * внешнюю просьбу «открой вот эту папку» на дерево, обязано дождаться
+   * СВОЕГО дерева — иначе просьба разбирается по чужому, не находит там ничего
+   * и гаснет, а пришедшая следом загрузка ещё и сбрасывает путь в корень.
+   */
+  const [filesProjectId, setFilesProjectId] = useState<string | null>(null)
   const [revealPath, setRevealPath] = useState<DriveFile[] | null>(null)
+  /**
+   * Файл, к которому просили перейти: его мало выделить, к нему надо ещё и
+   * прокрутить. В папке с сотней результатов выделенная строка за пределами
+   * окна — это тот же «мы никуда не перешли».
+   */
+  const [revealFileId, setRevealFileId] = useState<string | null>(null)
   /**
    * Выделение — список, а не один файл: Cmd/Ctrl добавляет элементы.
    * Последний элемент считается активным и показывается в превью.
@@ -469,6 +511,8 @@ export function WorkspaceProvider({
 
   const clearFileSelection = useCallback(() => setSelection([]), [])
 
+  const consumeReveal = useCallback(() => setRevealFileId(null), [])
+
   const isSelected = useCallback(
     (id: string) => selection.some((f) => f.id === id),
     [selection],
@@ -479,6 +523,8 @@ export function WorkspaceProvider({
 
   const selectFile = useCallback((file: DriveFile, additive = false) => {
     anchorRef.current = file
+    // Дальше человек ведёт сам — прокрутка к присланному файлу больше не нужна.
+    setRevealFileId(null)
     setSelection((prev) => {
       if (!additive) return [file]
       const without = prev.filter((f) => f.id !== file.id)
@@ -623,6 +669,7 @@ export function WorkspaceProvider({
         if (!data.available) {
           setDriveAvailable(false)
           setRootFiles([])
+          setInStatus({})
           setExposedOptions([])
           setPath([])
           toast.error(tRef.current.driveUnavailable)
@@ -632,6 +679,12 @@ export function WorkspaceProvider({
         setExposedOptions(Array.isArray(data.options) ? data.options : [])
         const files: DriveFile[] = data.files ?? []
         setRootFiles(files)
+        setFilesProjectId(projectId)
+        setInStatus(
+          data.inStatus && typeof data.inStatus === "object"
+            ? (data.inStatus as Record<string, InItemStatus>)
+            : {},
+        )
         setPath((prev) => (keepPath ? resolvePath(files, prev) : []))
         setSelectedFile(null)
 
@@ -706,8 +759,10 @@ export function WorkspaceProvider({
     // Просьба «открыть вот это» относилась к прежнему проекту — снимаем её, а
     // не тащим в следующий: узлы там чужие, и вид всё равно их не узнает.
     setRevealPath(null)
+    setRevealFileId(null)
     if (!selectedId) {
       setRootFiles([])
+      setInStatus({})
       setPath([])
       setSelectedFile(null)
       setMessages([])
@@ -719,12 +774,15 @@ export function WorkspaceProvider({
   }, [selectedId, loadDrive])
 
   /**
-   * Переход по ссылке «прямо к этому файлу»: `?path=IN&file=clip.mp4`.
+   * Переход по ссылке «прямо к этому файлу»: `?path=OUT/08 August&file=clip.mp4`.
    *
    * Приходит из индикатора обработки в верхней панели — оттуда человек попадает
-   * не «в проект», а в ту папку, где его файл лежит сейчас, с выделенной
-   * строкой. Ждём загруженного дерева: путь в ссылке текстовый, а узлы с их id
-   * знает только оно.
+   * не «в проект», а в ту папку, где его файл лежит сейчас, с выделенной и
+   * прокрученной к центру строкой. Ждём СВОЕГО дерева: путь в ссылке текстовый,
+   * узлы с их id знает только дерево, и до его прихода в `rootFiles` лежит
+   * дерево прежнего проекта. Разобранная по нему просьба не находила ничего, а
+   * пришедшая следом загрузка сбрасывала путь в корень — то есть переход к
+   * результату заканчивался в корне OUT, ровно там, откуда человек уходил.
    *
    * Параметры одноразовые — после применения снимаем их с адреса. Иначе
    * повторный клик по той же строке был бы переходом на тот же URL, то есть
@@ -734,7 +792,14 @@ export function WorkspaceProvider({
   const deepLinkFile = searchParams.get("file")
   const deepLinkDone = useRef<string | null>(null)
   useEffect(() => {
-    if (!selectedId || deepLinkFolder === null) return
+    if (deepLinkFolder === null) {
+      // Ссылка отработана и снята с адреса — забываем её. Без этого отметка
+      // «уже делали» переживала переход, и второй клик по той же строке
+      // индикатора не делал ничего: человек оставался там, где стоял.
+      deepLinkDone.current = null
+      return
+    }
+    if (!selectedId || filesProjectId !== selectedId) return
     if (rootFiles.length === 0) return
 
     // Ровно один раз на ссылку. Дерево перечитывается по таймеру, и без этой
@@ -744,21 +809,20 @@ export function WorkspaceProvider({
     if (deepLinkDone.current === token) return
     deepLinkDone.current = token
 
-    const nodes = resolveFolderPathByName(rootFiles, deepLinkFolder)
+    const { nodes, file } = resolveRevealTarget(
+      rootFiles,
+      deepLinkFolder,
+      deepLinkFile,
+    )
     setPath(nodes)
     setRevealPath(nodes)
-
-    const here = nodes.length ? (nodes[nodes.length - 1].children ?? []) : rootFiles
-    const target = deepLinkFile
-      ? (here.find((f) => f.name === deepLinkFile) ??
-        here.find((f) => f.name.toLowerCase() === deepLinkFile.toLowerCase()) ??
-        null)
-      : null
-    setSelection(target ? [target] : [])
+    setSelection(file ? [file] : [])
+    setRevealFileId(file ? file.id : null)
 
     router.replace(buildUrl(selectedId, projectTab), { scroll: false })
   }, [
     selectedId,
+    filesProjectId,
     rootFiles,
     deepLinkFolder,
     deepLinkFile,
@@ -1137,6 +1201,18 @@ export function WorkspaceProvider({
   )
 
   /**
+   * Отметка на элементе IN: задача по нему уже была, сам он больше не поедет.
+   *
+   * Обратная сторона того же правила, из-за которого существует «Обработать
+   * заново»: раньше «уже обработан» и «ждёт очереди» выглядели в папке
+   * одинаково, и разницу нельзя было увидеть — только вспомнить.
+   */
+  const inStatusOf = useCallback(
+    (file: DriveFile) => inStatus[file.id] ?? null,
+    [inStatus],
+  )
+
+  /**
    * «Обработать заново» — поставить элемент IN в очередь ещё раз.
    *
    * Нужно потому, что обе линии сборки берут только то, по чему задачи не было
@@ -1170,12 +1246,18 @@ export function WorkspaceProvider({
             return
           }
           toast.success(tRef.current.reprocessQueued)
+          // Перечитываем дерево ради отметки: задача уже в очереди, а событий в
+          // хранилище от этого не появилось — сам по себе опрос delta её не
+          // увидит, и значок остался бы зелёным до первого записанного файла.
+          // Без await и вне catch: постановка уже удалась, и сбой перечитывания
+          // не должен показать поверх успеха сообщение о несобранной задаче.
+          void loadDrive(selectedId, true)
         } catch {
           toast.error(tRef.current.reprocessNoTask)
         }
       })()
     },
-    [selectedId],
+    [selectedId, loadDrive],
   )
 
   const renameItem = useCallback(
@@ -1742,6 +1824,7 @@ export function WorkspaceProvider({
     refreshDrive,
     inFolder,
     outFolder,
+    inStatusOf,
     exposedOptions,
     saveExposedOptions: source.exposedOptionsUrl ? saveExposedOptions : null,
     path,
@@ -1751,6 +1834,8 @@ export function WorkspaceProvider({
     goToCrumb,
     goToPath,
     revealPath,
+    revealFileId,
+    consumeReveal,
     selection,
     selectedFile,
     isSelected,

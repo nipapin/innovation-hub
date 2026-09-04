@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireUserApi } from "@/lib/admin-auth"
+import { loadInStatus } from "@/lib/pipeline/in-status"
 import { loadProjectStorageState } from "@/lib/project-storage"
 import { requireProjectAccess } from "@/lib/project-access"
 import { isS3Configured } from "@/lib/s3-client"
@@ -24,9 +25,18 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const access = await requireProjectAccess(id, auth.userId)
     if (access instanceof NextResponse) return access
     const project = access.project
-    const state = await loadProjectStorageState(project.storageOwnerId, project.id)
+    // Состояние обработки едет вместе с деревом, а не отдельным опросом:
+    // отметка нужна ровно там, где нарисован файл, и живёт ровно столько же.
+    const [state, inStatus] = await Promise.all([
+      loadProjectStorageState(project.storageOwnerId, project.id),
+      loadInStatus({
+        projectId: project.id,
+        storageOwnerId: project.storageOwnerId,
+      }),
+    ])
     return NextResponse.json({
       ...state,
+      inStatus,
       storageAvailable: state.available,
     })
   } catch (error) {

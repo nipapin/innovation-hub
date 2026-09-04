@@ -17,3 +17,7 @@ public/promo_video_compressed.mp4
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Снимок схемы базы: генерируется из живого сервера, не исходник.
+# Пересобрать — npm run db:schema-doc (нужен доступ к базе).
+docs/DB_SCHEMA.html

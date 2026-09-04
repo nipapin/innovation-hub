@@ -18,7 +18,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
 
 /** Локализуемые зоны. Публичный сайт словаря не имеет — см. техдолг в UI_GUIDE §17. */
-const ZONES = ["components/account", "components/admin", "app/account", "app/admin"]
+const ZONES = [
+  "components/account",
+  "components/admin",
+  "components/help",
+  "app/account",
+  "app/admin",
+  "app/help",
+]
 
 /** Сами словари, конечно, по-русски. */
 const ALLOWED_FILES = new Set([

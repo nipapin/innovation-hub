@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import type { PoolClient } from "pg"
-import { query, withTransaction } from "@/lib/db"
+import { query, queryVia, withTransaction } from "@/lib/db"
 import { recordTransaction } from "@/lib/billing/ledger"
 import type { GrantKind, GrantRecord, GrantStatus } from "@/lib/billing/types"
 
@@ -49,8 +49,12 @@ export async function findGrant(id: string): Promise<GrantRecord | null> {
  * текущий» обязаны быть одним условием, иначе кнопка будет обещать то, что
  * база откажется выдать.
  */
-export async function findTrialGrant(userId: string): Promise<GrantRecord | null> {
-  const result = await query<GrantRecord>(
+export async function findTrialGrant(
+  userId: string,
+  /** Читать внутри чужой транзакции: активация период дожимает свой же грант. */
+  client?: PoolClient,
+): Promise<GrantRecord | null> {
+  const result = await queryVia(client)<GrantRecord>(
     `SELECT ${GRANT_FIELDS}
        FROM billing_grants
       WHERE user_id = $1 AND kind = 'trial' AND reset_at IS NULL`,
@@ -110,8 +114,15 @@ export type CreateGrantInput = {
   activateNow: boolean
 }
 
-export async function createGrant(input: CreateGrantInput): Promise<GrantRecord | null> {
-  return withTransaction(async (client) => {
+export async function createGrant(
+  input: CreateGrantInput,
+  /**
+   * Уже открытая транзакция вызывающего. Тестовый период кладёт грант и работу
+   * копирования одной записью: грант без работы — это вечное «копируются».
+   */
+  outer?: PoolClient,
+): Promise<GrantRecord | null> {
+  const run = async (client: PoolClient) => {
     const id = randomUUID()
     const status: GrantStatus = input.activateNow ? "active" : "provisioning"
 
@@ -155,7 +166,9 @@ export async function createGrant(input: CreateGrantInput): Promise<GrantRecord 
     }
 
     return grant
-  })
+  }
+
+  return outer ? run(outer) : withTransaction(run)
 }
 
 /** Начислить деньги подарка на подарочный кошелёк. */

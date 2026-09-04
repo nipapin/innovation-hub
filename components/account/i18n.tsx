@@ -202,6 +202,8 @@ export const dict = {
     trialOver: "Тестовый период завершён",
     trialRevoked: "Тестовый период отозван. Проекты и файлы остались у вас — остановилась только обработка за подарочные деньги.",
     trialProvisioning: "Проекты копируются, это займёт несколько секунд",
+    trialResume: "Повторить",
+    trialResumeStarted: "Продолжаем копировать проекты",
     trialDialogTitle: "Тестовый период",
     trialDialogBody:
       "Мы начислим {amount} на подарочный баланс и скопируем вам {count} готовых проекта. Работать в них можно сразу — обработка включится сама.",
@@ -1332,6 +1334,13 @@ export const dict = {
     reprocessNoFunds: "Не хватает средств на обработку.",
     reprocessNoTask:
       "Не удалось собрать задачу — проверьте настройки обработки проекта.",
+
+    // Отметка обработки на элементе папки IN
+    inMarkDone:
+      "Уже обработан. Сам по себе больше не поедет — «Обработать заново» в меню файла.",
+    inMarkQueued: "В очереди на обработку.",
+    inMarkRunning: "Обрабатывается сейчас.",
+    inMarkFailed: "Обработка не удалась.",
     driveUnavailable: "Хранилище недоступно для этого проекта",
     driveEmpty: "Папок пока нет — загрузите файлы или дождитесь синхронизации",
 
@@ -1367,6 +1376,26 @@ export const dict = {
     processingFailed: "ошибка",
     processingFailedHint: "Файл отложен — мы разберёмся и вернём его в работу.",
     processingActive: "в работе: {count}",
+
+    // справка (/help) — тексты интерфейса; сами статьи лежат в content/help/
+    helpTitle: "Справка",
+    helpSubtitle: "Что как устроено и почему именно так.",
+    helpSectionPipeline: "Конвейер",
+    helpSearch: "Поиск по справке…",
+    helpEmpty: "Ничего не нашлось.",
+    helpTagAll: "Все",
+    helpAudienceUser: "Для всех",
+    helpUpdated: "обновлено {date}",
+    helpMore: "Подробнее",
+    helpSeeAlso: "Смотрите также",
+    helpOpen: "Открыть справку",
+    helpBack: "Вся справка",
+    helpUnavailable: "Справка недоступна.",
+    helpFallbackNote:
+      "Перевода на английский пока нет — показан русский текст.",
+    helpPageButton: "Справка по разделу",
+    helpOpenFull: "Открыть целиком",
+    helpBackPrev: "Назад",
   },
   en: {
     langName: "EN",
@@ -1539,6 +1568,8 @@ export const dict = {
     trialOver: "Trial period is over",
     trialRevoked: "The trial period was revoked. Your projects and files stay with you — only processing paid from the gift has stopped.",
     trialProvisioning: "Copying projects, this takes a few seconds",
+    trialResume: "Retry",
+    trialResumeStarted: "Resuming the copy",
     trialDialogTitle: "Trial period",
     trialDialogBody:
       "We will credit {amount} to your gift balance and copy {count} ready-made projects to you. You can work in them right away — processing turns on by itself.",
@@ -2664,6 +2695,13 @@ export const dict = {
     reprocessNoFunds: "Not enough funds for processing.",
     reprocessNoTask:
       "Could not build the task — check the project's processing settings.",
+
+    // Processing mark on an IN folder item
+    inMarkDone:
+      "Already processed. It will not run on its own — use “Process again” in the file menu.",
+    inMarkQueued: "Queued for processing.",
+    inMarkRunning: "Processing right now.",
+    inMarkFailed: "Processing failed.",
     driveUnavailable: "Storage is unavailable for this project",
     driveEmpty: "No folders yet — upload files or wait for sync",
 
@@ -2700,6 +2738,26 @@ export const dict = {
     processingFailed: "error",
     processingFailedHint: "The file is set aside — we will look into it and put it back.",
     processingActive: "running: {count}",
+
+    // help (/help) — interface strings; the articles live in content/help/
+    helpTitle: "Help",
+    helpSubtitle: "How things work, and why they work that way.",
+    helpSectionPipeline: "Pipeline",
+    helpSearch: "Search help…",
+    helpEmpty: "Nothing found.",
+    helpTagAll: "All",
+    helpAudienceUser: "Everyone",
+    helpUpdated: "updated {date}",
+    helpMore: "Read more",
+    helpSeeAlso: "See also",
+    helpOpen: "Open help",
+    helpBack: "All help",
+    helpUnavailable: "Help is unavailable.",
+    helpFallbackNote:
+      "There is no English translation yet — showing the Russian text.",
+    helpPageButton: "Section help",
+    helpOpenFull: "Open full page",
+    helpBackPrev: "Back",
   },
 } as const
 

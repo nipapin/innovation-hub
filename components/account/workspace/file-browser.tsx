@@ -1,7 +1,14 @@
 "use client"
 
-import { useRef, useState } from "react"
-import { ChevronRight, Loader2, Upload } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import {
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  Clock,
+  Loader2,
+  Upload,
+} from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import {
@@ -11,7 +18,7 @@ import {
   itemsAtPath,
   pathToFolderPath,
 } from "./format"
-import type { DriveFile, UploadTarget, ViewMode } from "./types"
+import type { DriveFile, InItemStatus, UploadTarget, ViewMode } from "./types"
 import { useWorkspace } from "./workspace-context"
 
 /** Профиль плотности: roomy — полный режим, snug — панели IN / OUT. */
@@ -163,6 +170,63 @@ export function Breadcrumbs({
   )
 }
 
+/**
+ * Отметка на элементе папки IN: задача по нему уже была.
+ *
+ * Нужна из-за правила, на котором держатся обе линии сборки: элемент, по
+ * которому задача создавалась, не берётся больше никогда (docs/PIPELINE.md §3).
+ * Обработанный файл остаётся лежать в IN рядом с только что залитым и выглядит
+ * ровно так же — «почему ничего не происходит» было вопросом, на который папка
+ * не отвечала, а «Обработать заново» находил только тот, кто заранее знал, что
+ * файл встал.
+ *
+ * Значок, а не подпись: места в плитке и в узкой колонке считанные единицы, а
+ * сказать нужно одно слово. Само слово — в подсказке по наведению, там же, где
+ * оно понадобится.
+ *
+ * Отсутствие значка тоже сообщение: задачи не было, элемент ещё поедет. Поэтому
+ * «ждёт очереди» ничем не помечаем — иначе значок стоял бы вообще на всём и
+ * перестал бы что-либо различать.
+ */
+const IN_MARK: Record<
+  InItemStatus,
+  {
+    icon: typeof CircleCheck
+    tone: string
+    /** Ключ подписи в словаре — она же подсказка по наведению. */
+    key: "inMarkDone" | "inMarkQueued" | "inMarkRunning" | "inMarkFailed"
+  }
+> = {
+  done: { icon: CircleCheck, tone: "text-ws-out", key: "inMarkDone" },
+  running: {
+    icon: Loader2,
+    tone: "text-ws-accent animate-spin",
+    key: "inMarkRunning",
+  },
+  queued: { icon: Clock, tone: "text-ws-accent", key: "inMarkQueued" },
+  failed: { icon: CircleAlert, tone: "text-destructive", key: "inMarkFailed" },
+}
+
+function InMark({ file, className }: { file: DriveFile; className?: string }) {
+  const { t, inStatusOf } = useWorkspace()
+  const status = inStatusOf(file)
+  if (!status) return null
+
+  const { icon: Icon, tone, key } = IN_MARK[status]
+  const label = t[key]
+  // Обёртка, а не title на самой иконке: у <svg> это не подсказка браузера, а
+  // просто неизвестный атрибут — всплывающего текста от него не будет.
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className={cn("flex shrink-0 items-center", className)}
+    >
+      <Icon className={cn("h-[13px] w-[13px]", tone)} aria-hidden />
+    </span>
+  )
+}
+
 function FileRow({
   file,
   size,
@@ -185,6 +249,7 @@ function FileRow({
   return (
     <button
       type="button"
+      data-file-id={file.id}
       onClick={onOpen}
       onDoubleClick={onPreview}
       onContextMenu={onContext}
@@ -226,6 +291,7 @@ function FileRow({
           {fileMeta(file, t, lang)}
         </span>
       </span>
+      <InMark file={file} />
       {file.isFolder ? (
         <ChevronRight
           className={cn(
@@ -260,11 +326,13 @@ function FileCard({
   return (
     <button
       type="button"
+      data-file-id={file.id}
       onClick={onOpen}
       onDoubleClick={onPreview}
       onContextMenu={onContext}
       className={cn(
-        "select-none border bg-ws-control text-left transition-opacity hover:border-white/[0.18]",
+        // relative — под отметку обработки в правом верхнем углу плитки.
+        "relative select-none border bg-ws-control text-left transition-opacity hover:border-white/[0.18]",
         isCut(file.id) && "opacity-45",
         roomy
           ? "flex items-center gap-3 rounded-2xl p-[18px]"
@@ -301,6 +369,7 @@ function FileCard({
           {fileMeta(file, t, lang)}
         </span>
       </span>
+      <InMark file={file} className="absolute right-2 top-2" />
     </button>
   )
 }
@@ -362,6 +431,7 @@ function FileColumn({
               <button
                 key={f.id}
                 type="button"
+                data-file-id={f.id}
                 onContextMenu={(e) =>
                   openMenu("file", e, { file: f, target: colTarget })
                 }
@@ -394,6 +464,7 @@ function FileColumn({
               >
                 <Icon className={cn("h-[18px] w-[18px] shrink-0", fileIconClass(f))} />
                 <span className="min-w-0 flex-1 truncate text-[14px]">{f.name}</span>
+                <InMark file={f} />
                 {f.isFolder ? (
                   <ChevronRight className="h-4 w-4 shrink-0 text-ws-4" />
                 ) : null}
@@ -405,6 +476,37 @@ function FileColumn({
       {drop.active ? <DropHint target={colTarget} size={size} /> : null}
     </div>
   )
+}
+
+/**
+ * Прокрутка к файлу, к которому просили перейти снаружи (индикатор обработки).
+ *
+ * Выделения мало: в папке с сотней результатов выделенная строка оказывается
+ * далеко за краем окна, и переход «к файлу» выглядит как переход «в папку».
+ *
+ * Ищем в DOM по `data-file-id`, а не держим ref в каждой строке: строку рисуют
+ * три вида (список, плитка, колонки), и в колоночном она вообще внутри map, где
+ * хук не поставить. Зато область — одна на все три.
+ *
+ * `offsetParent === null` — это скрытая копия разметки: мобильная и десктопная
+ * висят в DOM одновременно, и та, что спрятана `display: none`, прокрутиться не
+ * может. Она и просьбу не гасит — иначе видимая копия не успела бы её увидеть.
+ */
+function useRevealScroll(items: DriveFile[]) {
+  const { revealFileId, consumeReveal } = useWorkspace()
+  const areaRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!revealFileId) return
+    const el = areaRef.current?.querySelector<HTMLElement>(
+      `[data-file-id="${CSS.escape(revealFileId)}"]`,
+    )
+    if (!el || el.offsetParent === null) return
+    el.scrollIntoView({ block: "center", inline: "nearest" })
+    consumeReveal()
+  }, [revealFileId, items, consumeReveal])
+
+  return areaRef
 }
 
 /**
@@ -444,6 +546,7 @@ export function FileBrowser({
   } = ws
 
   const items = itemsAtPath(root, path)
+  const areaRef = useRevealScroll(items)
   const target = targetFor(basePath, path)
   const emptyMessage = !driveAvailable ? t.driveUnavailable : t.emptyFolder
 
@@ -479,6 +582,7 @@ export function FileBrowser({
   if (view === "columns") {
     return (
       <div
+        ref={areaRef}
         className={cn("flex min-h-0 flex-1 overflow-x-auto", className)}
         onContextMenu={(e) => openMenu("empty", e, { target })}
       >
@@ -504,6 +608,7 @@ export function FileBrowser({
 
   return (
     <div
+      ref={areaRef}
       className={cn(
         "relative flex min-h-0 flex-1 flex-col transition-colors",
         areaHighlight,

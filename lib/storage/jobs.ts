@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
-import { query } from "@/lib/db"
+import type { PoolClient } from "pg"
+import { query, queryVia } from "@/lib/db"
 
 export type StorageJobKind =
   | "copy"
@@ -94,55 +95,44 @@ export async function getJob(id: string): Promise<StorageJobRecord | null> {
   return row ? mapJob(row) : null
 }
 
+/** Строка `storage_jobs` как её отдаёт `JOB_FIELDS`. */
+type JobRow = Parameters<typeof mapJob>[0]
+
 export async function findJobByEventId(
   eventId: string,
+  client?: PoolClient,
 ): Promise<StorageJobRecord | null> {
-  const result = await query<{
-    id: string
-    userId: string
-    projectId: string
-    kind: StorageJobKind
-    state: StorageJobState
-    total: number
-    done: number
-    error: string | null
-    payload: Record<string, unknown>
-    eventId: string | null
-    createdAt: Date
-    updatedAt: Date
-  }>(`SELECT ${JOB_FIELDS} FROM storage_jobs WHERE event_id = $1`, [eventId])
+  const result = await queryVia(client)<JobRow>(
+    `SELECT ${JOB_FIELDS} FROM storage_jobs WHERE event_id = $1`,
+    [eventId],
+  )
   const row = result.rows[0]
   return row ? mapJob(row) : null
 }
 
-export async function createJob(input: {
-  userId: string
-  projectId: string | null
-  kind: StorageJobKind
-  total?: number
-  payload?: Record<string, unknown>
-  eventId?: string | null
-}): Promise<StorageJobRecord> {
+export async function createJob(
+  input: {
+    userId: string
+    projectId: string | null
+    kind: StorageJobKind
+    total?: number
+    payload?: Record<string, unknown>
+    eventId?: string | null
+  },
+  /**
+   * Транзакция вызывающего: работа обязана лечь вместе с тем, ради чего её
+   * ставят. Отдельной транзакцией она переживает откат соседней записи и
+   * остаётся в очереди ссылаться на то, чего нет.
+   */
+  client?: PoolClient,
+): Promise<StorageJobRecord> {
   if (input.eventId) {
-    const existing = await findJobByEventId(input.eventId)
+    const existing = await findJobByEventId(input.eventId, client)
     if (existing) return existing
   }
 
   const id = randomUUID()
-  const result = await query<{
-    id: string
-    userId: string
-    projectId: string
-    kind: StorageJobKind
-    state: StorageJobState
-    total: number
-    done: number
-    error: string | null
-    payload: Record<string, unknown>
-    eventId: string | null
-    createdAt: Date
-    updatedAt: Date
-  }>(
+  const result = await queryVia(client)<JobRow>(
     `INSERT INTO storage_jobs (
         id, user_id, project_id, kind, state, total, done, payload, event_id
      )
@@ -179,6 +169,26 @@ export async function claimJob(id: string): Promise<StorageJobRecord | null> {
     `UPDATE storage_jobs
         SET state = 'running', updated_at = NOW()
       WHERE id = $1 AND state = 'queued'
+      RETURNING ${JOB_FIELDS}`,
+    [id],
+  )
+  const row = result.rows[0]
+  return row ? mapJob(row) : null
+}
+
+/**
+ * Вернуть упавшую работу в очередь.
+ *
+ * Только из `failed`/`cancelled` и только по просьбе: молчаливый автоповтор
+ * упёрся бы в ту же причину и крутил бы её до бесконечности. Ошибку стираем —
+ * она относилась к прошлой попытке, и оставить её значило бы показывать провал
+ * рядом с идущей работой.
+ */
+export async function requeueJob(id: string): Promise<StorageJobRecord | null> {
+  const result = await query<JobRow>(
+    `UPDATE storage_jobs
+        SET state = 'queued', error = NULL, done = 0, updated_at = NOW()
+      WHERE id = $1 AND state IN ('failed', 'cancelled')
       RETURNING ${JOB_FIELDS}`,
     [id],
   )
