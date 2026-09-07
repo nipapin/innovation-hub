@@ -1,3 +1,6 @@
+import { SITE_NAME } from "@/lib/site"
+import { notFound } from "next/navigation"
+import { isEnvFeatureEnabled } from "@/lib/features-env"
 import { Header } from "@/components/header"
 import { FooterSection } from "@/components/footer-section"
 import { AboutShowreel } from "@/components/about-showreel"
@@ -7,6 +10,11 @@ const contactEmail = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim()
 const contactTelegram = process.env.NEXT_PUBLIC_CONTACT_TELEGRAM?.trim()
 
 export default function AboutPage() {
+  // Публичной части на этой установке нет — раздела не существует, а не «нет
+  // доступа». Проверка сверх правила в proxy.ts: тот закрывает только корень,
+  // а сюда ведут и прямые ссылки. Флаг `env`, поэтому база здесь не нужна.
+  if (!isEnvFeatureEnabled("public.pages")) notFound()
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
@@ -26,7 +34,7 @@ export default function AboutPage() {
             </h2>
             {/* TODO(Vanya): replace placeholder copy */}
             <p className="text-base leading-relaxed text-muted-foreground">
-              FF Works is our curated showcase of automation and video
+              {SITE_NAME} is our curated showcase of automation and video
               production work. This section will be updated with the full
               description soon.
             </p>

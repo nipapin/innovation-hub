@@ -39,16 +39,28 @@ type StatsScope = {
 }
 ```
 
-| Витрина | Эндпоинт | `ownerId` |
-| --- | --- | --- |
-| Админка | `GET /api/admin/statistics` | `null` |
-| Кабинет | `GET /api/account/statistics` | `userId` сессии |
+| Витрина | Эндпоинт | `ownerId` | Оси |
+| --- | --- | --- | --- |
+| Админка | `GET /api/admin/statistics` | `null` | все |
+| Кабинет | `GET /api/account/statistics` | `userId` сессии | без `user`, `machine`, `cost` |
 
 **Скоуп добавляет роут, а не клиент** — иначе кабинет сможет попросить чужие
 данные. Разбор осей из query-строки общий: `lib/statistics/query.ts`.
 
-Компонент тоже один — `components/statistics/statistics-explorer.tsx`, ему
-передаётся только `endpoint`.
+Справка у витрин тоже разная — две тройки статей вместо одной с оговорками:
+`statistics.personal*` для кабинета, `statistics.overview` / `.metrics` /
+`.breakdowns` для админки, плюс `statistics.import` под своим тегом. Якоря:
+кнопка в шапке страницы и знаки «?» у переключателей «Метрика» и «Разрез»
+(тема выбирается по `variant`). Контракт — [HELP_SYSTEM.md](../HELP_SYSTEM.md) §5.
+
+**Оси тоже сводит сервер.** `getStatistics` выводит витрину из скоупа
+(`ownerId` есть → `account`) и заменяет недопустимый разрез на `project`, а
+`userId` в кабинете сбрасывает целиком: провала в человека там нет. Ответ несёт
+`variant`, чтобы клиент не гадал. Запрет, живущий только в наборе кнопок, — не
+запрет: `?breakdown=machine` уходит мимо интерфейса.
+
+Компонент один — `components/statistics/statistics-explorer.tsx`, ему передаются
+`endpoint` и `variant`.
 
 ---
 
@@ -58,9 +70,21 @@ type StatsScope = {
 потому что расхождение скоупа между витринами и есть главный риск раздела.
 
 **Метрики** (`STAT_METRICS`): `files`, `bytes`, `tasks`, `errors`, `procs`,
-`spend`, `render`.
+`spend`, `cost`, `render`. В кабинете — `ACCOUNT_METRICS`, то же без `cost`.
 
-**Разрезы** (`STAT_BREAKDOWNS`): `user`, `project`, `fileType`, `machine`.
+⚠️ **`spend` и `cost` — разные счета, а не одна сумма в двух валютах.**
+
+| | Что это | Источник | Единица |
+| --- | --- | --- | --- |
+| `spend` | списано с человека | `billing_transactions`, `kind = 'charge'` | копейки, ₽ |
+| `cost` | во что работа обошлась нам | `processing_stats.total_cost` | доллары |
+
+`spend` включает нашу цену за результат и наценку, `cost` — только счёт внешнего
+сервиса. Набор видов у `spend` тот же, что на «Балансе и расходе», чтобы два
+экрана про одни деньги сходились до копейки.
+
+**Разрезы** (`STAT_BREAKDOWNS`): `user`, `project`, `fileType`, `machine`. В
+кабинете — `ACCOUNT_BREAKDOWNS`: только `project` и `fileType`.
 
 **Периоды** (`STAT_PERIODS`):
 
@@ -85,7 +109,7 @@ StatsResponse = {
   histogram,   // распределение времени рендера
   funnel,      // задачи конвейера по статусам
   card,        // карточка элемента — только при провале
-  bucketUnit, breakdown, period, scope,
+  bucketUnit, variant, breakdown, period, scope,
   truncated,   // сколько строк отброшено лимитом
 }
 ```
@@ -255,7 +279,8 @@ StatsResponse = {
 | Рост объёма | `storage_snapshots` | ✅ (с момента первого среза) |
 | Проекты | `projects` | ✅ |
 | Задачи конвейера, ошибки, воронка | `tasks` | ✅ |
-| Обработки, спенд, хронометраж рендера | `processing_stats` | 🟡 зависит от импорта архива |
+| Обработки, себестоимость (`cost`), хронометраж рендера | `processing_stats` | 🟡 зависит от импорта архива |
+| Спенд (`spend`) | `billing_transactions` | ✅ с момента первых списаний |
 | Гистограмма времени рендера | `processing_stats` | 🟡 то же |
 | Разрез по машинам | `processing_stats.machine` | 🟡 то же |
 | Посещения | `visitor_events` | ✅ (своя витрина в админке) |

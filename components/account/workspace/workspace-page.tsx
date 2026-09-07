@@ -10,6 +10,7 @@ import { MobileWorkspace } from "./mobile-view"
 import { MoveDialog } from "./move-dialog"
 import { ProjectsColumn } from "./projects-column"
 import { ShareDialog } from "./share-dialog"
+import { TrashBanner } from "./trash-banner"
 import { TrialBanner } from "./trial-banner"
 import { AllProjectsPage, SimpleProject } from "./simple-mode"
 import { WorkspaceProvider, useWorkspace } from "./workspace-context"
@@ -33,6 +34,7 @@ function WorkspaceLayout() {
         <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
           <WorkspaceTopbar />
           <TrialBanner />
+          <TrashBanner />
           {density === "full" ? (
             <FullMode />
           ) : selected ? (
@@ -47,6 +49,7 @@ function WorkspaceLayout() {
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden lg:hidden">
         <WorkspaceTopbar />
         <TrialBanner />
+        <TrashBanner />
         <MobileWorkspace />
       </main>
 

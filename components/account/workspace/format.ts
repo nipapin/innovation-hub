@@ -8,7 +8,25 @@ import {
 } from "lucide-react"
 
 import type { Dictionary } from "@/components/account/i18n"
+import { TRASH_RETENTION_DAYS } from "@/lib/storage/trash-policy"
 import type { DriveFile, Project } from "./types"
+
+export { TRASH_RETENTION_DAYS }
+
+/**
+ * Сколько дней проекту осталось лежать в корзине.
+ *
+ * Ноль означает «сотрут ближайшей уборкой», а не «уже стёрли»: чистка идёт по
+ * расписанию (lib/storage/project-trash.ts#purgeDeletedProjects), поэтому
+ * проект с истёкшим сроком ещё какое-то время виден и его ещё можно вернуть.
+ * Отрицательных значений не показываем — «осталось −3 дня» ничего не объясняет.
+ */
+export function trashDaysLeft(deletedAt: string): number {
+  const deleted = new Date(deletedAt).getTime()
+  if (Number.isNaN(deleted)) return TRASH_RETENTION_DAYS
+  const passedDays = (Date.now() - deleted) / 86_400_000
+  return Math.max(0, Math.ceil(TRASH_RETENTION_DAYS - passedDays))
+}
 
 export function fmtSize(bytes: number | null) {
   if (bytes == null) return "—"

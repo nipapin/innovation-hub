@@ -191,9 +191,10 @@ export function AdminBillingPromo() {
         eyebrow={t.billingEyebrow}
         title={t.adminBillingPromo}
         description={t.adminBillingPromoDesc}
+        help="billing.promo"
       />
 
-      <Section title={t.promoPickUser}>
+      <Section title={t.promoPickUser} help="billing.promo.user">
         <div className="relative max-w-md">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -244,7 +245,7 @@ export function AdminBillingPromo() {
 
       {picked ? (
         <>
-          <Section title={t.adminBillingPromo}>
+          <Section title={t.promoGrantTitle} help="billing.promo.grant">
             <div className="grid gap-4 sm:grid-cols-2">
               <NumberField
                 id="promo-amount"
@@ -279,7 +280,11 @@ export function AdminBillingPromo() {
             </div>
           </Section>
 
-          <Section title={t.promoProjects} description={t.promoProjectsHint}>
+          <Section
+            title={t.promoProjects}
+            description={t.promoProjectsHint}
+            help="billing.promo.projects"
+          >
             {projects.length === 0 ? (
               <p className="text-sm text-muted-foreground/80">
                 {t.promoNoProjects}
@@ -320,6 +325,7 @@ export function AdminBillingPromo() {
           <Section
             title={t.promoOverdraftTitle}
             description={t.promoOverdraftDesc}
+            help="billing.promo.overdraft"
           >
             <NumberField
               id="promo-overdraft"
@@ -332,7 +338,7 @@ export function AdminBillingPromo() {
             </Button>
           </Section>
 
-          <Section title={t.promoHistory}>
+          <Section title={t.promoHistory} help="billing.promo.history">
             {grants.length === 0 ? (
               <p className="text-sm text-muted-foreground/80">
                 {t.promoHistoryEmpty}

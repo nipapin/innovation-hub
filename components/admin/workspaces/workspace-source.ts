@@ -9,7 +9,8 @@ import type { WorkspaceSource } from "@/components/account/workspace/types"
  *     владельцу сессии, и включает архивные;
  *   — дерево приходит вместе со служебной папкой options — админ работает
  *     именно с ней;
- *   — чат смотрится со стороны команды;
+ *   — чат смотрится со стороны команды, и «прочитано» отмечается своей
+ *     колонкой (projects.chat_team_last_read_at), а не владельческой;
  *   — разрешена и работа с файлами (ступень 1), и распоряжение проектом
  *     (ступень 2) — последнее только при теге `projects.manage`, см. `canManage`.
  *
@@ -30,11 +31,24 @@ import type { WorkspaceSource } from "@/components/account/workspace/types"
  *   доступа к сессии, и подмешивать в него запрос за правами значило бы
  *   завести второе место, где решается, кому что можно. Сервер проверяет тег
  *   сам; здесь мы лишь не рисуем кнопку, которая всё равно вернёт 403.
+ * @param basePath на какой странице живёт рабочая область. Инструментов на этом
+ *   источнике два — «Папки» и «Чаты», — и выбор проекта обязан оставлять
+ *   человека там, где он работает, а не перебрасывать в соседний раздел.
+ * @param canCreateProject заводить проект отсюда. По умолчанию — как `canManage`,
+ *   но в «Чатах» отдельного владельца не выбирают: там кнопка «Новый проект»
+ *   вела бы в отказ «пользователь не выбран».
  */
-export function createWorkspaceSource(
-  userId: string | null,
-  canManage: boolean,
-): WorkspaceSource {
+export function createWorkspaceSource({
+  userId,
+  canManage,
+  basePath = "/admin/workspaces",
+  canCreateProject = canManage,
+}: {
+  userId: string | null
+  canManage: boolean
+  basePath?: string
+  canCreateProject?: boolean
+}): WorkspaceSource {
   return {
     // Область — проекты выбранного пользователя. Сменился пользователь,
     // сменился ключ, список проектов перечитывается.
@@ -48,7 +62,7 @@ export function createWorkspaceSource(
       if (id) params.set("id", id)
       if (tab !== "projects") params.set("tab", tab)
       const qs = params.toString()
-      return qs ? `/admin/workspaces?${qs}` : "/admin/workspaces"
+      return qs ? `${basePath}?${qs}` : basePath
     },
     projectsUrl: () =>
       userId
@@ -71,6 +85,11 @@ export function createWorkspaceSource(
     descriptionMdUrl: (projectId) =>
       `/api/admin/workspaces/projects/${projectId}/description`,
     chatUrl: (projectId) => `/api/admin/workspaces/projects/${projectId}/chat`,
+    // Отметка «прочитано» со стороны команды. Одна на проект: сайт отвечает
+    // клиенту от лица команды, и открытый чат гасит счётчик и в «Папках», и в
+    // разделе «Чаты», откуда сюда чаще всего и приходят.
+    chatReadUrl: (projectId) =>
+      `/api/admin/workspaces/projects/${projectId}/chat/read`,
     chatPerspective: "team",
     transferUrl: (projectId) =>
       `/api/admin/workspaces/projects/${projectId}/transfer`,
@@ -78,7 +97,7 @@ export function createWorkspaceSource(
     directUpload: true,
     can: {
       // Ступень 2 — распоряжение чужим проектом.
-      createProject: canManage,
+      createProject: canCreateProject,
       deleteProject: canManage,
       renameProject: canManage,
       archiveProject: canManage,

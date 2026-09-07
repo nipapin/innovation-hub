@@ -110,24 +110,42 @@ function CatalogCard({
  */
 export function CatalogDialog() {
   const { t } = useWorkspace()
-  const { catalogOpen, closeCatalog, addTool, addingKey, instanceOf, openTool, removeTool } =
-    useTools()
+  const {
+    catalog,
+    catalogOpen,
+    closeCatalog,
+    addTool,
+    addingKey,
+    instanceOf,
+    openTool,
+    removeTool,
+  } = useTools()
 
   const [kinds, setKinds] = useState<ToolKind[]>([])
   const [query, setQuery] = useState("")
   const [openKey, setOpenKey] = useState<string | null>(null)
 
+  /**
+   * Каталог этой установки. Пока список не пришёл, не показываем ничего: мигнуть
+   * инструментом, которого здесь нет, и тут же его убрать — хуже, чем показать
+   * каталог на полсекунды позже.
+   */
+  const available = useMemo(
+    () => (catalog === null ? [] : TOOLS.filter((tool) => catalog.includes(tool.key))),
+    [catalog],
+  )
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return TOOLS.filter((tool) => {
+    return available.filter((tool) => {
       if (kinds.length && !kinds.some((k) => tool.kinds.includes(k))) return false
       if (!q) return true
       const text = toolText(tool.key)
       return `${t[text.name]} ${t[text.short]}`.toLowerCase().includes(q)
     })
-  }, [kinds, query, t])
+  }, [available, kinds, query, t])
 
-  const opened = openKey ? TOOLS.find((x) => x.key === openKey) : null
+  const opened = openKey ? available.find((x) => x.key === openKey) : null
   const openedInstance = opened ? instanceOf(opened.key) : null
 
   function close(next: boolean) {

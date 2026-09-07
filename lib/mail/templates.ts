@@ -1,3 +1,5 @@
+import { SITE_NAME, SITE_MONOGRAM } from "@/lib/site"
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -41,7 +43,7 @@ function wrapEmail(inner: string): string {
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>FF Works</title>
+  <title>${SITE_NAME}</title>
 </head>
 <body style="margin:0;padding:0;background:#eef1f6;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;padding:32px 12px;">
@@ -52,8 +54,8 @@ function wrapEmail(inner: string): string {
             <td style="background:#0b0f17;padding:22px 32px;">
               <table role="presentation" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;background:#1a2433;border-radius:9px;color:#8ec8ff;font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:0.4px;">FF</td>
-                  <td style="padding-left:12px;color:#e8eef6;font-family:${FONT};font-size:16px;font-weight:600;letter-spacing:-0.2px;">FF Works</td>
+                  <td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;background:#1a2433;border-radius:9px;color:#8ec8ff;font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:0.4px;">${SITE_MONOGRAM}</td>
+                  <td style="padding-left:12px;color:#e8eef6;font-family:${FONT};font-size:16px;font-weight:600;letter-spacing:-0.2px;">${SITE_NAME}</td>
                 </tr>
               </table>
             </td>
@@ -61,7 +63,7 @@ function wrapEmail(inner: string): string {
           ${inner}
           <tr>
             <td style="padding:0 32px 28px;font-family:${FONT};font-size:12px;line-height:18px;color:#8b93a7;">
-              You’re receiving this because someone shared a project with you on FF Works.
+              You’re receiving this because someone shared a project with you on ${SITE_NAME}.
               If you weren’t expecting this, you can ignore the email.
             </td>
           </tr>
@@ -131,7 +133,7 @@ export function projectInviteWithPasswordHtml(input: {
       <p style="margin:0 0 6px;font-size:13px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;color:#64748b;">You’re invited</p>
       <h1 style="margin:0 0 20px;font-size:24px;line-height:30px;font-weight:700;letter-spacing:-0.4px;">${escapeHtml(input.projectName)}</h1>
       <p style="margin:0;font-size:16px;line-height:24px;color:#334155;">Hi ${escapeHtml(input.inviteeName)},</p>
-      <p style="margin:12px 0 0;font-size:16px;line-height:24px;color:#334155;"><strong style="color:#0f172a;">${escapeHtml(input.inviterName)}</strong> invited you to FF Works and shared this project.</p>
+      <p style="margin:12px 0 0;font-size:16px;line-height:24px;color:#334155;"><strong style="color:#0f172a;">${escapeHtml(input.inviterName)}</strong> invited you to ${SITE_NAME} and shared this project.</p>
       ${roleBadge(input.role)}
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0 4px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
         <tr>
@@ -143,7 +145,7 @@ export function projectInviteWithPasswordHtml(input: {
           </td>
         </tr>
       </table>
-      ${ctaButton(input.loginUrl, "Sign in to FF Works")}
+      ${ctaButton(input.loginUrl, `Sign in to ${SITE_NAME}`)}
     </td>
   </tr>`
   return wrapEmail(inner)

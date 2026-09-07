@@ -27,7 +27,7 @@ export function sectionEmptyText(tab: ProjectTab, t: Dictionary): string {
     case "archive":
       return t.emptyArchive
     case "trash":
-      return t.trashNotWired
+      return t.emptyTrash
     default:
       return t.emptyProjects
   }

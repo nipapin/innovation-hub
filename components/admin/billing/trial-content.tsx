@@ -232,6 +232,7 @@ export function AdminBillingTrial() {
         eyebrow={t.billingEyebrow}
         title={t.adminBillingTrial}
         description={t.adminBillingTrialDesc}
+        help="billing.trial"
         actions={
           <Button onClick={save} disabled={saving}>
             {saving ? (
@@ -246,7 +247,11 @@ export function AdminBillingTrial() {
         }
       />
 
-      <Section title={t.billingTrialTitle} description={t.billingTrialDesc}>
+      <Section
+        title={t.billingTrialTitle}
+        description={t.billingTrialDesc}
+        help="billing.trial.settings"
+      >
         <div className="flex items-center gap-3">
           <Switch
             id="trial-enabled"
@@ -290,6 +295,7 @@ export function AdminBillingTrial() {
       <Section
         title={t.billingTemplatesTitle}
         description={t.billingTemplatesDesc}
+        help="billing.trial.templates"
       >
         {templates.length === 0 ? (
           <p className="text-sm text-muted-foreground/80">
@@ -370,6 +376,7 @@ export function AdminBillingTrial() {
       <Section
         title={t.billingActivationsTitle}
         description={t.billingActivationsDesc}
+        help="billing.trial.activations"
       >
         {activations.length === 0 ? (
           <p className="text-sm text-muted-foreground/80">

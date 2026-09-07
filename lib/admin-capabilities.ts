@@ -22,6 +22,12 @@ export const ADMIN_CAPABILITIES = [
   "users.manage",
   "content.manage",
   "pipeline.operate",
+  // Автопостинг — отдельный тег, а не довесок к конвейеру. Разница не в объёме
+  // работы, а в том, чем распоряжаешься: конвейер гоняет файлы по нашим же
+  // машинам, а постинг публикует от имени ЧУЖОГО аккаунта на чужой площадке,
+  // и отменить опубликованное нельзя. Человеку, следящему за обработкой, это
+  // право не нужно; тому, кто ведёт публикации, не нужно обратное.
+  "posting.operate",
   "settings.write",
   "machines.manage",
   // Две ступени работы в чужой папке, а не одна. `projects.access` — помощь:
@@ -48,6 +54,11 @@ export const ADMIN_CAPABILITIES = [
   // доверили тариф, незачем доставать ключ ElevenLabs, и наоборот.
   "services.manage",
   "audit.view",
+  // Выключатели частей сайта (lib/features.ts). Тег отдельный, а не довесок к
+  // `settings.write`: словари конвейера — это работа внутри раздела, а здесь
+  // распоряжение самим набором разделов, и гасится он сразу для всех
+  // пользователей установки.
+  "features.manage",
 ] as const
 
 export type AdminCapability = (typeof ADMIN_CAPABILITIES)[number]
@@ -103,7 +114,14 @@ export const CAPABILITY_PRESETS = {
     "pipeline.operate",
   ],
   pipeline: ["pipeline.operate", "settings.write", "statistics.view"],
-  full: [...ADMIN_CAPABILITIES],
+  // Постинг отдельным пресетом: это работа «ведущего публикации», и от конвейера
+  // ей нужен только взгляд на статистику.
+  posting: ["posting.operate", "statistics.view"],
+  // `features.manage` в «полный доступ» не входит намеренно. Пресет — кнопка для
+  // удобства, её нажимают не глядя; выключатель же гасит раздел или инструмент
+  // сразу всем пользователям установки. Такое право выдают поштучно и осознанно.
+  // Суперадмина это не ограничивает: ему теги не проверяются вовсе.
+  full: ADMIN_CAPABILITIES.filter((capability) => capability !== "features.manage"),
 } as const satisfies Record<string, readonly AdminCapability[]>
 
 export type CapabilityPreset = keyof typeof CAPABILITY_PRESETS

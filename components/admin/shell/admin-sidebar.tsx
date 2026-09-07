@@ -1,9 +1,11 @@
 "use client"
 
+import { SITE_MONOGRAM, SITE_NAME } from "@/lib/site"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { useI18n } from "@/components/account/i18n"
 import { useAdminData } from "@/components/admin/data/admin-data-context"
+import { useDisabledAdminTools } from "@/components/admin/shell/features-context"
 import { AdminSidebarLink } from "./admin-sidebar-link"
 import { AdminSidebarUser } from "./admin-sidebar-user"
 import { toolsInArea, visibleAreas } from "./nav-config"
@@ -28,10 +30,16 @@ export function AdminSidebar({ email, fullName, onNavigate }: Props) {
   // На узком экране группы не сворачиваем: подпись группы + её инструменты
   // читаются одним взглядом, а лишний тап по стрелке на телефоне дороже, чем
   // несколько строк прокрутки.
-  const areas = visibleAreas(currentUserRole, currentUserCapabilities).map(
+  const disabled = useDisabledAdminTools()
+  const areas = visibleAreas(currentUserRole, currentUserCapabilities, disabled).map(
     (area) => ({
       ...area,
-      tools: toolsInArea(area.key, currentUserRole, currentUserCapabilities),
+      tools: toolsInArea(
+        area.key,
+        currentUserRole,
+        currentUserCapabilities,
+        disabled,
+      ),
     }),
   )
 
@@ -50,11 +58,11 @@ export function AdminSidebar({ email, fullName, onNavigate }: Props) {
         >
           <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/30 bg-primary/15">
             <span className="font-display text-sm font-bold text-primary">
-              FF
+              {SITE_MONOGRAM}
             </span>
           </span>
           <span className="font-display text-sm tracking-[0.08em] text-foreground/90">
-            FF Works
+            {SITE_NAME}
           </span>
         </Link>
       </div>

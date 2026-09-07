@@ -51,6 +51,14 @@ type ToolsValue = {
   patchSettings: (id: string, settings: Record<string, unknown>) => Promise<void>
   /** Уже добавленный экземпляр этого инструмента, если есть. */
   instanceOf: (toolKey: string) => ToolInstance | null
+  /**
+   * Каталог этой установки: ключи инструментов, которые здесь включены
+   * (lib/features.ts). `null` — список ещё не пришёл.
+   *
+   * Приходит с сервера, а не берётся из `TOOLS`: реестр в коде отвечает на
+   * вопрос «что вообще бывает», а состав установки — вопрос её настроек.
+   */
+  catalog: string[] | null
 }
 
 const ToolsContext = createContext<ToolsValue | null>(null)
@@ -70,6 +78,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams()
 
   const [tools, setTools] = useState<ToolInstance[]>([])
+  const [catalog, setCatalog] = useState<string[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [catalogOpen, setCatalogOpen] = useState(false)
   const [addingKey, setAddingKey] = useState<string | null>(null)
@@ -85,6 +94,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) return
       const data = await res.json()
       setTools((data.tools ?? []) as ToolInstance[])
+      setCatalog((data.catalog ?? []) as string[])
     } catch {
       // Список не критичен для остальной страницы: молча оставляем прежний.
     } finally {
@@ -237,6 +247,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<ToolsValue>(
     () => ({
       tools,
+      catalog,
       loading,
       selected,
       catalogOpen,
@@ -255,6 +266,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
     [
       addTool,
       addingKey,
+      catalog,
       catalogOpen,
       closeTool,
       instanceOf,

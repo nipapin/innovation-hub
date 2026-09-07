@@ -34,6 +34,10 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     balances: funds.balances,
+    // Резерв отдаётся отдельно от остатка, а не вычтенным из него: «остаток
+    // 900, из них 400 держат запущенные задачи» — это ответ, а «доступно 500»
+    // без второй половины выглядит как пропавшие деньги.
+    reserved: funds.reserved,
     availableOwnCents: funds.availableOwnCents,
     availableGiftCents: funds.availableGiftCents,
     overdraftLimitCents: funds.overdraftLimitCents,

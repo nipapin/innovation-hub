@@ -38,6 +38,12 @@ export type ProjectAccess = {
    * зальёт обычная работа пользователей, и админские строки в нём утонут.
    */
   viaCapability?: boolean
+  /**
+   * Проект лежит в корзине. Роль в этом случае уже зажата до `viewer` — флаг
+   * нужен роуту не для решения, а для ответа: отказ «только чтение» и отказ
+   * «проект удалён» человек разбирает по-разному.
+   */
+  inTrash?: boolean
 }
 
 /**
@@ -45,29 +51,39 @@ export type ProjectAccess = {
  *
  * Машинные токены сюда не ходят — у них своя авторизация в lib/storage/auth.ts,
  * и расшаривание на них не распространяется.
+ *
+ * Проект в корзине отсюда возвращается — но всегда читателем, кем бы
+ * спрашивающий ни был. Это единственное место, где корзина открывается на
+ * чтение, и зажим стоит именно здесь по двум причинам. Во-первых, через эту
+ * функцию проходят и роуты кабинета, и человеческая половина
+ * `/api/storage/v1/*` (lib/storage/auth.ts зовёт её же), так что одного зажима
+ * хватает на обе. Во-вторых, любая запись отказывает сама: роуты требуют
+ * `editor` и выше, и `roleAtLeast` их не пустит — не нужно помнить про корзину
+ * в каждом из них по отдельности.
+ *
+ * Машины сюда не попадают, и это тоже намеренно: увидь программа удалённый
+ * проект, конвейер снова начал бы собирать по нему задачи.
  */
 export async function resolveProjectAccess(
   projectId: string,
   userId: string,
 ): Promise<ProjectAccess | null> {
-  const project = await findProjectById(projectId)
-  if (!project || project.deletedAt) return null
+  const project = await findProjectById(projectId, { includeDeleted: true })
+  if (!project) return null
 
-  if (project.userId === userId) {
-    return {
-      project,
-      role: "owner",
-      permissions: permissionsFor("owner"),
-    }
-  }
+  const inTrash = project.deletedAt != null
+  const clamp = (role: ProjectAccessRole): ProjectAccess => ({
+    project,
+    role: inTrash ? "viewer" : role,
+    permissions: permissionsFor(inTrash ? "viewer" : role),
+    ...(inTrash ? { inTrash: true } : {}),
+  })
+
+  if (project.userId === userId) return clamp("owner")
 
   const membership = await findProjectMembership(projectId, userId)
   if (!membership || !isProjectMemberRole(membership.role)) return null
-  return {
-    project,
-    role: membership.role,
-    permissions: permissionsFor(membership.role),
-  }
+  return clamp(membership.role)
 }
 
 /**
@@ -94,7 +110,14 @@ export async function requireProjectAccess(
   }
   if (!roleAtLeast(access.role, minimum)) {
     return NextResponse.json(
-      { message: forbiddenMessage(minimum) },
+      {
+        // Проект в корзине — тоже «только чтение», но по совсем другой причине,
+        // и общий текст отправил бы владельца искать, кто урезал ему права в
+        // его же папке.
+        message: access.inTrash
+          ? "Project is in the trash. Restore it to make changes."
+          : forbiddenMessage(minimum),
+      },
       { status: 403 },
     )
   }
@@ -127,17 +150,20 @@ export async function requireProjectAccessOrCapability(
   capability: AdminCapability,
 ): Promise<ProjectAccess | NextResponse> {
   if (hasCapability(auth.role, auth.capabilities, capability)) {
+    // Без `includeDeleted`: проект в корзине админский тег не открывает —
+    // распоряжаться удалённым проектом нечего. Если он там, идём общим путём:
+    // тот пустит на чтение того, кто и так имеет к проекту отношение, а
+    // постороннему ответит 404, как и раньше.
     const project = await findProjectById(projectId)
-    if (!project || project.deletedAt) {
-      return NextResponse.json({ message: "Project not found." }, { status: 404 })
-    }
-    // Владельцем в базе он не становится: `project.userId` не трогаем, меняется
-    // только то, что позволено сделать в этом запросе.
-    return {
-      project,
-      role: "owner",
-      permissions: permissionsFor("owner"),
-      viaCapability: true,
+    if (project) {
+      // Владельцем в базе он не становится: `project.userId` не трогаем,
+      // меняется только то, что позволено сделать в этом запросе.
+      return {
+        project,
+        role: "owner",
+        permissions: permissionsFor("owner"),
+        viaCapability: true,
+      }
     }
   }
   return requireProjectAccess(projectId, auth.userId, minimum)

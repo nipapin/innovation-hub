@@ -9,7 +9,9 @@ import {
   Play,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
+  Trash2,
   Upload,
   Users,
 } from "lucide-react"
@@ -18,10 +20,15 @@ import { tf } from "@/components/account/i18n"
 import { cn } from "@/lib/utils"
 import { BottomPanel } from "./bottom-panel"
 import { Breadcrumbs, FileBrowser } from "./file-browser"
-import { fmtDate, itemsAtPath } from "./format"
+import {
+  TRASH_RETENTION_DAYS,
+  fmtDate,
+  itemsAtPath,
+  trashDaysLeft,
+} from "./format"
 import { sectionEmptyText, sectionHeading } from "./sections"
 import { ResizeGrip } from "@/components/account/resize-grip"
-import type { DriveFile } from "./types"
+import type { DriveFile, Project } from "./types"
 import { useDragSize } from "@/components/account/use-drag-size"
 import { useWorkspace } from "./workspace-context"
 import { ViewSwitch } from "./workspace-topbar"
@@ -382,6 +389,61 @@ export function SimpleProject() {
 }
 
 /**
+ * Плитка проекта в корзине: открывается на чтение, рядом срок и «Восстановить».
+ */
+function TrashTile({ project }: { project: Project }) {
+  const { t, lang, selectProject, restoreProject, openMenu } = useWorkspace()
+
+  const deletedAt = project.deletedAt as string
+  const daysLeft = trashDaysLeft(deletedAt)
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => selectProject(project.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          selectProject(project.id)
+        }
+      }}
+      onContextMenu={(e) => openMenu("project", e, { project })}
+      className="flex cursor-pointer flex-col gap-4 rounded-2xl border border-white/10 bg-ws-panel p-[22px] text-left hover:border-white/[0.18] hover:bg-ws-hover"
+    >
+      <span className="flex h-[46px] w-[46px] items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
+        <Trash2 className="h-[22px] w-[22px] text-ws-4" />
+      </span>
+      <div>
+        <p className="text-[20px] font-semibold tracking-tight text-ws-2">
+          {project.name}
+        </p>
+        <p className="mt-2.5 text-[13px] text-ws-4">
+          {tf(t.trashDeletedOn, { date: fmtDate(deletedAt, lang) })}
+          {" · "}
+          {daysLeft === 0
+            ? t.trashLastDay
+            : tf(t.trashDaysLeft, { days: daysLeft })}
+        </p>
+      </div>
+      <div className="flex items-center justify-end border-t border-white/[0.07] pt-4">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            restoreProject(project)
+          }}
+          className="flex items-center gap-2 rounded-[9px] border border-white/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-white/5"
+        >
+          <RotateCcw className="h-[17px] w-[17px]" />
+          {t.mRestore}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Витрина проектов: упрощённый режим без выбранного проекта и мобильная версия.
  * Раздел приходит из бокового меню через `?tab=…`.
  */
@@ -421,7 +483,7 @@ export function AllProjectsPage() {
               {t.yourProjectsSub}
             </p>
           ) : null}
-          <div className={cn("mt-7 flex flex-wrap items-center gap-3.5", isTrash && "hidden")}>
+          <div className="mt-7 flex flex-wrap items-center gap-3.5">
             <div className="relative min-w-[240px] max-w-[600px] flex-1">
               <Search
                 className="pointer-events-none absolute left-3.5 top-1/2 h-[19px] w-[19px] -translate-y-1/2 text-ws-4"
@@ -452,106 +514,111 @@ export function AllProjectsPage() {
       <div className="scrollbar-elegant min-h-0 flex-1 overflow-y-auto px-6 py-7 md:px-12">
         <div className="mx-auto flex max-w-[1120px] flex-col gap-6">
           {isTrash ? (
-            <p className="mx-auto max-w-[560px] py-16 text-center text-[14px] leading-relaxed text-ws-4">
-              {t.trashNotWired}
+            <p className="max-w-[620px] text-[13.5px] leading-relaxed text-ws-4">
+              {tf(t.trashRetention, { days: TRASH_RETENTION_DAYS })}
             </p>
-          ) : visibleProjects.length === 0 ? (
+          ) : null}
+          {visibleProjects.length === 0 ? (
             <p className="py-16 text-center text-[14px] text-ws-4">
               {sectionEmptyText(projectTab, t)}
             </p>
           ) : (
             <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-3">
-              {visibleProjects.map((p) => (
-                <div
-                  key={p.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => selectProject(p.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault()
-                      selectProject(p.id)
-                    }
-                  }}
-                  onContextMenu={(e) => openMenu("project", e, { project: p })}
-                  className={cn(
-                    "flex cursor-pointer flex-col gap-4 rounded-2xl border border-white/10 bg-ws-panel p-[22px] text-left hover:border-white/[0.18] hover:bg-ws-hover",
-                    // Проекты на паузе не должны спорить за внимание с активными.
-                    p.isPaused && "opacity-[0.45] hover:opacity-100",
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <span
-                      className={cn(
-                        "flex h-[46px] w-[46px] items-center justify-center rounded-full border",
-                        p.isPaused
-                          ? "border-white/10 bg-white/[0.04]"
-                          : "border-ws-out/30 bg-ws-out/[0.08]",
-                      )}
-                    >
-                      <FolderOpen
-                        className={cn(
-                          "h-[22px] w-[22px]",
-                          p.isPaused ? "text-ws-4" : "text-ws-out",
-                        )}
-                      />
-                    </span>
-                    {p.memberCount > 0 ? (
+              {visibleProjects.map((p) =>
+                p.deletedAt ? (
+                  <TrashTile key={p.id} project={p} />
+                ) : (
+                  <div
+                    key={p.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => selectProject(p.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        selectProject(p.id)
+                      }
+                    }}
+                    onContextMenu={(e) => openMenu("project", e, { project: p })}
+                    className={cn(
+                      "flex cursor-pointer flex-col gap-4 rounded-2xl border border-white/10 bg-ws-panel p-[22px] text-left hover:border-white/[0.18] hover:bg-ws-hover",
+                      // Проекты на паузе не должны спорить за внимание с активными.
+                      p.isPaused && "opacity-[0.45] hover:opacity-100",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
                       <span
-                        title={tf(t.projectSharedWith, { users: p.memberCount })}
-                        className="flex shrink-0 items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 text-[12.5px] tabular-nums text-ws-4"
+                        className={cn(
+                          "flex h-[46px] w-[46px] items-center justify-center rounded-full border",
+                          p.isPaused
+                            ? "border-white/10 bg-white/[0.04]"
+                            : "border-ws-out/30 bg-ws-out/[0.08]",
+                        )}
                       >
-                        <Users className="h-[15px] w-[15px]" />
-                        {p.memberCount}
+                        <FolderOpen
+                          className={cn(
+                            "h-[22px] w-[22px]",
+                            p.isPaused ? "text-ws-4" : "text-ws-out",
+                          )}
+                        />
                       </span>
-                    ) : null}
-                  </div>
-                  <div>
-                    <p
-                      className={cn(
-                        "text-[20px] font-semibold tracking-tight",
-                        p.isPaused ? "text-ws-2" : "text-ws-1",
-                      )}
-                    >
-                      {p.name}
-                    </p>
-                    <p className="mt-2.5 text-[13px] text-ws-4">
-                      {fmtDate(p.createdAt, lang)}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] pt-4">
-                    <span
-                      className={cn(
-                        "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-[5px] text-[13px]",
-                        p.isPaused
-                          ? "border-white/[0.10] text-ws-4"
-                          : "border-ws-out/40 bg-ws-out/10 text-ws-out",
-                      )}
-                    >
-                      {p.isPaused ? (
-                        <Pause className="h-3.5 w-3.5" />
-                      ) : (
-                        <Play className="h-3.5 w-3.5" />
-                      )}
-                      {p.isPaused ? t.statusPaused : t.statusActive}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openChat(p.id)
-                      }}
-                      className="flex items-center gap-2 rounded-[9px] border border-white/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-white/5"
-                    >
-                      <MessageCircle className="h-[17px] w-[17px]" />
-                      {t.chat}
-                      {p.unreadCount > 0 ? (
-                        <span className="h-1.5 w-1.5 rounded-full bg-ws-select" />
+                      {p.memberCount > 0 ? (
+                        <span
+                          title={tf(t.projectSharedWith, { users: p.memberCount })}
+                          className="flex shrink-0 items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 text-[12.5px] tabular-nums text-ws-4"
+                        >
+                          <Users className="h-[15px] w-[15px]" />
+                          {p.memberCount}
+                        </span>
                       ) : null}
-                    </button>
+                    </div>
+                    <div>
+                      <p
+                        className={cn(
+                          "text-[20px] font-semibold tracking-tight",
+                          p.isPaused ? "text-ws-2" : "text-ws-1",
+                        )}
+                      >
+                        {p.name}
+                      </p>
+                      <p className="mt-2.5 text-[13px] text-ws-4">
+                        {fmtDate(p.createdAt, lang)}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] pt-4">
+                      <span
+                        className={cn(
+                          "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-[5px] text-[13px]",
+                          p.isPaused
+                            ? "border-white/[0.10] text-ws-4"
+                            : "border-ws-out/40 bg-ws-out/10 text-ws-out",
+                        )}
+                      >
+                        {p.isPaused ? (
+                          <Pause className="h-3.5 w-3.5" />
+                        ) : (
+                          <Play className="h-3.5 w-3.5" />
+                        )}
+                        {p.isPaused ? t.statusPaused : t.statusActive}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openChat(p.id)
+                        }}
+                        className="flex items-center gap-2 rounded-[9px] border border-white/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-white/5"
+                      >
+                        <MessageCircle className="h-[17px] w-[17px]" />
+                        {t.chat}
+                        {p.unreadCount > 0 ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-ws-select" />
+                        ) : null}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ),
+              )}
             </div>
           )}
         </div>

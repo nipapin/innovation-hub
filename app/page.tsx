@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation"
+import { isEnvFeatureEnabled } from "@/lib/features-env"
 import { unstable_cache } from "next/cache"
 import { Header } from "@/components/header"
 import { FooterSection } from "@/components/footer-section"
@@ -56,6 +58,11 @@ function mapToCard(video: {
 }
 
 export default async function Home({ searchParams }: HomePageProps) {
+  // Публичной части на этой установке нет — раздела не существует, а не «нет
+  // доступа». Проверка сверх правила в proxy.ts: тот закрывает только корень,
+  // а сюда ведут и прямые ссылки. Флаг `env`, поэтому база здесь не нужна.
+  if (!isEnvFeatureEnabled("public.catalog")) notFound()
+
   const params = searchParams ? await searchParams : {}
   const rawTags = params?.tags
   const rawTag = params?.tag

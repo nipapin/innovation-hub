@@ -168,6 +168,11 @@ ALTER TABLE projects ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT 
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS drive_folder_id TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS yougile_chat_id TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS chat_last_read_at TIMESTAMPTZ;
+-- Зеркальная отметка со стороны команды: до какого момента чат проекта
+-- прочитан в админке. Одна на проект — сайт отвечает клиенту от лица команды,
+-- а не от лица конкретного администратора.
+-- См. db/migrations/2026-09-07-chat-team-read.sql.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS chat_team_last_read_at TIMESTAMPTZ;
 -- Статус «в архиве» отдельно от group_name: обработчики пропускают такие проекты.
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;

@@ -1,3 +1,4 @@
+import { SITE_NAME } from "@/lib/site"
 import { Resend } from "resend"
 import { getPublicSiteUrl } from "@/lib/public-site-url"
 import {
@@ -104,7 +105,7 @@ export async function sendProjectInviteWithPasswordEmail(input: {
   const text = [
     `Hi ${input.inviteeName},`,
     ``,
-    `${input.inviterName} invited you to FF Works and shared “${input.projectName}” as ${role.label}.`,
+    `${input.inviterName} invited you to ${SITE_NAME} and shared “${input.projectName}” as ${role.label}.`,
     role.hint,
     ``,
     `Sign in: ${loginUrl}`,

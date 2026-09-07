@@ -33,6 +33,7 @@ const LABEL_KEY: Record<AdminCapability, keyof Dict> = {
   "users.manage": "capUsersManage",
   "content.manage": "capContentManage",
   "pipeline.operate": "capPipelineOperate",
+  "posting.operate": "capPostingOperate",
   "settings.write": "capSettingsWrite",
   "machines.manage": "capMachinesManage",
   "projects.access": "capProjectsAccess",
@@ -45,6 +46,7 @@ const LABEL_KEY: Record<AdminCapability, keyof Dict> = {
   "billing.promo": "capBillingPromo",
   "services.manage": "capServicesManage",
   "audit.view": "capAuditView",
+  "features.manage": "capFeaturesManage",
 }
 
 function RoleBadge({ role, t }: { role: UserRole; t: Dict }) {

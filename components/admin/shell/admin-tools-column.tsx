@@ -6,6 +6,7 @@ import { useI18n } from "@/components/account/i18n"
 import { ResizeGrip } from "@/components/account/resize-grip"
 import { useDragSize } from "@/components/account/use-drag-size"
 import { useAdminData } from "@/components/admin/data/admin-data-context"
+import { useDisabledAdminTools } from "@/components/admin/shell/features-context"
 import {
   findArea,
   isToolActive,
@@ -29,7 +30,8 @@ export function AdminToolsColumn({ area }: { area: AdminArea }) {
   const { currentUserRole, currentUserCapabilities } = useAdminData()
 
   const info = findArea(area)
-  const tools = toolsInArea(area, currentUserRole, currentUserCapabilities)
+  const disabled = useDisabledAdminTools()
+  const tools = toolsInArea(area, currentUserRole, currentUserCapabilities, disabled)
 
   const { size, dragging, onPointerDown, onKeyDown } = useDragSize({
     initial: 260,

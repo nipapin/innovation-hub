@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import { BalanceWidget, useBalance } from "@/components/account/balance-widget"
+import { useBalance } from "@/components/account/balance-widget"
 import { CapacityPanel } from "@/components/account/capacity-panel"
+import { WalletsSection } from "@/components/account/wallets-section"
 import { formatBalance, useI18n, type DictKey } from "@/components/account/i18n"
 import { PromosSection } from "@/components/account/promos-section"
 import { cn } from "@/lib/utils"
@@ -19,9 +20,15 @@ import { ProcessingIndicator } from "@/components/account/processing-indicator"
  * Начинаем с месяца — это масштаб, на котором вопрос «куда ушли деньги» вообще
  * задают; день и неделя нужны, когда уже заметили всплеск и провалились внутрь.
  *
- * Порядок блоков отвечает порядку вопросов: сколько есть → на что этого хватит
- * → что мне подарили → куда ушло уже потраченное. Разбор расхода последним
- * намеренно: он про прошлое, а первые три — про то, что можно сделать сейчас.
+ * Порядок блоков отвечает порядку вопросов: сколько есть и что с этим
+ * происходило → на что этого хватит → что мне подарили → куда ушло уже
+ * потраченное. Разбор расхода последним намеренно: он про прошлое, а первые
+ * три — про то, что можно сделать сейчас.
+ *
+ * Кошельков два, и они показаны рядом, а не сложены: подарочные деньги тратятся
+ * первыми и живут по своим правилам (§П4). Лента движения средств стоит там же,
+ * при кошельках: она отвечает на «что происходило», а не на «сколько за месяц»,
+ * и разбор по проектам ниже её не заменяет.
  */
 
 type Period = "day" | "week" | "month" | "year"
@@ -131,9 +138,11 @@ export function SpendingPage() {
             </div>
           </header>
 
-          <div className="rounded-2xl border border-primary/30 bg-primary/5 p-[22px]">
-            <BalanceWidget state={balance} />
-          </div>
+          {/* Кошельки — двумя карточками, а не одной суммой: акционные деньги
+              тратятся первыми, сгорают по сроку и действуют не во всех
+              проектах, поэтому «всего столько-то» было бы обещанием, которого
+              правило допуска не даёт (BILLING_AND_TRIAL_PLAN.md §П4). */}
+          <WalletsSection balance={balance} />
 
           {/* «На что хватит» и «Акции» живут вне ожидания отчёта: у них свои
               запросы, и держать их за спиннером расхода значило бы прятать

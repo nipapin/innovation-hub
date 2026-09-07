@@ -11,6 +11,7 @@ import {
   ScrollText,
   Settings2,
   ShieldCheck,
+  ToggleRight,
   Trash2,
   UserCog,
   Workflow,
@@ -88,6 +89,13 @@ export const ACTION_META: Record<
     labelKey: "auditSettingsUpdated",
     icon: Settings2,
     tone: "neutral",
+  },
+  // `access`, а не `neutral`: выключатель меняет не содержимое раздела, а то,
+  // доберётся ли до него хоть кто-нибудь — и сразу для всех пользователей.
+  "feature.toggled": {
+    labelKey: "auditFeatureToggled",
+    icon: ToggleRight,
+    tone: "access",
   },
   "user.automation_enabled": {
     labelKey: "auditAutomationEnabled",

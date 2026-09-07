@@ -251,9 +251,10 @@ export type WorkspaceSource = {
   descriptionMdUrl?: (projectId: string) => string
   chatUrl: (projectId: string) => string
   /**
-   * Отметка «прочитано». Необязательная: в админке её нет, потому что в
-   * project_chat_messages отметки со стороны команды не существует — есть только
-   * chat_last_read_at владельца.
+   * Отметка «прочитано». Своя с каждой стороны: у владельца это
+   * `projects.chat_last_read_at`, у команды — `chat_team_last_read_at`, и
+   * гасят они разные счётчики. Поле осталось необязательным на случай
+   * источника, который чат только показывает.
    */
   chatReadUrl?: (projectId: string) => string
   /**

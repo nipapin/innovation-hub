@@ -4,7 +4,28 @@
  * расхождение и есть главный риск этого раздела (docs/STATISTICS_PLAN.md §6).
  */
 
-/** Метрика: что считаем. */
+/**
+ * Витрина. Разница не косметическая: кабинет отвечает на вопрос «сколько сделал
+ * и потратил я», админка — «что происходит в системе». Поэтому набор осей у них
+ * разный, и решает его сервер, а не клиент (см. `getStatistics`).
+ */
+export const STAT_VARIANTS = ["account", "admin"] as const
+export type StatVariant = (typeof STAT_VARIANTS)[number]
+
+/**
+ * Метрика: что считаем.
+ *
+ * Два денежных счёта, и путать их нельзя:
+ *
+ *   spend  СПИСАНО С ЧЕЛОВЕКА — копейки в рублях из `billing_transactions`
+ *   cost   ЧТО РАБОТА СТОИЛА НАМ — доллары из `processing_stats.total_cost`
+ *
+ * Это не одна величина в двух валютах: первая включает нашу цену за результат и
+ * наценку (BILLING_AND_TRIAL_PLAN.md §П5), вторая — только счёт внешнего
+ * сервиса, и валюта у неё по контракту доллар (§В3). Поэтому `cost` живёт
+ * только в админке: пользователю он ответил бы на вопрос, которого тот не
+ * задавал, зато в чужой валюте.
+ */
 export const STAT_METRICS = [
   "files",
   "bytes",
@@ -12,9 +33,15 @@ export const STAT_METRICS = [
   "errors",
   "procs",
   "spend",
+  "cost",
   "render",
 ] as const
 export type StatMetric = (typeof STAT_METRICS)[number]
+
+/** Метрики кабинета: всё, кроме нашей себестоимости. */
+export const ACCOUNT_METRICS = STAT_METRICS.filter(
+  (metric) => metric !== "cost",
+)
 
 /** Разрез: по чему группируем. */
 export const STAT_BREAKDOWNS = [
@@ -25,6 +52,23 @@ export const STAT_BREAKDOWNS = [
 ] as const
 export type StatBreakdown = (typeof STAT_BREAKDOWNS)[number]
 
+/**
+ * Разрезы кабинета. Ни людей, ни машин: и то, и другое — взгляд снаружи на
+ * человека, а кабинет это его собственная витрина. Машины вдобавок наша кухня,
+ * и «на какой из них считалось» не тот вопрос, ради которого сюда приходят.
+ */
+export const ACCOUNT_BREAKDOWNS = STAT_BREAKDOWNS.filter(
+  (breakdown) => breakdown !== "user" && breakdown !== "machine",
+)
+
+export function metricsFor(variant: StatVariant): readonly StatMetric[] {
+  return variant === "admin" ? STAT_METRICS : ACCOUNT_METRICS
+}
+
+export function breakdownsFor(variant: StatVariant): readonly StatBreakdown[] {
+  return variant === "admin" ? STAT_BREAKDOWNS : ACCOUNT_BREAKDOWNS
+}
+
 /** Период события. Состояния («сейчас в хранилище») от него не зависят. */
 export const STAT_PERIODS = ["7d", "30d", "90d", "12m", "all"] as const
 export type StatPeriod = (typeof STAT_PERIODS)[number]
@@ -32,9 +76,10 @@ export type StatPeriod = (typeof STAT_PERIODS)[number]
 export type StatBucketUnit = "day" | "week" | "month"
 
 /**
- * Скоуп запроса. `ownerId` — жёсткая рамка кабинета: свои проекты плюс
- * расшаренные. У админки он null, и это единственное отличие двух витрин.
- * `userId`/`projectId` — провал в элемент, доступен обеим.
+ * Скоуп запроса. `ownerId` — жёсткая рамка кабинета: **только свои** проекты,
+ * расшаренные не в счёт (см. `scopeConditions`). У админки он null.
+ * `projectId` — провал в элемент, доступен обеим витринам; `userId` — только
+ * админке, в кабинете провала в человека нет вовсе.
  */
 export type StatsScope = {
   ownerId: string | null
@@ -56,7 +101,10 @@ export type StatsTotals = {
   procsTotal: number
   procsDone: number
   procsError: number
+  /** Списано с человека, КОПЕЙКИ в рублях. Лента транзакций, не архив. */
   spend: number
+  /** Во что работа обошлась нам: `total_cost` архива, ДОЛЛАРЫ. Только админка. */
+  cost: number
   /** Медиана и p95 важнее среднего: среднее прячет выбросы (§6.2). */
   renderP50: number | null
   renderP95: number | null
@@ -71,7 +119,10 @@ export type StatsRow = {
   tasks: number
   errors: number
   procs: number
+  /** Копейки в рублях. */
   spend: number
+  /** Доллары. */
+  cost: number
   render: number
   /** Куда можно провалиться кликом. */
   drill: "user" | "project" | null
@@ -85,6 +136,7 @@ export type StatsBucket = {
   errors: number
   procs: number
   spend: number
+  cost: number
   render: number
 }
 
@@ -148,6 +200,8 @@ export type StatsResponse = {
   /** Карточка элемента — только при провале в проект или пользователя. */
   card: StatsElementCard | null
   bucketUnit: StatBucketUnit
+  /** Какая витрина посчитана. Оси UI берёт отсюда, а не из собственного пропса. */
+  variant: StatVariant
   breakdown: StatBreakdown
   period: StatPeriod
   /** Подписи активных фильтров провала — чтобы UI не ходил за ними отдельно. */

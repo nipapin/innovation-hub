@@ -20,6 +20,11 @@ import type { Project, WorkspaceCapabilities } from "./types"
  * роли.
  */
 export function projectRole(project: Project): ProjectAccessRole {
+  // Проект в корзине открыт только на чтение, кем бы человек в нём ни был.
+  // Тот же зажим стоит на сервере (lib/project-access.ts#resolveProjectAccess),
+  // и здесь он не «на всякий случай»: без него интерфейс рисовал бы владельцу
+  // заливку, переименование и паузу, а роуты отвечали бы на них отказом.
+  if (project.deletedAt) return "viewer"
   if (!project.sharedWithMe) return "owner"
   if (project.memberRole === "full") return "full"
   if (project.memberRole === "editor") return "editor"

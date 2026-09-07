@@ -16,6 +16,7 @@ import type { ExposedOptionChange } from "@/lib/options/apply"
 import type { ExposedOption, ExposedOptionValue } from "@/lib/options/types"
 import { cn } from "@/lib/utils"
 import { formatOptionValue, OPTION_CONTROLS } from "./option-controls"
+import { socialControlFor } from "./social-controls"
 
 /**
  * Параметры обработки, которые автор графа открыл клиенту (`exposedToSite`).
@@ -72,6 +73,25 @@ export function ExposedOptionsList({ options, onSave, className }: Props) {
     [options, draft],
   )
 
+  /**
+   * Значения по нодам: `нода → { id свойства → значение }`.
+   *
+   * Единственное место, где плоский список всё-таки помнит про ноды, и это не
+   * отступление от «никаких нод клиенту» (docs/PROJECT_OPTIONS_PANEL.md §1):
+   * ноды не показываются, но список сообществ имеет смысл только для аккаунта,
+   * выбранного в ТОЙ ЖЕ ноде. Считаем из черновика, а не из сохранённого:
+   * сменив аккаунт, человек ждёт, что список целей обновится сразу, а не после
+   * сохранения.
+   */
+  const siblings = useMemo(() => {
+    const map: Record<string, Record<string, ExposedOptionValue>> = {}
+    for (const option of options) {
+      const group = (map[option.siblingKey] ??= {})
+      group[option.key] = draft[optionKey(option)] ?? option.value
+    }
+    return map
+  }, [options, draft])
+
   if (options.length === 0) return null
 
   const save = async () => {
@@ -107,23 +127,21 @@ export function ExposedOptionsList({ options, onSave, className }: Props) {
         <ul className="divide-y divide-white/[0.07]">
           {options.map((option) => {
             const key = optionKey(option)
+            // Аккаунт площадки и цель публикации рисуются своим контролом,
+            // хотя в графе это обычный `ddm`: варианты у них не из графа, а из
+            // сейфа аккаунтов, и цель вдобавок зависит от соседнего свойства.
+            const SocialControl = socialControlFor(option)
             const Control = OPTION_CONTROLS[option.control]
             // Чекбокс встаёт в одну строку с именем — как в ноде; остальным
             // контролам нужна своя строка под именем.
             const inline = option.control === "checkbox"
 
-            const control = option.editable ? (
-              <Control
-                option={option}
-                value={draft[key] ?? option.value}
-                disabled={saving || !onSave}
-                onChange={(value) =>
-                  setDraft((prev) => ({ ...prev, [key]: value }))
-                }
-              />
-            ) : (
-              // Список вариантов знает только программа: там учётки соцсетей и
-              // папки на машине. Значение показываем — оно у параметра есть, и
+            const change = (value: ExposedOptionValue) =>
+              setDraft((prev) => ({ ...prev, [key]: value }))
+
+            const control = !option.editable ? (
+              // Список вариантов знает только программа: там папки на машине и
+              // её словари. Значение показываем — оно у параметра есть, и
               // видеть его полезно, — а правится оно там же, где настраивается.
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono text-[13px] text-ws-2">
@@ -133,6 +151,21 @@ export function ExposedOptionsList({ options, onSave, className }: Props) {
                   {t.optionsLocked}
                 </span>
               </div>
+            ) : SocialControl ? (
+              <SocialControl
+                option={option}
+                value={draft[key] ?? option.value}
+                disabled={saving || !onSave}
+                onChange={change}
+                siblings={siblings[option.siblingKey] ?? {}}
+              />
+            ) : (
+              <Control
+                option={option}
+                value={draft[key] ?? option.value}
+                disabled={saving || !onSave}
+                onChange={change}
+              />
             )
 
             return (

@@ -1,4 +1,5 @@
 import { query } from "@/lib/db"
+import type { TxKind, Wallet } from "@/lib/billing/types"
 
 /**
  * Куда ушли деньги — витрина для кабинета.
@@ -219,4 +220,148 @@ async function readWorkers(input: {
     spentCents: Number(row.spentCents),
     runs: row.runs,
   }))
+}
+
+// ─── Движение средств ────────────────────────────────────────────────────────
+
+/**
+ * Лента движения средств для кабинета.
+ *
+ * Отдельно от `readSpending` намеренно. Тот отвечает «куда ушли деньги» —
+ * агрегатом, за период, по проектам. Эта функция отвечает на другой вопрос:
+ * «что вообще происходило с моими кошельками», строка за строкой и без
+ * периода. Свести их в один запрос значило бы получить экран, на котором сумма
+ * за месяц и история за год спорят друг с другом.
+ *
+ * Показываем все виды движений, включая нулевые `exempt` и `writeoff`: человек
+ * видел обработку и не увидел списания, и строка «покрыто нами» отвечает на
+ * этот вопрос раньше, чем он дойдёт до поддержки.
+ */
+export const LEDGER_WALLETS = ["all", "own", "gift"] as const
+export type LedgerWallet = (typeof LEDGER_WALLETS)[number]
+
+export function isLedgerWallet(value: unknown): value is LedgerWallet {
+  return (
+    typeof value === "string" &&
+    (LEDGER_WALLETS as readonly string[]).includes(value)
+  )
+}
+
+export type LedgerEntry = {
+  id: string
+  at: string
+  wallet: Wallet
+  kind: TxKind
+  /** Знак значим: + приход, − расход. У `exempt` и `writeoff` всегда 0. */
+  amountCents: number
+  ourCents: number
+  vendorCents: number
+  projectId: string | null
+  projectName: string
+  comment: string
+}
+
+export type LedgerPage = {
+  entries: LedgerEntry[]
+  /** Курсор следующей страницы. `null` — дальше ничего нет. */
+  nextCursor: string | null
+}
+
+const LEDGER_PAGE = 25
+
+/**
+ * Курсор — пара «время, id», а не смещение.
+ *
+ * Лента пополняется, пока человек её листает, и OFFSET на растущем списке
+ * показал бы одну и ту же строку дважды. Пара нужна целиком: у двух движений
+ * одной транзакции время совпадает до микросекунды, и одного `created_at` не
+ * хватило бы, чтобы отличить «уже показали» от «ещё нет».
+ *
+ * Отсюда и микросекунды в формате времени (`.US`). Урезав его до секунд, курсор
+ * начал бы указывать раньше последней показанной строки — и всё, что попало в
+ * ту же секунду, не показалось бы никогда.
+ */
+function parseCursor(raw: string | null): { at: string; id: string } | null {
+  if (!raw) return null
+  const split = raw.indexOf("|")
+  if (split < 0) return null
+  const at = raw.slice(0, split)
+  const id = raw.slice(split + 1)
+  if (!at || !id || Number.isNaN(Date.parse(at))) return null
+  return { at, id }
+}
+
+export async function readLedger(input: {
+  ownerId: string
+  wallet: LedgerWallet
+  cursor?: string | null
+}): Promise<LedgerPage> {
+  const params: unknown[] = [input.ownerId]
+  const where = [`b.user_id = $1`]
+
+  if (input.wallet !== "all") {
+    params.push(input.wallet)
+    where.push(`b.wallet = $${params.length}`)
+  }
+
+  const cursor = parseCursor(input.cursor ?? null)
+  if (cursor) {
+    params.push(cursor.at, cursor.id)
+    where.push(
+      `(b.created_at, b.id) < ($${params.length - 1}::timestamptz, $${params.length})`,
+    )
+  }
+
+  // Берём на строку больше страницы: наличие следующей узнаётся тем же
+  // запросом, а не отдельным COUNT по всей ленте.
+  params.push(LEDGER_PAGE + 1)
+
+  const result = await query<{
+    id: string
+    at: string
+    wallet: Wallet
+    kind: TxKind
+    amountCents: string
+    ourCents: string
+    vendorCents: string
+    projectId: string | null
+    projectName: string
+    comment: string
+  }>(
+    `SELECT b.id,
+            to_char(b.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at,
+            b.wallet,
+            b.kind,
+            b.amount_cents::text  AS "amountCents",
+            b.our_cents::text     AS "ourCents",
+            b.vendor_cents::text  AS "vendorCents",
+            b.project_id          AS "projectId",
+            COALESCE(p.name, '')  AS "projectName",
+            b.comment
+       FROM billing_transactions b
+       LEFT JOIN projects p ON p.id = b.project_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY b.created_at DESC, b.id DESC
+      LIMIT $${params.length}`,
+    params,
+  )
+
+  const rows = result.rows.slice(0, LEDGER_PAGE)
+  const last = rows[rows.length - 1]
+  return {
+    entries: rows.map((row) => ({
+      id: row.id,
+      at: row.at,
+      wallet: row.wallet,
+      kind: row.kind,
+      amountCents: Number(row.amountCents),
+      ourCents: Number(row.ourCents),
+      vendorCents: Number(row.vendorCents),
+      projectId: row.projectId,
+      projectName: row.projectName,
+      comment: row.comment,
+    })),
+    nextCursor:
+      result.rows.length > LEDGER_PAGE && last ? `${last.at}|${last.id}` : null,
+  }
 }

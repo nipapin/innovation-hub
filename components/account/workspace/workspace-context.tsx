@@ -22,6 +22,7 @@ import type { ExposedOptionChange } from "@/lib/options/apply"
 import type { ExposedOption } from "@/lib/options/types"
 import { uploadProjectFileDirect } from "@/lib/project-direct-upload"
 import {
+  TRASH_RETENTION_DAYS,
   findChildByName,
   folderPathOf,
   freeNameIn,
@@ -105,6 +106,15 @@ export const PROJECTS_CHANGED_EVENT = "ffworks:projects-changed"
 function notifyProjectsChanged() {
   window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT))
 }
+
+/**
+ * Событие «чат прочитан» — по нему шелл пересчитывает значок раздела «Чаты».
+ *
+ * Нужно потому, что значок живёт выше страницы и опрашивает сервер по таймеру:
+ * без сигнала число над меню ещё полминуты показывало бы сообщения, которые
+ * человек читает прямо сейчас.
+ */
+export const CHAT_READ_EVENT = "ffworks:chat-read"
 
 type PromptRequest = {
   title: string
@@ -723,13 +733,16 @@ export function WorkspaceProvider({
       }),
     )
     setMessages(list)
-    // Отметка «прочитано» есть только у пользователя: со стороны команды такого
-    // признака в схеме нет, поэтому в админке шаг просто пропускается.
+    // Отметка «прочитано» — своя у каждой стороны: в кабинете гаснет значок
+    // пользователя, в админке — счётчик команды (раздел «Чаты» и карточка
+    // проекта в «Папках»). Источник без отметки просто пропускает шаг.
     const chatReadUrl = sourceRef.current.chatReadUrl
     if (chatReadUrl) {
-      void fetch(chatReadUrl(projectId), { method: "POST" }).catch(
-        () => undefined,
-      )
+      void fetch(chatReadUrl(projectId), { method: "POST" })
+        .then(() => {
+          window.dispatchEvent(new Event(CHAT_READ_EVENT))
+        })
+        .catch(() => undefined)
       setProjects((prev) =>
         prev.map((p) => (p.id === projectId ? { ...p, unreadCount: 0 } : p)),
       )
@@ -875,6 +888,30 @@ export function WorkspaceProvider({
     }, CHAT_POLL_INTERVAL_MS)
     return () => window.clearInterval(timer)
   }, [selectedId, bottomTab, loadMessages])
+
+  /**
+   * Переход «сразу в чат проекта»: `?chat=1` в адресе.
+   *
+   * Приходит из раздела «Чаты» админки: там выбирают, кому отвечать, а
+   * отвечают здесь — рядом с файлами и описанием, ради которых человек в этот
+   * чат и идёт. Отдельного окна переписки поэтому нет: ссылка ведёт в тот же
+   * проект, просто с открытой нужной закладкой.
+   *
+   * Один раз на проект, а не на каждый рендер: дальше закладки переключает
+   * человек, и возвращать его в чат, пока `chat=1` висит в адресе, значило бы
+   * не давать уйти в «Описание» или «Настройки».
+   */
+  const deepLinkChat = searchParams.get("chat")
+  const chatLinkDone = useRef<string | null>(null)
+  useEffect(() => {
+    if (deepLinkChat !== "1") {
+      chatLinkDone.current = null
+      return
+    }
+    if (!selectedId || chatLinkDone.current === selectedId) return
+    chatLinkDone.current = selectedId
+    setBottomTab("chat")
+  }, [deepLinkChat, selectedId])
 
   useEffect(() => {
     const close = () => setMenu(null)
@@ -1037,7 +1074,10 @@ export function WorkspaceProvider({
     (id: string) => {
       setConfirm({
         title: t.deleteProject,
-        description: t.confirmDeleteProject,
+        // Удаление мягкое — и спрашивать надо ровно про то, что произойдёт.
+        // Прежнее «удалить безвозвратно?» пугало сильнее, чем следует, и вдобавок
+        // было неправдой: проект уезжает в корзину и оттуда возвращается.
+        description: tf(t.confirmDeleteProject, { days: TRASH_RETENTION_DAYS }),
         confirmLabel: t.mDelete,
         destructive: true,
         onConfirm: () => {
@@ -1644,14 +1684,28 @@ export function WorkspaceProvider({
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
-          toast.error(data.message ?? "Restore failed")
+          toast.error(data.message ?? t.restoreProjectFailed)
           return
         }
-        toast.success(t.mUnarchive)
+        toast.success(t.restoreProjectDone)
         await loadProjects()
+        // Проект уехал из корзины в свой раздел — уводим туда и человека, если
+        // он на него смотрел. Иначе рабочая область осталась бы открытой на
+        // проекте, которого в колонке слева уже нет: корзина опустела, а он в
+        // ней стоит.
+        if (project.id === selectedId) {
+          setProjectTab(tabOf({ ...project, deletedAt: null }))
+        }
       })()
     },
-    [loadProjects, t.mUnarchive],
+    [
+      loadProjects,
+      selectedId,
+      setProjectTab,
+      tabOf,
+      t.restoreProjectDone,
+      t.restoreProjectFailed,
+    ],
   )
 
   // ---------- контекстное меню ----------

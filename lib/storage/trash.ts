@@ -11,8 +11,12 @@ import {
   folderPrefix,
 } from "@/lib/storage/file-names"
 import { logicalKeyForFile } from "@/lib/storage/keys"
+import { TRASH_RETENTION_DAYS } from "@/lib/storage/trash-policy"
 
-export const TRASH_RETENTION_DAYS = 30
+// Реэкспорт, чтобы прежние импорты «срок хранения из trash.ts» продолжали
+// работать: само число переехало в trash-policy.ts, откуда его может взять и
+// клиентский компонент.
+export { TRASH_RETENTION_DAYS }
 
 const FILE_FIELDS = `
   id,

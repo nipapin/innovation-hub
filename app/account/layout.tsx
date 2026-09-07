@@ -1,4 +1,6 @@
 import { IBM_Plex_Sans } from "next/font/google"
+import { DisabledToolsProvider } from "@/components/admin/shell/features-context"
+import { disabledAdminHrefs } from "@/lib/features-state"
 import { redirect } from "next/navigation"
 import { WorkspaceShell } from "@/components/account/workspace-shell"
 import { getCurrentUser } from "@/lib/admin-auth"
@@ -18,6 +20,9 @@ export default async function AccountLayout({
   children: React.ReactNode
 }) {
   const user = await getCurrentUser()
+  // Погашенные разделы — свойство установки, а не человека, поэтому
+  // считаются один раз на layout и раздаются контекстом.
+  const disabledTools = await disabledAdminHrefs()
 
   if (!user) {
     redirect("/login")
@@ -29,6 +34,7 @@ export default async function AccountLayout({
 
   return (
     <div className={ibmPlex.variable}>
+      <DisabledToolsProvider value={disabledTools}>
       <WorkspaceShell
         email={user.email}
         fullName={user.fullName ?? ""}
@@ -38,6 +44,7 @@ export default async function AccountLayout({
       >
         {children}
       </WorkspaceShell>
+      </DisabledToolsProvider>
     </div>
   )
 }

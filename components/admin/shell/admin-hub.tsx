@@ -4,6 +4,7 @@ import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 import { useI18n } from "@/components/account/i18n"
 import { useAdminData } from "@/components/admin/data/admin-data-context"
+import { useDisabledAdminTools } from "@/components/admin/shell/features-context"
 import { AdminPageHeader } from "@/components/admin/shell/admin-page-header"
 import {
   findArea,
@@ -36,10 +37,12 @@ export function AdminHubCards({ area }: { area: AdminArea }) {
   const { currentUserRole, currentUserCapabilities } = useAdminData()
 
   // Хаб области не рисует карточку на самого себя: обзор не ссылается на обзор.
+  const disabled = useDisabledAdminTools()
   const items = toolsInArea(
     area,
     currentUserRole,
     currentUserCapabilities,
+    disabled,
   ).filter((tool) => !tool.isAreaHub)
 
   if (items.length === 0) return null

@@ -13,6 +13,7 @@
     "dialog:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/lib/register-ts.mjs scripts/check-dialog-logic.mts",
     "admin:check": "node scripts/admin-nav-check.mjs",
     "help:check": "node scripts/help-check.mjs",
+    "features:check": "node scripts/features-check.mjs",
     "db:init": "node scripts/db-init.mjs",
     "db:reset": "node scripts/db-init.mjs --reset",
     "db:migrate": "node scripts/db-migrate.mjs",

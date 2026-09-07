@@ -10,6 +10,7 @@ import {
   valueRangeConfig,
   type NumericConfig,
 } from "./numeric-format"
+import { socialTokenInfo } from "@/lib/social/types"
 
 /**
  * `options.json` → список настроек для вкладки клиента.
@@ -191,14 +192,33 @@ export function readExposedOption(
 
   const { options, dynamicOptions } = splitOptions(cp.options)
   const listControl = control === "ddm" || control === "autocomplete"
-  // Токены вроде #tgChannels или #folders раскрывает только программа: у неё
-  // есть учётки и локальные папки. Пока их нечем раскрыть, поле показываем,
-  // но менять с сайта не даём — иначе клиент запишет туда что угодно.
+
+  /**
+   * Аккаунты площадок и цели публикации сайт теперь раскрывает сам: они лежат
+   * в его сейфе (docs/SOCIAL_POSTING_PLAN.md §4), а не только у программы.
+   *
+   * Первый попавшийся токен, а не все: двух разных площадок в одном списке не
+   * бывает — нода Poster принадлежит одной.
+   */
+  const social =
+    listControl
+      ? (dynamicOptions.map(socialTokenInfo).find(Boolean) ?? null)
+      : null
+
+  // Остальные токены (#folders, #typeOfFile, #whisperModels) знает только
+  // программа: у неё локальные папки и словари машины. Пока их нечем
+  // раскрыть, поле показываем, но менять с сайта не даём — иначе клиент
+  // запишет туда что угодно.
   const blockedByTokens =
-    listControl && dynamicOptions.some((token) => !isHistoryToken(token))
+    listControl &&
+    dynamicOptions.some(
+      (token) => !isHistoryToken(token) && !socialTokenInfo(token),
+    )
 
   return {
     path: [...path, "controlProps"],
+    // Соседи по ноде — те, у кого совпадает путь до списка `properties`.
+    siblingKey: path.slice(0, -1).join("."),
     key,
     label: str(cp.label) ?? str(property.label) ?? key,
     tooltip: tooltipToText(cp.tooltip),
@@ -223,6 +243,7 @@ export function readExposedOption(
     // Слаг сервиса берём только у своего контрола: у остальных поле `service` в
     // controlProps означало бы что угодно, и подхватывать его вслепую нельзя.
     service: control === "vendorAccount" ? (str(cp.service) ?? "") : null,
+    social,
   }
 }
 

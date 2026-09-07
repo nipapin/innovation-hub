@@ -32,6 +32,12 @@ export type Capacity = {
 
 export type BalanceState = {
   balances: { own: number; gift: number }
+  /** Оценки живых задач: деньги обещаны, но ещё не потрачены. */
+  reserved: { own: number; gift: number }
+  /** Остаток минус резерв; у своего кошелька плюс овердрафт. */
+  availableOwnCents: number
+  availableGiftCents: number
+  overdraftLimitCents: number
   capacity: Capacity[]
 }
 

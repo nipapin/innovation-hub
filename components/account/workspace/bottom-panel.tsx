@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useLayoutEffect, useRef } from "react"
 import {
   Archive,
   ArchiveRestore,
@@ -18,6 +19,13 @@ import { PreviewTab } from "./file-preview"
 import { fmtTime } from "./format"
 import type { BottomTab } from "./types"
 import { useWorkspace } from "./workspace-context"
+
+/**
+ * Насколько близко к низу нужно стоять, чтобы новое сообщение подтянуло ленту
+ * за собой. Не ноль: у списка бывает дробная высота строки, и точное равенство
+ * не достигается никогда.
+ */
+const CHAT_STICK_THRESHOLD_PX = 64
 
 const TABS: {
   id: BottomTab
@@ -132,11 +140,56 @@ export function SettingsTab() {
 }
 
 export function ChatTab() {
-  const { t, can, source, messages, draft, setDraft, sendMessage } =
+  const { t, can, source, messages, draft, setDraft, sendMessage, selectedId } =
     useWorkspace()
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  /**
+   * Держать ленту у низа — но только пока человек сам оттуда не ушёл.
+   *
+   * Просто «прокручивать вниз на каждое сообщение» нельзя: чат опрашивается
+   * раз в несколько секунд, и того, кто отлистал наверх читать прежнюю
+   * переписку, каждое новое сообщение выдёргивало бы обратно. Поэтому
+   * запоминаем, стоял ли он внизу до прихода сообщения, и подтягиваем только
+   * в этом случае.
+   */
+  const stick = useRef(true)
+
+  const onScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    stick.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < CHAT_STICK_THRESHOLD_PX
+  }
+
+  // useLayoutEffect, а не useEffect: прокрутка должна встать до кадра, иначе
+  // видно, как лента прыгает уже после отрисовки нового сообщения.
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el || !stick.current) return
+    el.scrollTop = el.scrollHeight
+  }, [messages])
+
+  // Сменили проект — это другая переписка, и открывается она снизу, на самом
+  // свежем, независимо от того, где человек стоял в предыдущей.
+  useEffect(() => {
+    stick.current = true
+  }, [selectedId])
+
+  const send = () => {
+    // Своё сообщение показываем всегда: отправить и не увидеть отправленного —
+    // ровно та беда, из-за которой прокрутку и заводили.
+    stick.current = true
+    sendMessage()
+  }
+
   return (
     <div className="flex h-full min-h-[160px] flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-1">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-1"
+      >
         {messages.length === 0 ? (
           <p className="flex flex-1 items-center justify-center text-center text-[14px] text-ws-4">
             {t.chatEmpty}
@@ -185,7 +238,7 @@ export function ChatTab() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
-                sendMessage()
+                send()
               }
             }}
             placeholder={t.chatPlaceholder}
@@ -193,7 +246,7 @@ export function ChatTab() {
           />
           <button
             type="button"
-            onClick={sendMessage}
+            onClick={send}
             aria-label={t.tabChat}
             className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[9px] bg-ws-action text-white hover:bg-ws-action-hover"
           >

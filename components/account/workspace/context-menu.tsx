@@ -236,6 +236,21 @@ export function WorkspaceContextMenu() {
   } else if (menu.kind === "project" && menu.project) {
     const project = menu.project
     entries = [
+      /**
+       * Проект в корзине — первым пунктом «Восстановить», и это единственное,
+       * что для него добавляется. Всё остальное отсеивается само: роль такого
+       * проекта зажата до читателя (./access.ts#projectRole), поэтому правки
+       * ниже просто не попадают в меню.
+       */
+      ...(project.deletedAt
+        ? [
+            {
+              icon: RotateCcw,
+              label: t.mRestore,
+              onClick: () => ws.restoreProject(project),
+            } as MenuEntry,
+          ]
+        : []),
       ...(can.renameProject
         ? [
             {
@@ -245,24 +260,16 @@ export function WorkspaceContextMenu() {
             } as MenuEntry,
           ]
         : []),
-      ...(project.deletedAt
+      ...(can.shareProject
         ? [
             {
-              icon: ArchiveRestore,
-              label: t.mUnarchive,
-              onClick: () => ws.restoreProject(project),
+              icon: Share2,
+              label: t.mShare,
+              onClick: () => ws.shareProject(project),
             } as MenuEntry,
           ]
-        : can.shareProject
-          ? [
-              {
-                icon: Share2,
-                label: t.mShare,
-                onClick: () => ws.shareProject(project),
-              } as MenuEntry,
-            ]
-          : []),
-      ...(can.transferProject && !project.deletedAt
+        : []),
+      ...(can.transferProject
         ? [
             {
               icon: ArrowLeftRight,
@@ -281,15 +288,15 @@ export function WorkspaceContextMenu() {
             "noopener",
           ),
       },
-      ...(project.deletedAt || !can.archiveProject
-        ? []
-        : [
+      ...(can.archiveProject
+        ? [
             {
               icon: project.isArchived ? ArchiveRestore : Archive,
               label: project.isArchived ? t.mUnarchive : t.mArchive,
               onClick: () => ws.setArchived(project, !project.isArchived),
             } as MenuEntry,
-          ]),
+          ]
+        : []),
       { sep: true },
       {
         icon: FileText,

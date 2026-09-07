@@ -94,7 +94,20 @@ function coerce(
 
     case "ddm": {
       if (typeof value !== "string") fail(change.path, "expects a string.")
-      if (!option.freeInput && value !== "" && !option.options.includes(value)) {
+      // Аккаунт площадки и цель публикации в графе не перечислены — там стоит
+      // токен (`#vkAccounts`, `#vkGroups`), а варианты знает сейф. Сверять их
+      // со списком из графа значило бы отвергать любой реальный аккаунт.
+      //
+      // Существование самого аккаунта здесь НЕ проверяем — по той же причине,
+      // что и у `vendorAccount`: его могли отозвать между открытием вкладки и
+      // сохранением, и ронять из-за этого правку остальных параметров незачем.
+      // Публикация всё равно не соберётся, и причина будет названа там.
+      if (
+        !option.social &&
+        !option.freeInput &&
+        value !== "" &&
+        !option.options.includes(value)
+      ) {
         fail(change.path, `does not accept the value "${value}".`)
       }
       return value
@@ -111,7 +124,9 @@ function coerce(
       if (!option.multiSelect && items.length > 1) {
         fail(change.path, "accepts a single value.")
       }
-      if (option.optionsOnly) {
+      // `optionsOnly` при токене площадки не проверяем — варианты там знает
+      // сейф, а не граф (см. развёрнутое объяснение у `ddm`).
+      if (option.optionsOnly && !option.social) {
         const unknown = items.find((item) => !option.options.includes(item))
         if (unknown !== undefined) {
           fail(change.path, `does not accept the value "${unknown}".`)

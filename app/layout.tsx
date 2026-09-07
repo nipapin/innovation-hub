@@ -1,3 +1,4 @@
+import { SITE_NAME } from "@/lib/site"
 import type { Metadata } from 'next'
 import { Space_Grotesk, Inter } from 'next/font/google'
 import { Suspense } from 'react'
@@ -17,7 +18,7 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'FF Works',
+  title: SITE_NAME,
   description: 'Explore curated video content on innovation, technology, and design.',
 }
 

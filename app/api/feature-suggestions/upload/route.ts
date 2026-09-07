@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { isEnvFeatureEnabled } from "@/lib/features-env"
 import { Upload } from "@aws-sdk/lib-storage"
 import { NextResponse, type NextRequest } from "next/server"
 import { requireUserApi } from "@/lib/admin-auth"
@@ -112,6 +113,12 @@ async function runUpload(request: NextRequest): Promise<Response> {
 }
 
 export async function POST(request: NextRequest) {
+  // Страницы этого раздела на установке нет — не должно быть и данных: живой
+  // роут отдавал бы содержимое того, чего на сайте не существует.
+  if (!isEnvFeatureEnabled("public.pages")) {
+    return NextResponse.json({ message: "Not found." }, { status: 404 })
+  }
+
   try {
     return await runUpload(request)
   } catch (e) {

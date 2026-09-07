@@ -7,8 +7,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { HelpSectionButton } from "@/components/help/help-section-button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import type { HelpTopicId } from "@/lib/help/topics"
 import { cn } from "@/lib/utils"
 
 /**
@@ -22,16 +24,26 @@ import { cn } from "@/lib/utils"
 export function Section({
   title,
   description,
+  help,
   children,
 }: {
   title: string
   description?: string
+  /**
+   * Статья про эту секцию. Ставится, только когда статья у секции своя:
+   * кнопка на ту же статью, что открывает заголовок страницы, обещает
+   * подробности, которых нет (docs/HELP_SYSTEM.md §7).
+   */
+  help?: HelpTopicId
   children: React.ReactNode
 }) {
   return (
     <Card className="border-border/60 bg-card">
       <CardHeader className="gap-1.5">
-        <CardTitle className="text-base font-semibold">{title}</CardTitle>
+        <CardTitle className="flex items-center gap-2.5 text-base font-semibold">
+          {title}
+          {help ? <HelpSectionButton id={help} /> : null}
+        </CardTitle>
         {description ? (
           <CardDescription className="max-w-3xl text-sm leading-relaxed">
             {description}

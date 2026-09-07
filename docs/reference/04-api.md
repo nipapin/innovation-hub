@@ -39,11 +39,12 @@
 | `/api/account/profile` | GET, PATCH | user | Профиль; PATCH меняет имя и `contact_name`. |
 | `/api/account/password` | POST | user | Смена пароля. |
 | `/api/account/stats` | GET | user | Сводка для дашборда `/account`: баланс, число проектов и файлов, хронометраж, столбцы графика. Параметр `?range=day\|week\|month`. |
-| `/api/account/statistics` | GET | user | Полная статистика со скоупом «только своё». Оси — в query (`breakdown`, `period`, `userId`, `projectId`). |
+| `/api/account/statistics` | GET | user | Полная статистика со скоупом «только своё». Оси — в query (`breakdown`, `period`, `projectId`); `userId` игнорируется, а разрезы по людям и машинам сервер сводит к разрезу по проектам. |
 | `/api/account/machine-tokens` | GET, POST, DELETE | user | Токены `mch_…`. Сырой токен показывается один раз. Отзыв токена отзывает и машины, ходившие под ним. |
 | `/api/account/push-subscription` | POST, DELETE | user | Регистрация / снятие подписки Web Push. |
 | `/api/account/balance` | GET | user | Кошельки, доступное с учётом резерва и «на что ещё хватит» по мерам (видео, файлы, объём, запуски). Питает виджет баланса и разбор на кошельке. |
 | `/api/account/spending` | GET | user | Расход за период: итоги, лента по дням, разрез по проектам и по заливщикам. `?period=day\|week\|month\|year`, `?projectId=`. |
+| `/api/account/transactions` | GET | user | Движение средств по кошелькам, страницами по курсору. `?wallet=all\|own\|gift`, `?cursor=<время>\|<id>`. Курсор — пара «время, id»: OFFSET на растущей ленте показал бы строку дважды. |
 | `/api/account/trial` | GET, POST | user | Состояние тестового периода и его активация. POST отвечает `202`: пробные проекты ещё копируются. |
 | `/api/account/promos` | GET | user | Акции этого человека: начислено, потрачено, остаток, срок, проекты. Плюс не взятое предложение тестового периода. |
 
@@ -137,6 +138,9 @@
 | `/api/admin/workspaces/projects/[id]/files/[fileId]` | GET, PATCH, DELETE | Содержимое файла для превью и сайдкаров; переименование и удаление. |
 | `/api/admin/workspaces/projects/[id]/description` | GET, PUT | Описание проекта — бриф от команды клиенту. |
 | `/api/admin/workspaces/projects/[id]/chat` | GET, POST | Тот же чат, со стороны команды. |
+| `/api/admin/workspaces/projects/[id]/chat/read` | POST | Отметка «команда прочитала» (`projects.chat_team_last_read_at`). Одна на проект: сайт отвечает клиенту от лица команды. |
+| `/api/admin/chats` | GET | Раздел «Чаты»: все переписки сайта, свежие сверху. Параметры `q`, `limit`, `offset`; удалённые проекты исключены. |
+| `/api/admin/chats/unread` | GET | Число на значке раздела «Чаты» — сколько сообщений клиентов ждут ответа по всему сайту. |
 | `/api/admin/pipeline/state` | GET, PATCH | Состояние конвейера; PATCH включает/выключает слежение и меняет период обхода. |
 | `/api/admin/pipeline/collect` | POST | Разовая событийная сборка задач. |
 | `/api/admin/pipeline/sweep` | POST | Разовый обход папок IN. |

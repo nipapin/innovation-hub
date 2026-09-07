@@ -18,14 +18,18 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart"
 import { tf, useI18n, type Lang } from "@/components/account/i18n"
+import { HelpDot } from "@/components/help/help-dot"
+import { formatCents } from "@/lib/billing/types"
+import type { HelpTopicId } from "@/lib/help/topics"
 import {
-  STAT_BREAKDOWNS,
-  STAT_METRICS,
   STAT_PERIODS,
+  breakdownsFor,
+  metricsFor,
   type StatBreakdown,
   type StatBucketUnit,
   type StatMetric,
   type StatPeriod,
+  type StatVariant,
   type StatsCardRow,
   type StatsFunnelStep,
   type StatsResponse,
@@ -36,8 +40,12 @@ import { cn } from "@/lib/utils"
 /**
  * Обозреватель статистики: три независимые оси (метрика · разрез · период),
  * ранжирование, динамика, таблица и выгрузка. Один компонент на две витрины —
- * различает их только `endpoint`, скоуп навешивает сервер
- * (docs/STATISTICS_PLAN.md §6).
+ * различает их `variant`, а скоуп навешивает сервер (docs/STATISTICS_PLAN.md §6).
+ *
+ * `variant` управляет только тем, что видно: набор осей у кабинета уже, и это
+ * не украшение, а часть постановки — кабинет отвечает «сколько сделал я», и
+ * разрезы по людям и машинам ему не нужны. Запрет при этом живёт на сервере
+ * (`getStatistics`): кнопка, которую не нарисовали, — не защита.
  */
 
 function formatBytes(bytes: number): string {
@@ -64,8 +72,27 @@ function colorForKey(key: string): string {
   return `hsl(var(--chart-${(hash % 5) + 1}))`
 }
 
-/** Спенд приходит десятичным числом (NUMERIC), а не центами. */
-function formatSpend(value: number, lang: Lang): string {
+/**
+ * Списано с человека: КОПЕЙКИ в рублях из ленты транзакций.
+ *
+ * Тот же форматтер, что на «Балансе и расходе», и это принципиально: два экрана
+ * про одни и те же деньги обязаны показывать и одно число, и один значок. Свой
+ * форматтер с собственной валютой — ровно та ошибка, из-за которой над
+ * рублёвыми суммами тут стоял «$».
+ */
+function formatSpend(cents: number, lang: Lang): string {
+  return formatCents(cents, lang)
+}
+
+/**
+ * Себестоимость из архива: ДОЛЛАРЫ, и это не забытая локализация. `total_cost`
+ * пишет машина в валюте внешнего сервиса, а она по контракту доллар
+ * (BILLING_AND_TRIAL_PLAN.md §В3). Приводить её к рублю здесь нечем — курс
+ * применяется в момент списания и уезжает в транзакцию, а не в показ. Поэтому
+ * метрика админская: пользователю она отвечала бы на вопрос, которого он не
+ * задавал, зато в чужой валюте.
+ */
+function formatCost(value: number, lang: Lang): string {
   return `${value.toLocaleString(locale(lang), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -85,7 +112,7 @@ function formatDuration(seconds: number): string {
 
 type MetricSource = Pick<
   StatsRow,
-  "files" | "bytes" | "tasks" | "errors" | "procs" | "spend" | "render"
+  "files" | "bytes" | "tasks" | "errors" | "procs" | "spend" | "cost" | "render"
 >
 
 function metricValue(row: MetricSource, metric: StatMetric) {
@@ -102,6 +129,8 @@ function metricValue(row: MetricSource, metric: StatMetric) {
       return row.procs
     case "spend":
       return row.spend
+    case "cost":
+      return row.cost
     case "render":
       return row.render
   }
@@ -117,13 +146,39 @@ function bucketLabel(iso: string, unit: StatBucketUnit, lang: Lang) {
 
 const RANK_LIMIT = 12
 
+/**
+ * Справка у осей — своя на каждую витрину.
+ *
+ * Не «одна статья с оговоркой для кабинета»: под словом «спенд» у витрин разные
+ * источники, набор осей тоже разный, и объяснение админского разреза по машинам
+ * пользователю не нужно вовсе. Пары связаны через `seeAlso` в реестре тем.
+ */
+const HELP_TOPICS_BY_VARIANT: Record<
+  StatVariant,
+  { metric: HelpTopicId; breakdown: HelpTopicId }
+> = {
+  account: {
+    metric: "statistics.personal.metrics",
+    breakdown: "statistics.personal.scope",
+  },
+  admin: {
+    metric: "statistics.metrics",
+    breakdown: "statistics.breakdowns",
+  },
+}
+
 type Props = {
   /** `/api/admin/statistics` или `/api/account/statistics`. */
   endpoint: string
+  /** Какие оси показывать. Совпадает с тем, что посчитает сервер по скоупу. */
+  variant: StatVariant
 }
 
-export function StatisticsExplorer({ endpoint }: Props) {
+export function StatisticsExplorer({ endpoint, variant }: Props) {
   const { t, lang } = useI18n()
+  const metrics = metricsFor(variant)
+  const breakdowns = breakdownsFor(variant)
+  const help = HELP_TOPICS_BY_VARIANT[variant]
 
   const [metric, setMetric] = useState<StatMetric>("files")
   const [breakdown, setBreakdown] = useState<StatBreakdown>("project")
@@ -178,6 +233,7 @@ export function StatisticsExplorer({ endpoint }: Props) {
     errors: t.statMetricErrors,
     procs: t.statMetricProcs,
     spend: t.statMetricSpend,
+    cost: t.statMetricCost,
     render: t.statMetricRender,
   }
   const breakdownNames: Record<StatBreakdown, string> = {
@@ -215,6 +271,7 @@ export function StatisticsExplorer({ endpoint }: Props) {
     (value: number, m: StatMetric = metric) => {
       if (m === "bytes") return formatBytes(value)
       if (m === "spend") return formatSpend(value, lang)
+      if (m === "cost") return formatCost(value, lang)
       if (m === "render") return formatDuration(value)
       return value.toLocaleString(locale(lang))
     },
@@ -314,6 +371,10 @@ export function StatisticsExplorer({ endpoint }: Props) {
   }, [])
 
   const exportCsv = useCallback(() => {
+    // Суммы выгружаются числами без значка: копейки в рублях у спенда, доллары
+    // у себестоимости. Подписать их в шапке честнее, чем подставить символ,
+    // который таблица потом примет за текст.
+    const showCost = metrics.includes("cost")
     const header = [
       t.statColLabel,
       t.statColFiles,
@@ -321,7 +382,8 @@ export function StatisticsExplorer({ endpoint }: Props) {
       t.statColTasks,
       t.statColErrors,
       t.statColProcs,
-      t.statColSpend,
+      t.statCsvSpend,
+      ...(showCost ? [t.statCsvCost] : []),
       t.statColRender,
     ]
     const escape = (v: string) => `"${v.replace(/"/g, '""')}"`
@@ -336,6 +398,7 @@ export function StatisticsExplorer({ endpoint }: Props) {
           r.errors,
           r.procs,
           r.spend,
+          ...(showCost ? [r.cost] : []),
           r.render,
         ].join(","),
       ),
@@ -356,7 +419,7 @@ export function StatisticsExplorer({ endpoint }: Props) {
       a.remove()
       URL.revokeObjectURL(url)
     }, 0)
-  }, [rows, rowLabel, breakdown, period, t])
+  }, [rows, rowLabel, breakdown, metrics, period, t])
 
   const chartConfig: ChartConfig = {
     value: { label: metricNames[metric], color: "hsl(var(--chart-1))" },
@@ -419,9 +482,16 @@ export function StatisticsExplorer({ endpoint }: Props) {
         )}
       </div>
 
-      {/* Работа: события. Обработки, спенд и хронометраж приходят из архива —
-          нули здесь значат «архив ещё не импортирован», а не «работы не было» */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {/* Работа: события. Обработки и хронометраж приходят из архива — нули в
+          них значат «архив ещё не импортирован», а не «работы не было». Спенд
+          живёт отдельно: он из ленты списаний, и его ноль означает ровно то,
+          что написано, — за этот скоуп ещё ничего не списали. */}
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-3 sm:grid-cols-2",
+          variant === "admin" ? "xl:grid-cols-4" : "xl:grid-cols-3",
+        )}
+      >
         <Tile
           label={t.statTileProcs}
           value={totals ? format(totals.procsTotal, "procs") : "—"}
@@ -439,6 +509,13 @@ export function StatisticsExplorer({ endpoint }: Props) {
           value={totals ? formatSpend(totals.spend, lang) : "—"}
           sub={t.statTileSpendSub}
         />
+        {variant === "admin" && (
+          <Tile
+            label={t.statTileCost}
+            value={totals ? formatCost(totals.cost, lang) : "—"}
+            sub={t.statTileCostSub}
+          />
+        )}
         <Tile
           label={t.statTileRender}
           value={
@@ -459,13 +536,15 @@ export function StatisticsExplorer({ endpoint }: Props) {
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <Segmented
             title={t.statMetricLabel}
-            options={STAT_METRICS.map((m) => ({ key: m, label: metricNames[m] }))}
+            help={help.metric}
+            options={metrics.map((m) => ({ key: m, label: metricNames[m] }))}
             value={metric}
             onChange={setMetric}
           />
           <Segmented
             title={t.statBreakLabel}
-            options={STAT_BREAKDOWNS.map((b) => ({
+            help={help.breakdown}
+            options={breakdowns.map((b) => ({
               key: b,
               label: breakdownNames[b],
             }))}
@@ -885,6 +964,9 @@ export function StatisticsExplorer({ endpoint }: Props) {
                   <Th active={metric === "errors"}>{t.statColErrors}</Th>
                   <Th active={metric === "procs"}>{t.statColProcs}</Th>
                   <Th active={metric === "spend"}>{t.statColSpend}</Th>
+                  {variant === "admin" && (
+                    <Th active={metric === "cost"}>{t.statColCost}</Th>
+                  )}
                   <Th active={metric === "render"}>{t.statColRender}</Th>
                 </tr>
               </thead>
@@ -921,6 +1003,11 @@ export function StatisticsExplorer({ endpoint }: Props) {
                     <Td active={metric === "spend"}>
                       {formatSpend(r.spend, lang)}
                     </Td>
+                    {variant === "admin" && (
+                      <Td active={metric === "cost"}>
+                        {formatCost(r.cost, lang)}
+                      </Td>
+                    )}
                     <Td active={metric === "render"}>
                       {formatDuration(r.render)}
                     </Td>
@@ -1018,19 +1105,23 @@ function Tile({
 
 function Segmented<T extends string>({
   title,
+  help,
   options,
   value,
   onChange,
 }: {
   title: string
+  /** Статья про саму ось: что значат её значения и откуда берутся числа. */
+  help?: HelpTopicId
   options: { key: T; label: string }[]
   value: T
   onChange: (next: T) => void
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[10.5px] font-semibold tracking-[1.2px] text-ws-4">
+      <span className="flex items-center gap-1 text-[10.5px] font-semibold tracking-[1.2px] text-ws-4">
         {title}
+        {help ? <HelpDot id={help} /> : null}
       </span>
       <div className="flex flex-wrap gap-0.5 rounded-[9px] border border-border/60 bg-ws-control p-[3px]">
         {options.map((o) => (

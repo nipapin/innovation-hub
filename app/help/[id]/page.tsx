@@ -6,7 +6,7 @@ import {
 } from "@/components/help/help-article-view"
 import { getCurrentUser } from "@/lib/admin-auth"
 import { loadBundle } from "@/lib/help/articles"
-import { canSeeTopic, findTopic } from "@/lib/help/topics"
+import { canSeeTopic, findTopic, seeAlsoOf } from "@/lib/help/topics"
 
 export const dynamic = "force-dynamic"
 
@@ -31,7 +31,7 @@ export default async function HelpArticlePage({
 
   // «Смотрите также» фильтруется теми же правами: ссылка на статью, которую
   // человек не откроет, — это обещание, которое интерфейс не выполнит.
-  const seeAlso: HelpArticleLink[] = (topic.seeAlso ?? []).flatMap((relatedId) => {
+  const seeAlso: HelpArticleLink[] = seeAlsoOf(topic).flatMap((relatedId) => {
     const related = findTopic(relatedId)
     if (!related || !canSeeTopic(user, related)) return []
 

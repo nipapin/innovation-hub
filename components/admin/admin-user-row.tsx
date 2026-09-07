@@ -81,12 +81,19 @@ export function AdminUserRow({
     (canManageRoles || isCurrent || !isElevated(user.role))
 
   return (
+    // Карточка открывается двойным щелчком, а не одиночным: по строке чаще
+    // всего кликают, чтобы выделить и скопировать почту, и всплывающий на
+    // каждый клик диалог этому мешает. Одиночный вход остался там, где его
+    // ищут осознанно, — Enter с клавиатуры и «Редактировать профиль» в меню.
     <div
       role="button"
       tabIndex={0}
-      onClick={(event) => {
+      onDoubleClick={(event) => {
         const target = event.target as HTMLElement
         if (target.closest("[data-no-edit]")) return
+        // Двойной щелчок успевает выделить слово под курсором — снимаем
+        // выделение, иначе оно останется висеть под открытым диалогом.
+        window.getSelection()?.removeAllRanges()
         onEdit()
       }}
       onKeyDown={(event) => {
@@ -95,7 +102,8 @@ export function AdminUserRow({
           onEdit()
         }
       }}
-      className="flex cursor-pointer items-center gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-card/70"
+      title={t.openCardHint}
+      className="flex select-text items-center gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-card/70"
     >
       <Avatar className="h-10 w-10 border border-border/60">
         <AvatarFallback className="bg-primary/15 text-sm font-semibold text-primary">

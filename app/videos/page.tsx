@@ -1,4 +1,5 @@
-import { redirect } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
+import { isEnvFeatureEnabled } from "@/lib/features-env"
 
 type VideosPageProps = {
   searchParams?: Promise<{
@@ -9,6 +10,11 @@ type VideosPageProps = {
 }
 
 export default async function VideosPage({ searchParams }: VideosPageProps) {
+  // Публичной части на этой установке нет — раздела не существует, а не «нет
+  // доступа». Проверка сверх правила в proxy.ts: тот закрывает только корень,
+  // а сюда ведут и прямые ссылки. Флаг `env`, поэтому база здесь не нужна.
+  if (!isEnvFeatureEnabled("public.catalog")) notFound()
+
   const params = searchParams ? await searchParams : {}
   const forward = new URLSearchParams()
 

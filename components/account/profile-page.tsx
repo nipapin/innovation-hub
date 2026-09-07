@@ -16,7 +16,8 @@ import {
   type UpdateProfileInput,
 } from "@/lib/account-schemas"
 import type { UserRole } from "@/lib/domain-types"
-import { avatarInitials, useI18n } from "@/components/account/i18n"
+import { avatarInitials, tf, useI18n } from "@/components/account/i18n"
+import { SITE_NAME } from "@/lib/site"
 import { ProcessingIndicator } from "@/components/account/processing-indicator"
 
 export type ProfileUser = {
@@ -157,7 +158,7 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
           <h1 className="mt-2 text-[32px] font-bold md:text-[40px]">
             {t.profileTitle}
           </h1>
-          <p className="mt-2 text-[15px] text-[#9aa0ac]">{t.profileSub}</p>
+          <p className="mt-2 text-[15px] text-[#9aa0ac]">{tf(t.profileSub, { site: SITE_NAME })}</p>
 
           {/* Cover card */}
           <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">

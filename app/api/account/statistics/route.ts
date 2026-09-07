@@ -6,8 +6,13 @@ import { parseStatisticsQuery } from "@/lib/statistics/query"
 export const runtime = "nodejs"
 
 /**
- * Та же статистика со скоупом «только своё»: свои проекты плюс расшаренные.
- * `ownerId` берётся из сессии и клиентом не переопределяется.
+ * Та же статистика со скоупом «только своё»: **только свои** проекты,
+ * расшаренные не в счёт — они принадлежат другому человеку. `ownerId` берётся
+ * из сессии и клиентом не переопределяется.
+ *
+ * `userId` сюда не передаётся вовсе: в кабинете провала в человека нет, а
+ * разрезы по людям и машинам сервер сводит к разрезу по проектам
+ * (`getStatistics`). Оси кабинета ограничивает именно он, а не набор кнопок.
  */
 export async function GET(request: NextRequest) {
   const auth = await requireUserApi(request)
@@ -19,7 +24,7 @@ export async function GET(request: NextRequest) {
   }
 
   const data = await getStatistics({
-    scope: { ownerId: auth.userId, userId: q.userId, projectId: q.projectId },
+    scope: { ownerId: auth.userId, userId: null, projectId: q.projectId },
     breakdown: q.breakdown,
     period: q.period,
   })

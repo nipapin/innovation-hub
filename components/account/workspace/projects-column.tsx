@@ -1,9 +1,11 @@
 "use client"
 
-import { Loader2, Plus, Search, Trash2 } from "lucide-react"
+import { Loader2, Plus, Search } from "lucide-react"
 
+import { tf } from "@/components/account/i18n"
 import { ResizeGrip } from "@/components/account/resize-grip"
 import { useDragSize } from "@/components/account/use-drag-size"
+import { TRASH_RETENTION_DAYS } from "./format"
 import { ProjectCard } from "./project-card"
 import { sectionHeading, sectionEmptyText } from "./sections"
 import { useWorkspace } from "./workspace-context"
@@ -29,6 +31,8 @@ export function ProjectsColumn() {
   } = useWorkspace()
 
   // «Корзина» — раздел кабинета; у источника без разделов его не существует.
+  // Отличается только подвалом: заводить проект в корзине незачем, а срок
+  // хранения человеку знать надо.
   const isTrash = source.splitByTab && projectTab === "trash"
 
   const { size, dragging, onPointerDown, onKeyDown } = useDragSize({
@@ -57,31 +61,22 @@ export function ProjectsColumn() {
           </span>
         </div>
 
-        {isTrash ? null : (
-          <div className="relative mt-3">
-            <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-ws-4"
-              aria-hidden
-            />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t.searchProjects}
-              className="h-[38px] w-full rounded-[9px] border border-white/10 bg-ws-control pl-[34px] pr-3 text-[13px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
-            />
-          </div>
-        )}
+        <div className="relative mt-3">
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-ws-4"
+            aria-hidden
+          />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t.searchProjects}
+            className="h-[38px] w-full rounded-[9px] border border-white/10 bg-ws-control pl-[34px] pr-3 text-[13px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
+          />
+        </div>
       </div>
 
       <div className="scrollbar-elegant min-h-0 flex-1 overflow-y-auto px-3 pb-2.5">
-        {isTrash ? (
-          <div className="flex flex-col items-center gap-3 px-2 py-10 text-center">
-            <Trash2 className="h-7 w-7 text-ws-5" />
-            <p className="text-[12.5px] leading-relaxed text-ws-4">
-              {t.trashNotWired}
-            </p>
-          </div>
-        ) : loadingProjects ? (
+        {loadingProjects ? (
           <div className="flex justify-center py-10 text-ws-4">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
@@ -102,7 +97,11 @@ export function ProjectsColumn() {
         )}
       </div>
 
-      {isTrash || !source.can.createProject ? null : (
+      {isTrash ? (
+        <p className="shrink-0 border-t border-white/[0.07] px-4 py-3 text-[11.5px] leading-relaxed text-ws-5">
+          {tf(t.trashRetention, { days: TRASH_RETENTION_DAYS })}
+        </p>
+      ) : source.can.createProject ? (
         <div className="shrink-0 border-t border-white/[0.07] p-3">
           <button
             type="button"
@@ -114,7 +113,7 @@ export function ProjectsColumn() {
             {creating ? t.creatingProject : t.newProject}
           </button>
         </div>
-      )}
+      ) : null}
 
       <ResizeGrip
         orientation="vertical"

@@ -17,6 +17,7 @@ import { toast } from "sonner"
 import { tf, useAdminI18n, type AdminDict } from "@/components/admin/admin-dict"
 import { useI18n, type Lang } from "@/components/account/i18n"
 import { HelpDot } from "@/components/help/help-dot"
+import { HelpSectionButton } from "@/components/help/help-section-button"
 import { SKIP_LABEL } from "./skip-labels"
 import { cn } from "@/lib/utils"
 import type { SkippedProject } from "@/lib/pipeline/scan"
@@ -213,7 +214,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       >
         <div className="flex shrink-0 items-center gap-3 border-b border-white/[0.07] px-5 py-3.5">
           <h2 className="text-[16px] font-semibold text-ws-1">{t.settingsTitle}</h2>
-          <HelpDot id="pipeline.settings" />
+          {/* Спасательный круг, а не знак «?»: это заголовок, и вопрос при нём
+              «что делает этот раздел», а не «почему параметр такой». Знаки «?»
+              ниже, при подсказке каждой вкладки. */}
+          <HelpSectionButton id="pipeline.settings" />
           {revision != null ? (
             <span className="text-[12.5px] text-ws-4">
               {tf(t.settingsRevision, { revision })}

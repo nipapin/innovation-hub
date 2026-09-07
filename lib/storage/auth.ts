@@ -274,15 +274,19 @@ export async function requireProjectAccess(
   }
 
   if (canReachAnyProject(auth)) {
+    // Без `includeDeleted`, как и у машин: тег `projects.access` открывает
+    // чужие папки, но не корзину — распоряжаться удалённым проектом нечего.
+    // Не найден — не отвечаем 404 сразу, а падаем в общий разбор ниже: свой
+    // собственный удалённый проект администратор должен видеть в своём же
+    // кабинете на тех же правах, что и все, — читателем.
     const project = await findProjectById(projectId)
-    if (!project) {
-      return NextResponse.json({ message: "Project not found." }, { status: 404 })
-    }
-    return {
-      projectId: project.id,
-      ownerId: project.ownerId,
-      storageOwnerId: project.storageOwnerId,
-      accessRole: "owner",
+    if (project) {
+      return {
+        projectId: project.id,
+        ownerId: project.ownerId,
+        storageOwnerId: project.storageOwnerId,
+        accessRole: "owner",
+      }
     }
   }
 

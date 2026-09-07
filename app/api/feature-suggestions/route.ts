@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
+import { isEnvFeatureEnabled } from "@/lib/features-env"
 import { requireUserApi } from "@/lib/admin-auth"
 import { featureSuggestionSchema } from "@/lib/feature-suggestion-schemas"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
@@ -9,6 +10,12 @@ const RATE_LIMIT = 3
 const RATE_WINDOW_MS = 10 * 60 * 1000
 
 export async function POST(request: NextRequest) {
+  // Страницы этого раздела на установке нет — не должно быть и данных: живой
+  // роут отдавал бы содержимое того, чего на сайте не существует.
+  if (!isEnvFeatureEnabled("public.pages")) {
+    return NextResponse.json({ message: "Not found." }, { status: 404 })
+  }
+
   const auth = await requireUserApi(request)
   if (auth instanceof NextResponse) return auth
 

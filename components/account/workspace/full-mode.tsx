@@ -1,16 +1,39 @@
 "use client"
 
-import { FolderOpen, Pause, Plus, RefreshCw } from "lucide-react"
+import { FolderOpen, Pause, Plus, RefreshCw, Trash2 } from "lucide-react"
 
+import { tf } from "@/components/account/i18n"
 import { BottomPanel } from "./bottom-panel"
 import { Breadcrumbs, FileBrowser } from "./file-browser"
+import { TRASH_RETENTION_DAYS } from "./format"
 import { ResizeGrip } from "@/components/account/resize-grip"
 import { useDragSize } from "@/components/account/use-drag-size"
 import { useWorkspace } from "./workspace-context"
 import { ViewSwitch } from "./workspace-topbar"
 
 function NoProjectSelected() {
-  const { t, source, createProject, creating } = useWorkspace()
+  const { t, source, projectTab, createProject, creating } = useWorkspace()
+
+  /**
+   * В корзине выбирать нечего: удалённый проект не открывается, а предложение
+   * завести новый в этом разделе выглядело бы ответом не на тот вопрос.
+   */
+  if (projectTab === "trash") {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+          <Trash2 className="h-7 w-7 text-ws-3" />
+        </span>
+        <div className="space-y-1.5">
+          <p className="text-[20px] font-semibold text-ws-1">{t.trashTab}</p>
+          <p className="max-w-[420px] text-[14px] text-ws-3">
+            {tf(t.trashRetention, { days: TRASH_RETENTION_DAYS })}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
       <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">

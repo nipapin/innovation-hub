@@ -3,6 +3,7 @@ import { loadVolumeSeries } from "@/lib/statistics/snapshots"
 import {
   STAT_METRICS,
   STAT_ROW_LIMIT,
+  breakdownsFor,
   periodToBuckets,
   periodToInterval,
   type StatBreakdown,
@@ -17,13 +18,19 @@ import {
   type StatsRow,
   type StatsScope,
   type StatsTotals,
+  type StatVariant,
 } from "@/lib/statistics/types"
 
 /**
  * Слой запросов статистики. Один на админку и кабинет: разница только в
  * `scope.ownerId` (docs/STATISTICS_PLAN.md §6). Считает то, что база знает
- * сама, — файлы, объём, проекты и задачи конвейера. Обработки, спенд и
- * хронометраж появятся здесь после импорта архива (PIPELINE.md §14).
+ * сама, — файлы, объём, проекты и задачи конвейера. Обработки, себестоимость и
+ * хронометраж приходят из архива (PIPELINE.md §14), а спенд — из ленты
+ * транзакций (BILLING_AND_TRIAL_PLAN.md §П2).
+ *
+ * Три источника, и у каждого своя рамка. `scopeConditions` — для того, что
+ * висит на проекте; `ledgerConditions` — для денег, где рамку задаёт плательщик
+ * в самой строке. Смешивать их нельзя: проект удаляют, деньги остаются.
  */
 
 /** Значение метрики строки — для отбора топов на сервере. */
@@ -41,6 +48,8 @@ function metricOf(row: StatsRow, metric: StatMetric): number {
       return row.procs
     case "spend":
       return row.spend
+    case "cost":
+      return row.cost
     case "render":
       return row.render
   }
@@ -176,9 +185,11 @@ type ArchiveRow = {
   key: string | null
   label: string | null
   procs: number
-  spend: string
+  /** `total_cost` архива — доллары, а не копейки: в ответе это `cost`. */
+  cost: string
   render: number
 }
+type LedgerRow = { key: string | null; label: string | null; spend: string }
 
 async function rowsFromFiles(
   scope: StatsScope,
@@ -288,7 +299,7 @@ async function rowsFromArchive(
     `SELECT ${expr.key} AS key,
             ${expr.label} AS label,
             COUNT(*)::int AS procs,
-            COALESCE(SUM(ps.total_cost), 0)::float8 AS spend,
+            COALESCE(SUM(ps.total_cost), 0)::float8 AS cost,
             COALESCE(SUM(ps.render_sec), 0)::int AS render
        FROM processing_stats ps
        LEFT JOIN projects p ON p.id = ps.project_id
@@ -298,6 +309,133 @@ async function rowsFromArchive(
     p.values,
   )
   return result.rows
+}
+
+/**
+ * Рамка ленты транзакций — своя, а не `scopeConditions`.
+ *
+ * Платит владелец проекта, и его id уже лежит в самой строке: join к `projects`
+ * ради того же условия был бы лишним, а `p.deleted_at IS NULL` оттуда вдобавок
+ * стирал бы историю денег вместе с проектом. Деньги проект переживают, и в этом
+ * весь смысл ленты.
+ *
+ * Считаем только `charge` — ровно то же, что показывает «Баланс и расход»
+ * (lib/billing/spending.ts). Две витрины про одни деньги обязаны сходиться до
+ * копейки, поэтому набор видов здесь не «шире, зато честнее», а такой же.
+ */
+function ledgerConditions(scope: StatsScope, p: Params): string[] {
+  const where = ["b.kind = 'charge'"]
+  // В кабинете плательщик — сам владелец скоупа; в админке им становится тот,
+  // в кого провалились. Обоих сразу не бывает: `sanitizeScope` это исключает.
+  const payer = scope.ownerId ?? scope.userId
+  if (payer) where.push(`b.user_id = ${p.add(payer)}`)
+  if (scope.projectId) where.push(`b.project_id = ${p.add(scope.projectId)}`)
+  return where
+}
+
+/**
+ * Ключ и подпись разреза для денег.
+ *
+ * Тип файла и машину лента не знает — их приносит строка архива, связанная
+ * ключом `billing_transactions.task_id = processing_stats.item_id`
+ * (BILLING_AND_TRIAL_PLAN.md §П2). Поэтому джойн нужен ровно этим двум
+ * разрезам: в остальных `processing_stats` могло и не быть в базе.
+ */
+function ledgerBreakdownExpr(breakdown: StatBreakdown): {
+  key: string
+  label: string
+  needsArchive: boolean
+} {
+  switch (breakdown) {
+    case "user":
+      return {
+        key: "b.user_id",
+        label:
+          "COALESCE(NULLIF(u.contact_name, ''), NULLIF(u.full_name, ''), u.email, '')",
+        needsArchive: false,
+      }
+    case "project":
+      // Тот же вид ключа, что у архива: проект удалён (ON DELETE SET NULL) —
+      // строка живёт под именем из архива. Иначе списания за удалённый проект
+      // и его же обработки разъехались бы по двум строкам таблицы.
+      return {
+        key: "COALESCE(b.project_id, 'name:' || ps.project_name, '')",
+        label: "COALESCE(NULLIF(p.name, ''), ps.project_name, '')",
+        needsArchive: true,
+      }
+    case "fileType":
+      return {
+        key: "COALESCE(lower(ps.in_type), '')",
+        label: "COALESCE(lower(ps.in_type), '')",
+        needsArchive: true,
+      }
+    case "machine":
+      return {
+        key: "COALESCE(ps.machine, '')",
+        label: "COALESCE(ps.machine, '')",
+        needsArchive: true,
+      }
+  }
+}
+
+/** Строки разреза по деньгам: сколько списано, в копейках. */
+async function rowsFromLedger(
+  scope: StatsScope,
+  breakdown: StatBreakdown,
+  period: StatPeriod,
+): Promise<LedgerRow[]> {
+  const p = new Params()
+  const expr = ledgerBreakdownExpr(breakdown)
+  const where = ledgerConditions(scope, p)
+  const interval = periodToInterval(period)
+  if (interval) {
+    where.push(`b.created_at >= NOW() - ${p.add(interval)}::interval`)
+  }
+
+  const result = await query<LedgerRow>(
+    `SELECT ${expr.key} AS key,
+            ${expr.label} AS label,
+            COALESCE(SUM(-b.amount_cents), 0)::text AS spend
+       FROM billing_transactions b
+       LEFT JOIN projects p ON p.id = b.project_id
+       LEFT JOIN users u ON u.id = b.user_id
+       ${expr.needsArchive ? "LEFT JOIN processing_stats ps ON ps.item_id = b.task_id" : ""}
+      WHERE ${where.join(" AND ")}
+      GROUP BY 1, 2`,
+    p.values,
+  )
+  return result.rows
+}
+
+/** Деньги по корзинам таймлайна. Отдельным запросом — по той же причине, что архив. */
+async function loadLedgerTimeline(
+  scope: StatsScope,
+  period: StatPeriod,
+): Promise<Map<string, number>> {
+  const { unit } = periodToBuckets(period)
+  const p = new Params()
+  const unitP = p.add(unit)
+  const where = ledgerConditions(scope, p)
+  const interval = periodToInterval(period)
+  if (interval) {
+    where.push(`b.created_at >= NOW() - ${p.add(interval)}::interval`)
+  }
+
+  const result = await query<{ bucket: Date; spend: string }>(
+    `SELECT date_trunc(${unitP}::text, b.created_at) AS bucket,
+            COALESCE(SUM(-b.amount_cents), 0)::text AS spend
+       FROM billing_transactions b
+      WHERE ${where.join(" AND ")}
+      GROUP BY 1`,
+    p.values,
+  )
+
+  return new Map(
+    result.rows.map((r) => [
+      new Date(r.bucket).toISOString(),
+      Number(r.spend),
+    ]),
+  )
 }
 
 /**
@@ -438,20 +576,35 @@ async function loadTotals(scope: StatsScope): Promise<StatsTotals> {
         total: number
         done: number
         failed: number
-        spend: number
+        cost: number
         p50: number | null
         p95: number | null
       }>(
         `SELECT COUNT(*)::int AS total,
                 COUNT(*) FILTER (WHERE ps.status = 'done')::int AS done,
                 COUNT(*) FILTER (WHERE ps.status <> 'done')::int AS failed,
-                COALESCE(SUM(ps.total_cost), 0)::float8 AS spend,
+                COALESCE(SUM(ps.total_cost), 0)::float8 AS cost,
                 percentile_cont(0.5) WITHIN GROUP (ORDER BY ps.render_sec)::float8 AS p50,
                 percentile_cont(0.95) WITHIN GROUP (ORDER BY ps.render_sec)::float8 AS p95
            FROM processing_stats ps
            LEFT JOIN projects p ON p.id = ps.project_id
           ${archiveWhere.length ? `WHERE ${archiveWhere.join(" AND ")}` : ""}`,
         archiveParams.values,
+      ).then((r) => r.rows[0] ?? null),
+    null,
+  )
+
+  // Деньги — за всё время, как и остальные тоталы: период живёт в разрезах.
+  const ledgerParams = new Params()
+  const ledgerWhere = ledgerConditions(scope, ledgerParams)
+  const ledger = await optional(
+    "ledger totals",
+    () =>
+      query<{ spend: string }>(
+        `SELECT COALESCE(SUM(-b.amount_cents), 0)::text AS spend
+           FROM billing_transactions b
+          WHERE ${ledgerWhere.join(" AND ")}`,
+        ledgerParams.values,
       ).then((r) => r.rows[0] ?? null),
     null,
   )
@@ -479,7 +632,8 @@ async function loadTotals(scope: StatsScope): Promise<StatsTotals> {
     procsTotal: archive?.total ?? 0,
     procsDone: archive?.done ?? 0,
     procsError: archive?.failed ?? 0,
-    spend: Number(archive?.spend ?? 0),
+    spend: Number(ledger?.spend ?? 0),
+    cost: Number(archive?.cost ?? 0),
     renderP50: archive?.p50 != null ? Number(archive.p50) : null,
     renderP95: archive?.p95 != null ? Number(archive.p95) : null,
   }
@@ -564,6 +718,7 @@ async function loadTimeline(
     errors: r.errors,
     procs: 0,
     spend: 0,
+    cost: 0,
     render: 0,
   }))
 }
@@ -576,7 +731,7 @@ async function loadTimeline(
 async function loadArchiveTimeline(
   scope: StatsScope,
   period: StatPeriod,
-): Promise<Map<string, { procs: number; spend: number; render: number }>> {
+): Promise<Map<string, { procs: number; cost: number; render: number }>> {
   const { unit } = periodToBuckets(period)
   const p = new Params()
   const unitP = p.add(unit)
@@ -593,12 +748,12 @@ async function loadArchiveTimeline(
   const result = await query<{
     bucket: Date
     procs: number
-    spend: number
+    cost: number
     render: number
   }>(
     `SELECT date_trunc(${unitP}::text, ps.ended_at) AS bucket,
             COUNT(*)::int AS procs,
-            COALESCE(SUM(ps.total_cost), 0)::float8 AS spend,
+            COALESCE(SUM(ps.total_cost), 0)::float8 AS cost,
             COALESCE(SUM(ps.render_sec), 0)::int AS render
        FROM processing_stats ps
        LEFT JOIN projects p ON p.id = ps.project_id
@@ -612,7 +767,7 @@ async function loadArchiveTimeline(
       new Date(r.bucket).toISOString(),
       {
         procs: r.procs,
-        spend: Number(r.spend),
+        cost: Number(r.cost),
         render: r.render,
       },
     ]),
@@ -840,10 +995,10 @@ async function loadElementCard(
  * `/api/account/statistics?projectId=<чужой uuid>` вернул бы название чужого
  * проекта и почту его владельца.
  *
- * В кабинете проект должен быть **своим** (расшаренный не подходит: он чужой), а
- * пользователь — либо сам владелец скоупа, либо тот, кто работал в его
- * проектах. Числа при этом всё равно считаются в рамке своих проектов, поэтому
- * чужая работа в чужих проектах в кабинет не попадает.
+ * В кабинете проект должен быть **своим**: расшаренный не подходит, он чужой.
+ * Фильтр по человеку в кабинете снимается целиком — витрина отвечает на вопрос
+ * «сколько сделал я», и разбивать её по людям незачем; заодно исчезает
+ * единственное место, где кабинет мог показать чужое имя.
  *
  * Недоступный фильтр молча сбрасывается, а не отдаёт ошибку: разница между
  * «нет доступа» и «не существует» сама по себе утечка.
@@ -860,26 +1015,7 @@ async function sanitizeScope(scope: StatsScope): Promise<StatsScope> {
     if (allowed.rowCount === 0) projectId = null
   }
 
-  let userId = scope.userId
-  if (userId && userId !== scope.ownerId) {
-    // Участник **моего** проекта — законный фильтр: все числа всё равно
-    // посчитаются в рамке моих проектов, поэтому его работа в чужих проектах
-    // сюда не попадёт. Кто-то, кто со мной не работал, отбрасывается.
-    const allowed = await query(
-      `SELECT 1
-         FROM projects p
-         LEFT JOIN project_files f ON f.project_id = p.id
-        WHERE p.user_id = $1
-          AND (f.uploaded_by = $2
-               OR EXISTS (SELECT 1 FROM project_members m
-                           WHERE m.project_id = p.id AND m.user_id = $2))
-        LIMIT 1`,
-      [scope.ownerId, userId],
-    )
-    if (allowed.rowCount === 0) userId = null
-  }
-
-  return { ...scope, projectId, userId }
+  return { ...scope, projectId, userId: null }
 }
 
 export async function getStatistics({
@@ -893,19 +1029,26 @@ export async function getStatistics({
 }): Promise<StatsResponse> {
   // Фильтры провала приходят от клиента, поэтому проверяются до всего остального.
   const scope = await sanitizeScope(requestedScope)
-  // Разрез по пользователям доступен и в кабинете: рамка «только свои проекты»
-  // делает его тем, чем он и должен быть, — «кто работал в моих проектах и
-  // сколько». Работа тех же людей в их собственных проектах в эту рамку не
-  // попадает по построению.
-  const breakdown: StatBreakdown = requestedBreakdown
+  const variant: StatVariant = scope.ownerId ? "account" : "admin"
+  // Разрез сводится к допустимому здесь, а не в UI: клиент волен прислать
+  // `breakdown=machine` мимо интерфейса, и запрет, живущий только в кнопках, —
+  // не запрет. Недопустимый молча становится разрезом по проектам, как и любой
+  // недоступный фильтр выше.
+  const breakdown: StatBreakdown = breakdownsFor(variant).includes(
+    requestedBreakdown,
+  )
+    ? requestedBreakdown
+    : "project"
 
   const [
     totals,
     fileRows,
     taskRows,
     archiveRows,
+    ledgerRows,
     timeline,
     archiveTimeline,
+    ledgerTimeline,
     volume,
     histogram,
     funnel,
@@ -918,11 +1061,17 @@ export async function getStatistics({
     // Всё, что читает архив и снимки, обёрнуто: до применения миграций этих
     // таблиц нет, и раздел должен показывать нули, а не пустую страницу.
     optional("archive rows", () => rowsFromArchive(scope, breakdown, period), []),
+    optional("ledger rows", () => rowsFromLedger(scope, breakdown, period), []),
     loadTimeline(scope, period),
     optional(
       "archive timeline",
       () => loadArchiveTimeline(scope, period),
-      new Map<string, { procs: number; spend: number; render: number }>(),
+      new Map<string, { procs: number; cost: number; render: number }>(),
+    ),
+    optional(
+      "ledger timeline",
+      () => loadLedgerTimeline(scope, period),
+      new Map<string, number>(),
     ),
     optional("volume series", () => loadVolumeSeries(scope, period), []),
     optional("render histogram", () => loadRenderHistogram(scope, period), []),
@@ -933,10 +1082,12 @@ export async function getStatistics({
 
   for (const bucket of timeline) {
     const archive = archiveTimeline.get(bucket.bucket)
-    if (!archive) continue
-    bucket.procs = archive.procs
-    bucket.spend = archive.spend
-    bucket.render = archive.render
+    if (archive) {
+      bucket.procs = archive.procs
+      bucket.cost = archive.cost
+      bucket.render = archive.render
+    }
+    bucket.spend = ledgerTimeline.get(bucket.bucket) ?? 0
   }
 
   const drill: StatsRow["drill"] =
@@ -962,6 +1113,7 @@ export async function getStatistics({
       errors: 0,
       procs: 0,
       spend: 0,
+      cost: 0,
       render: 0,
       drill: key && isUuid(key) ? drill : null,
     }
@@ -982,8 +1134,12 @@ export async function getStatistics({
   for (const r of archiveRows) {
     const row = touch(r.key ?? "", r.label ?? "")
     row.procs += r.procs
-    row.spend += Number(r.spend)
+    row.cost += Number(r.cost)
     row.render += r.render
+  }
+  for (const r of ledgerRows) {
+    const row = touch(r.key ?? "", r.label ?? "")
+    row.spend += Number(r.spend)
   }
 
   const all = [...merged.values()].sort(
@@ -1015,6 +1171,7 @@ export async function getStatistics({
     funnel,
     card,
     bucketUnit: periodToBuckets(period).unit,
+    variant,
     breakdown,
     period,
     scope: {

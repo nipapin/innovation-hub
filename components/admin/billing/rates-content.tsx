@@ -185,6 +185,7 @@ export function AdminBillingRates() {
         eyebrow={t.billingEyebrow}
         title={t.adminBillingRates}
         description={t.adminBillingRatesDesc}
+        help="billing.rates"
         actions={
           <Button onClick={save} disabled={saving}>
             {saving ? (
@@ -199,7 +200,11 @@ export function AdminBillingRates() {
         }
       />
 
-      <Section title={t.billingRatesTitle} description={t.billingRatesDesc}>
+      <Section
+        title={t.billingRatesTitle}
+        description={t.billingRatesDesc}
+        help="billing.rates.grid"
+      >
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-separate border-spacing-x-3 border-spacing-y-2">
             <thead>
@@ -290,7 +295,11 @@ export function AdminBillingRates() {
         </div>
       </Section>
 
-      <Section title={t.billingVendorTitle} description={t.billingVendorDesc}>
+      <Section
+        title={t.billingVendorTitle}
+        description={t.billingVendorDesc}
+        help="billing.rates.vendor"
+      >
         <NumberField
           id="margin"
           label={t.billingMarginPct}
@@ -346,7 +355,7 @@ export function AdminBillingRates() {
         </div>
       </Section>
 
-      <Section title={t.billingLimitsTitle}>
+      <Section title={t.billingLimitsTitle} help="billing.rates.limits">
         <div className="space-y-1.5">
           <p className="text-sm text-muted-foreground">{t.billingMinAdmit}</p>
           <p className="max-w-3xl text-xs text-muted-foreground/80">
@@ -410,7 +419,11 @@ export function AdminBillingRates() {
         />
       </Section>
 
-      <Section title={t.billingEnforceTitle} description={t.billingEnforceDesc}>
+      <Section
+        title={t.billingEnforceTitle}
+        description={t.billingEnforceDesc}
+        help="billing.rates.enforce"
+      >
         <div className="flex items-center gap-3">
           <Switch
             id="enforce"

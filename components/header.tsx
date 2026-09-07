@@ -1,4 +1,5 @@
 ﻿"use client"
+import { SITE_MONOGRAM, SITE_NAME } from "@/lib/site"
 import { isElevated } from "@/lib/admin-roles"
 
 import Link from "next/link"
@@ -220,9 +221,9 @@ export function Header() {
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/30 bg-primary/15">
-              <span className="font-display text-sm font-bold text-primary">FF</span>
+              <span className="font-display text-sm font-bold text-primary">{SITE_MONOGRAM}</span>
             </div>
-            <span className="font-display text-sm tracking-[0.08em] text-foreground/90">FF Works</span>
+            <span className="font-display text-sm tracking-[0.08em] text-foreground/90">{SITE_NAME}</span>
           </Link>
 
           <nav className="hidden items-center gap-1 md:flex">

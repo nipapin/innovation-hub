@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireUserApi } from "@/lib/admin-auth"
 import { loadArticle, type HelpLang } from "@/lib/help/articles"
-import { canSeeTopic, findTopic } from "@/lib/help/topics"
+import { canSeeTopic, findTopic, seeAlsoOf } from "@/lib/help/topics"
 
 export const runtime = "nodejs"
 
@@ -58,7 +58,7 @@ export async function GET(
   // «Смотрите также» фильтруется теми же правами, что и сама тема: ссылка на
   // статью, которую человек не откроет, — обещание, которое интерфейс не
   // выполнит. Та же логика, что на странице статьи.
-  const seeAlso = (topic.seeAlso ?? []).flatMap((relatedId) => {
+  const seeAlso = seeAlsoOf(topic).flatMap((relatedId) => {
     const related = findTopic(relatedId)
     if (!related || !canSeeTopic(auth, related)) return []
 

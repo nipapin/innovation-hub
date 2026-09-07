@@ -1,5 +1,7 @@
 "use client"
+import { SITE_NAME } from "@/lib/site"
 import { isElevated } from "@/lib/admin-roles"
+import { useDisabledAdminTools } from "@/components/admin/shell/features-context"
 
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
@@ -25,9 +27,11 @@ import {
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/domain-types"
 import { BalanceWidget } from "@/components/account/balance-widget"
+import { isKeysPath } from "@/components/account/keys/keys-shell"
 import { ResizeGrip } from "@/components/account/resize-grip"
 import { useDragSize } from "@/components/account/use-drag-size"
 import { useProjectCounts } from "@/components/account/use-project-counts"
+import { useAdminChatUnread } from "@/components/admin/use-admin-chat-unread"
 import type { ProjectTab } from "@/components/account/workspace/workspace-context"
 import {
   I18nProvider,
@@ -36,6 +40,7 @@ import {
   useI18n,
 } from "@/components/account/i18n"
 import {
+  areaHref,
   isAreaActive,
   visibleAreas,
 } from "@/components/admin/shell/nav-config"
@@ -85,6 +90,7 @@ function NavItem({
   collapsed,
   nested,
   count,
+  badge,
 }: {
   href: string
   active: boolean
@@ -94,8 +100,17 @@ function NavItem({
   nested?: boolean
   /** Число справа. Пустой раздел показывается приглушённым, но остаётся кликабельным. */
   count?: number
+  /**
+   * Непрочитанное. Не то же самое, что `count`: там «сколько всего лежит в
+   * разделе» и ноль гасит пункт, здесь «сколько ждёт человека» — ноль просто
+   * не рисуется, и раздел от этого не тускнеет. В свёрнутом меню число не
+   * помещается, поэтому от него остаётся точка на значке: сигнал «есть новое»
+   * обязан переживать сворачивание панели.
+   */
+  badge?: number
 }) {
   const dimmed = count === 0 && !active
+  const unread = badge && badge > 0 ? badge : 0
 
   return (
     <Link
@@ -113,13 +128,25 @@ function NavItem({
       {active && (
         <span className="absolute bottom-[9px] left-0 top-[9px] w-[3px] rounded-[3px] bg-[#2f80ed]" />
       )}
-      <span className={cn(active ? "text-[#6aa5e8]" : "text-[#8b909c]")}>
+      <span
+        className={cn(
+          "relative",
+          active ? "text-[#6aa5e8]" : "text-[#8b909c]",
+        )}
+      >
         {icon}
+        {unread > 0 && collapsed ? (
+          <span className="absolute -right-1 -top-1 h-[9px] w-[9px] rounded-full bg-ws-action ring-2 ring-ws-panel" />
+        ) : null}
       </span>
       {!collapsed && (
         <>
           <span className="flex-1 whitespace-nowrap">{label}</span>
-          {typeof count === "number" && count > 0 ? (
+          {unread > 0 ? (
+            <span className="shrink-0 rounded-full bg-ws-action px-1.5 py-[1px] text-[11px] font-semibold tabular-nums text-white">
+              {unread > 99 ? "99+" : unread}
+            </span>
+          ) : typeof count === "number" && count > 0 ? (
             <span className="shrink-0 text-[12.5px] tabular-nums text-[#7c8290]">
               {count}
             </span>
@@ -145,11 +172,22 @@ function SidebarContent({
   const searchParams = useSearchParams()
   const router = useRouter()
   const { t, lang, setLang } = useI18n()
+  const disabledAdminTools = useDisabledAdminTools()
   const initials = avatarInitials(user.fullName, user.email)
 
   const counts = useProjectCounts()
+  /**
+   * Непрочитанное в чатах проектов. Считается только для админов — внутри
+   * хука по тегу `projects.access`, тому же, по которому раздел вообще виден.
+   */
+  const chatUnread = useAdminChatUnread(user.role, user.capabilities)
 
-  const isDash = pathname === "/account"
+  // Статистика подсвечивает дашборд, а не себя: своего пункта в меню у неё нет
+  // намеренно (docs/STATISTICS_PLAN.md §7.4) — она продолжает сводку дашборда,
+  // и вход в неё оттуда же. Погасшее меню на такой странице читается как «я
+  // куда-то вышел», хотя человек внутри того же раздела.
+  const isDash =
+    pathname === "/account" || pathname.startsWith("/account/statistics")
   const inProjects = pathname.startsWith("/account/projects")
   // Все разделы — одна страница проектов, отличается только ?tab=…
   const tab = searchParams.get("tab") ?? "projects"
@@ -195,7 +233,7 @@ function SidebarContent({
         ) : (
           <>
             <span className="flex-1 whitespace-nowrap text-[16px] font-semibold text-[#eef1f6]">
-              FF Works
+              {SITE_NAME}
             </span>
             {onToggle && (
               <button
@@ -293,17 +331,23 @@ function SidebarContent({
               </div>
             )
           })}
-          {/* Свои ключи от внешних сервисов. Отдельным пунктом, а не полем в
-              настройках проекта: ключ у человека один на все его проекты, и
-              заводить его изнутри проекта означало бы «найди тот проект, где я
-              его вводил» — при заведении, при замене и при отзыве. */}
+          {/* Чужие секреты человека: ключи сервисов и аккаунты площадок.
+              Отдельным пунктом, а не полем в настройках проекта, — и то и
+              другое у него ОДНО на все проекты, и заводить их изнутри проекта
+              означало бы «найди тот проект, где я это вводил» при заведении,
+              при замене и при отзыве.
+
+              Пункт один, инструментов внутри два: их различают в колонке
+              раздела (KeysShell). Двумя пунктами меню это было бы честно, но
+              боковое меню кабинета — про рабочее место, и секретам в нём место
+              одно. */}
           <div onClick={onNavigate}>
             <NavItem
               href="/account/vendor-keys"
-              active={pathname === "/account/vendor-keys"}
+              active={isKeysPath(pathname)}
               collapsed={collapsed}
               icon={<KeyRound className="h-5 w-5" />}
-              label={t.vendorKeysNav}
+              label={t.keysAreaNav}
             />
           </div>
         </nav>
@@ -329,16 +373,25 @@ function SidebarContent({
                   {t.adminPanel}
                 </p>
               ) : null}
-              {visibleAreas(user.role, user.capabilities).map((area) => {
+              {visibleAreas(user.role, user.capabilities, disabledAdminTools).map((area) => {
                 const Icon = area.icon
                 return (
                   <div key={area.key} onClick={onNavigate}>
                     <NavItem
-                      href={area.href}
+                      // Не `area.href`: у «Конвейера» и «Автопостинга» хаб —
+                      // сам инструмент со своим тегом, и кнопка должна вести
+                      // туда, куда этого человека пустят.
+                      href={areaHref(
+                        area,
+                        user.role,
+                        user.capabilities,
+                        disabledAdminTools,
+                      )}
                       active={isAreaActive(area, pathname)}
                       collapsed={collapsed}
                       icon={<Icon className="h-5 w-5" />}
                       label={t[area.labelKey]}
+                      badge={area.key === "chats" ? chatUnread : undefined}
                     />
                   </div>
                 )
@@ -477,7 +530,7 @@ function WorkspaceShellInner({
             ? t.profileTitle
             : pathname.startsWith("/admin")
               ? t.adminPanel
-              : "FF Works"
+              : SITE_NAME
 
   return (
     <div

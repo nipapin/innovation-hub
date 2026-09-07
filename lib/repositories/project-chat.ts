@@ -152,3 +152,138 @@ export async function markProjectChatRead(projectId: string): Promise<void> {
     projectId,
   ])
 }
+
+/**
+ * Докуда команда уже видела переписку по проекту.
+ *
+ * Порог, а не отметка: их две, и обе законные. Открыли чат в админке — легла
+ * `projects.chat_team_last_read_at`; ответили в YouGile — обратная
+ * синхронизация принесла сообщение 'team', и оно само по себе значит «мы это
+ * прочитали». Берём поздний из двух: учитывать только отметку значило бы
+ * копить на сайте долг из переписки, закрытой в YouGile, а только ответ — не
+ * давать погасить прочитанное, на которое отвечать нечем.
+ *
+ * Выражение написано в расчёте на внешний алиас `p` у таблицы projects.
+ */
+const TEAM_READ_MARK_SQL = `GREATEST(
+  COALESCE(p.chat_team_last_read_at, '-infinity'::timestamptz),
+  COALESCE((
+    SELECT MAX(a.created_at)
+      FROM project_chat_messages a
+     WHERE a.project_id = p.id
+       AND a.sender_type = 'team'
+  ), '-infinity'::timestamptz)
+)`
+
+/**
+ * Сколько сообщений клиента команда ещё не видела. Тот же расчёт стоит и на
+ * карточке проекта в «Папках», и в сводном списке чатов — определение одно,
+ * иначе два счётчика на одном экране показывали бы разное.
+ *
+ * Как и порог выше, ждёт внешний алиас `p`.
+ */
+export const TEAM_UNREAD_COUNT_SQL = `COALESCE((
+  SELECT COUNT(*)::int
+    FROM project_chat_messages m
+   WHERE m.project_id = p.id
+     AND m.sender_type = 'client'
+     AND m.created_at > ${TEAM_READ_MARK_SQL}
+), 0)`
+
+/** Отмечает чат проекта прочитанным со стороны команды. */
+export async function markProjectChatReadByTeam(
+  projectId: string,
+): Promise<void> {
+  await query(
+    `UPDATE projects SET chat_team_last_read_at = NOW() WHERE id = $1`,
+    [projectId],
+  )
+}
+
+export type AdminChatRow = {
+  projectId: string
+  projectName: string
+  ownerId: string
+  ownerEmail: string
+  ownerName: string
+  isArchived: boolean
+  unreadCount: number
+  lastMessageAt: Date | null
+  lastMessageBody: string | null
+  lastMessageSenderType: ProjectChatSenderType | null
+  lastMessageSenderName: string | null
+}
+
+/**
+ * Сводный список чатов для админки: по строке на проект, свежие сверху.
+ *
+ * Проекты без единого сообщения тоже здесь — раздел отвечает на вопрос «где с
+ * кем переписываются», и чат, который ещё не начали, из него исчезать не
+ * должен: до него добираются поиском. Уходят они в конец списка сами, потому
+ * что сортировка идёт по времени последнего сообщения.
+ *
+ * Удалённые проекты не показываем: их чат больше некуда открыть — рабочая
+ * область такой проект не отдаёт.
+ */
+export async function listAdminChats(params: {
+  search: string
+  limit: number
+  offset: number
+}): Promise<AdminChatRow[]> {
+  const pattern = `%${params.search.trim()}%`
+
+  const result = await query<AdminChatRow>(
+    `SELECT p.id                        AS "projectId",
+            p.name                      AS "projectName",
+            p.user_id                   AS "ownerId",
+            u.email                     AS "ownerEmail",
+            COALESCE(u.full_name, '')   AS "ownerName",
+            COALESCE(p.is_archived, FALSE) AS "isArchived",
+            ${TEAM_UNREAD_COUNT_SQL}    AS "unreadCount",
+            last_msg.created_at             AS "lastMessageAt",
+            last_msg.body                   AS "lastMessageBody",
+            last_msg.sender_type            AS "lastMessageSenderType",
+            last_msg.sender_name            AS "lastMessageSenderName"
+       FROM projects p
+       JOIN users u ON u.id = p.user_id
+       -- LATERAL, а не GROUP BY: нужна не только дата последнего сообщения, но
+       -- и его текст с автором — строка списка показывает, чем разговор
+       -- закончился, иначе по ней не понять, ждут ли ответа.
+       LEFT JOIN LATERAL (
+         SELECT m.body, m.sender_type, m.sender_name, m.created_at
+           FROM project_chat_messages m
+          WHERE m.project_id = p.id
+          ORDER BY m.created_at DESC
+          LIMIT 1
+       ) last_msg ON TRUE
+      WHERE p.deleted_at IS NULL
+        AND ($1::text = ''
+             OR p.name ILIKE $2
+             OR u.email ILIKE $2
+             OR COALESCE(u.full_name, '') ILIKE $2)
+      ORDER BY last_msg.created_at DESC NULLS LAST,
+               p.created_at DESC
+      LIMIT $3 OFFSET $4`,
+    [params.search.trim(), pattern, params.limit, params.offset],
+  )
+  return result.rows
+}
+
+/**
+ * Сколько сообщений клиентов ждут команду по всем проектам сайта — число на
+ * значке раздела «Чаты» в боковом меню.
+ */
+export async function countTeamUnreadTotal(): Promise<number> {
+  // Складываем те же самые счётчики по проектам, а не пересчитываем порог для
+  // каждого сообщения: проектов на порядок меньше, а определение непрочитанного
+  // остаётся ровно одно на весь сайт.
+  const result = await query<{ count: number }>(
+    `SELECT COALESCE(SUM(unread), 0)::int AS count
+       FROM (
+         SELECT ${TEAM_UNREAD_COUNT_SQL} AS unread
+           FROM projects p
+          WHERE p.deleted_at IS NULL
+       ) totals`,
+  )
+  return result.rows[0]?.count ?? 0
+}

@@ -4,6 +4,7 @@ import Link from "next/link"
 import { ArrowLeft, BarChart3 } from "lucide-react"
 import { useI18n } from "@/components/account/i18n"
 import { StatsReadiness } from "@/components/account/stats-readiness"
+import { HelpPageButton } from "@/components/help/help-page-button"
 import { StatisticsExplorer } from "@/components/statistics/statistics-explorer"
 import { ProcessingIndicator } from "@/components/account/processing-indicator"
 
@@ -42,15 +43,20 @@ export function StatisticsPageClient() {
               <BarChart3 className="h-4 w-4" />
               {t.statsAdvEyebrow}
             </div>
-            <h1 className="mt-2.5 text-[26px] font-bold tracking-tight text-ws-1 md:text-[32px]">
-              {t.statsAdvTitle}
-            </h1>
+            {/* Иконка сразу после названия — тот же вход, что в админке:
+                стиль справки один на весь продукт (UI_GUIDE §0.13). */}
+            <div className="mt-2.5 flex items-center gap-3">
+              <h1 className="text-[26px] font-bold tracking-tight text-ws-1 md:text-[32px]">
+                {t.statsAdvTitle}
+              </h1>
+              <HelpPageButton id="statistics.personal" />
+            </div>
             <p className="mt-2 max-w-[680px] text-[14px] text-ws-3">
               {t.statsAdvDesc}
             </p>
           </header>
 
-          <StatisticsExplorer endpoint="/api/account/statistics" />
+          <StatisticsExplorer endpoint="/api/account/statistics" variant="account" />
 
           <section className="rounded-2xl border border-border/60 bg-ws-panel px-4 py-4">
             <h2 className="text-[15px] font-semibold text-ws-1">
@@ -66,6 +72,7 @@ export function StatisticsPageClient() {
                   t.statsAdvSoonReady1,
                   t.statsAdvSoonReady2,
                   t.statsAdvSoonReady3,
+                  t.statsAdvSoonReady4,
                 ]}
                 pendingTitle={t.statsAdvSoonPending}
                 pending={[

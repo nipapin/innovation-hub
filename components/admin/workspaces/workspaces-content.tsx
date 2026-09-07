@@ -6,11 +6,11 @@ import { toast } from "sonner"
 
 import { useAdminI18n } from "@/components/admin/admin-dict"
 import { useAdminData } from "@/components/admin/data/admin-data-context"
+import { AdminWorkArea } from "@/components/admin/shared/admin-work-area"
 import { ArchiveDialog } from "@/components/account/workspace/archive-dialog"
 import { ClipboardPanel } from "@/components/account/workspace/clipboard-panel"
 import { WorkspaceContextMenu } from "@/components/account/workspace/context-menu"
 import { PreviewDialog } from "@/components/account/workspace/file-preview"
-import { FullMode } from "@/components/account/workspace/full-mode"
 import { ProjectsColumn } from "@/components/account/workspace/projects-column"
 import { ShareDialog } from "@/components/account/workspace/share-dialog"
 import { WorkspaceDialogs } from "@/components/account/workspace/workspace-dialogs"
@@ -25,8 +25,15 @@ import { UsersColumn, type PipelineUserDto } from "./users-column"
  *
  * Колонки 2 и 3 — те же компоненты, что в кабинете пользователя; отличается
  * только источник данных (createWorkspaceSource). Своя раскладка, а не
- * WorkspacePageClient, потому что здесь не нужен ни упрощённый режим, ни
- * мобильная навигация по табам: админский вид всегда полный и трёхколоночный.
+ * WorkspacePageClient, потому что здесь не нужна мобильная навигация по табам:
+ * чужими папками распоряжаются с рабочего места.
+ *
+ * А вот переключатель «Полный / Упрощённый» здесь тот же, что у клиента, и
+ * стоит он в `AdminWorkArea` рядом с «Чатами». Упрощённый вид показывает проект
+ * так, как его видит владелец, — IN, OUT и ничего лишнего; это ответ на вопрос
+ * «что человек вообще видит у себя», который иначе приходится держать в голове.
+ * Колонки при этом остаются в обоих видах: они не часть проекта, а навигация
+ * администратора по чужим.
  *
  * Полосы запуска здесь нет намеренно: пуск и остановка — состояние всей
  * установки, и живут они в «Конвейере» (docs/ADMIN_WORKSPACE_PLAN.md §2).
@@ -35,6 +42,7 @@ function WorkspacesLayout({
   users,
   loadingUsers,
   selectedUserId,
+  ownerEmail,
   onSelectUser,
   onToggleUser,
   onTransferred,
@@ -42,6 +50,7 @@ function WorkspacesLayout({
   users: PipelineUserDto[]
   loadingUsers: boolean
   selectedUserId: string | null
+  ownerEmail: string | null
   onSelectUser: (userId: string) => void
   onToggleUser: (userId: string, enabled: boolean) => void
   onTransferred: () => void
@@ -59,9 +68,7 @@ function WorkspacesLayout({
           onToggle={onToggleUser}
         />
         <ProjectsColumn />
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <FullMode />
-        </main>
+        <AdminWorkArea owner={ownerEmail} />
       </div>
 
       {/* Три колонки на телефоне не помещаются, а урезанный вид админке не
@@ -146,9 +153,12 @@ export function WorkspacesContent() {
   }, [])
 
   const source = useMemo(
-    () => createWorkspaceSource(selectedUserId, canManage),
+    () => createWorkspaceSource({ userId: selectedUserId, canManage }),
     [selectedUserId, canManage],
   )
+
+  const ownerEmail =
+    users.find((user) => user.id === selectedUserId)?.email ?? null
 
   return (
     <WorkspaceProvider source={source}>
@@ -156,6 +166,7 @@ export function WorkspacesContent() {
         users={users}
         loadingUsers={loadingUsers}
         selectedUserId={selectedUserId}
+        ownerEmail={ownerEmail}
         onSelectUser={onSelectUser}
         onToggleUser={onToggleUser}
         onTransferred={() => void loadUsers()}

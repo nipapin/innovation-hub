@@ -7,14 +7,95 @@ import {
   AlertTriangle,
   Pause,
   Play,
+  RotateCcw,
+  Trash2,
   Users,
   Wrench,
 } from "lucide-react"
 
 import { tf } from "@/components/account/i18n"
 import { cn } from "@/lib/utils"
+import { fmtDate, trashDaysLeft } from "./format"
 import type { Project } from "./types"
 import { useWorkspace } from "./workspace-context"
+
+/**
+ * Карточка проекта в корзине.
+ *
+ * Открывается как обычная — заглянуть в удалённый проект можно, файлы на месте
+ * до истечения срока. Отличается тем, чего на ней нет: паузы и чата. Тумблер
+ * обработки удалённому проекту не к чему (конвейер его не берёт), а писать в
+ * чат нельзя — роль зажата до читателя. Вместо них срок и «Восстановить».
+ */
+function TrashProjectCard({ project }: { project: Project }) {
+  const { t, lang, selectedId, selectProject, restoreProject, openMenu, menu } =
+    useWorkspace()
+
+  const deletedAt = project.deletedAt as string
+  const daysLeft = trashDaysLeft(deletedAt)
+  const selected = project.id === selectedId
+  const isMenuTarget = menu?.kind === "project" && menu.project?.id === project.id
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      onClick={() => selectProject(project.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          selectProject(project.id)
+        }
+      }}
+      onContextMenu={(e) => openMenu("project", e, { project })}
+      className={cn(
+        "relative mb-[7px] cursor-pointer rounded-lg border px-[5px] py-2.5",
+        isMenuTarget
+          ? "border-ws-accent/75"
+          : selected
+            ? "border-ws-select/55 bg-gradient-to-b from-ws-select/[0.22] to-ws-select/[0.06] shadow-ws-inset"
+            : "border-white/10 hover:border-white/20",
+      )}
+    >
+      {selected ? (
+        <span className="absolute bottom-[9px] left-0 top-[7px] w-[3px] rounded-[3px] bg-ws-select" />
+      ) : null}
+
+      <div className="flex items-center gap-2.5 leading-tight">
+        <Trash2 className="h-5 w-5 shrink-0 text-ws-4" />
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-[16px]",
+            selected ? "text-ws-1" : "text-ws-3",
+          )}
+        >
+          {project.name}
+        </span>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-[11.5px] text-ws-5">
+          {tf(t.trashDeletedOn, { date: fmtDate(deletedAt, lang) })}
+          {" · "}
+          {daysLeft === 0
+            ? t.trashLastDay
+            : tf(t.trashDaysLeft, { days: daysLeft })}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            restoreProject(project)
+          }}
+          className="flex shrink-0 items-center gap-1 rounded-full border border-white/[0.12] px-2.5 py-[3px] text-[11px] text-ws-2 hover:brightness-125"
+        >
+          <RotateCcw className="h-3 w-3" />
+          {t.mRestore}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 /** Карточка проекта в левой колонке: имя, статус обработки и чат. */
 export function ProjectCard({
@@ -37,6 +118,7 @@ export function ProjectCard({
 
   const selected = project.id === selectedId
   const isTool = groupName === "tools"
+  const inTrash = project.deletedAt != null
   const paused = project.isPaused
   /**
    * Проект остановлен биллингом. Тумблер в этом случае показывается, но
@@ -56,6 +138,8 @@ export function ProjectCard({
   const sharedWith = project.memberCount > 0 ? project.memberCount : null
   const isMenuTarget = menu?.kind === "project" && menu.project?.id === project.id
   const Icon = isTool ? Wrench : Folder
+
+  if (inTrash) return <TrashProjectCard project={project} />
 
   const chatPill = (
     <button
