@@ -1,17 +1,33 @@
 import "dotenv/config"
-import { readFileSync } from "node:fs"
+import { spawn } from "node:child_process"
+import { readFileSync, statSync } from "node:fs"
 import { Client } from "pg"
-import { readConnectionConfig, resolvePgSsl } from "./pg-connection.mjs"
+import { createReadStream } from "node:fs"
+import { createGunzip } from "node:zlib"
+import { libpqSslMode, readConnectionConfig, resolvePgSsl } from "./pg-connection.mjs"
 
-// Restores a plain-SQL dump (pg_dump/Adminer format) into the database
-// configured via PG* env vars or DB_CONNECTION_STRING.
+// Restores a dump into the database configured via PG* env vars or
+// DB_CONNECTION_STRING.
 //
 // Usage:
-//   node scripts/db-restore.mjs <path-to-dump.sql> [--yes]
+//   node scripts/db-restore.mjs <path-to-dump.sql[.gz]> [--yes]
 //
 // Without --yes it only shows the target and current contents (dry run).
-// With --yes it drops the whole `public` schema and replays the dump
-// inside a single transaction, so a failure leaves the database untouched.
+//
+// ── Два формата, два пути исполнения (проверено 2026-09-08)
+//
+// Дамп Adminer — это чистый SQL, и он проигрывается драйвером в одной
+// транзакции: упало на середине — база не тронута.
+//
+// Дамп `pg_dump` так проиграть НЕЛЬЗЯ, и это выяснилось на живой проверке:
+// начиная с PostgreSQL 18 он начинается с мета-команды `\restrict`, а данные
+// едут блоками `COPY ... FROM stdin`. Ни то, ни другое не SQL — драйвер падает
+// с `syntax error at or near "\"` на пятой строке. Такой дамп исполняет `psql`,
+// он единственный понимает мета-команды и copy-in.
+//
+// Поэтому формат определяется по содержимому, а не по расширению, и pg_dump
+// уходит в `psql -v ON_ERROR_STOP=1 --single-transaction` — та же гарантия
+// «упало значит не тронуло», только чужими руками.
 
 const args = process.argv.slice(2)
 const confirmed = args.includes("--yes")
@@ -22,7 +38,22 @@ if (!dumpPath) {
   process.exit(1)
 }
 
-const dumpSql = readFileSync(dumpPath, "utf8")
+const isGzip = /\.gz$/i.test(dumpPath)
+
+/**
+ * Формат определяется по содержимому. Расширение врёт: `.sql` бывает и у того,
+ * и у другого, а цена ошибки — падение на середине восстановления.
+ */
+function looksLikePgDump(text) {
+  return /^\\restrict\b/m.test(text) || /^COPY .* FROM stdin;/m.test(text)
+}
+
+function readDumpHead() {
+  if (isGzip) return null
+  return readFileSync(dumpPath, "utf8")
+}
+
+const dumpSql = readDumpHead()
 
 let config
 try {
@@ -53,10 +84,71 @@ async function printTableCounts(label) {
   }
 }
 
+/**
+ * Проиграть дамп через `psql`.
+ *
+ * Схема сносится не отдельным запросом, а первой строкой того же потока:
+ * `--single-transaction` заворачивает ВСЁ, что пришло на stdin, в одну
+ * транзакцию. Снеси мы схему драйвером заранее — при падении psql база
+ * осталась бы пустой, то есть ровно в том состоянии, от которого этот скрипт
+ * и должен защищать.
+ */
+function restoreWithPsql() {
+  const env = {
+    ...process.env,
+    PGPASSWORD: config.password,
+    PGSSLMODE: libpqSslMode(config.host),
+  }
+  const args = [
+    "--single-transaction",
+    "-v", "ON_ERROR_STOP=1",
+    "-q",
+    "--host", config.host,
+    "--port", String(config.port),
+    "--username", config.user,
+    "--dbname", config.database,
+  ]
+
+  return new Promise((resolve, reject) => {
+    const child = spawn("psql", args, { env, stdio: ["pipe", "inherit", "pipe"] })
+    let stderr = ""
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk)
+      process.stderr.write(chunk)
+    })
+    child.on("error", (error) => {
+      reject(
+        error.code === "ENOENT"
+          ? new Error(
+              "psql не найден. Дамп pg_dump проигрывается только им: " +
+                "`apt install postgresql-client` на сервере, `brew install libpq` на macOS.",
+            )
+          : error,
+      )
+    })
+    child.on("close", (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(`psql вышел с кодом ${code}.\n${stderr.trim()}`))
+    })
+
+    child.stdin.write("DROP SCHEMA public CASCADE;\nCREATE SCHEMA public;\n")
+    const file = createReadStream(dumpPath)
+    const stream = isGzip ? file.pipe(createGunzip()) : file
+    stream.on("error", reject)
+    stream.pipe(child.stdin)
+  })
+}
+
 async function main() {
   await client.connect()
   console.log(`Target: ${config.user}@${config.host}:${config.port}/${config.database}`)
-  console.log(`Dump:   ${dumpPath} (${Math.round(dumpSql.length / 1024)} KB)\n`)
+
+  const viaPsql = isGzip || looksLikePgDump(dumpSql ?? "")
+  const size = statSync(dumpPath).size
+  console.log(
+    `Dump:   ${dumpPath} (${Math.round(size / 1024)} KB, ` +
+      `${viaPsql ? "формат pg_dump → psql" : "чистый SQL → драйвер"})\n`,
+  )
 
   await printTableCounts("Current contents (will be REPLACED):")
 
@@ -68,15 +160,20 @@ async function main() {
   }
 
   console.log("\nRestoring...")
-  await client.query("BEGIN")
-  try {
-    await client.query("DROP SCHEMA public CASCADE")
-    await client.query("CREATE SCHEMA public")
-    await client.query(dumpSql)
-    await client.query("COMMIT")
-  } catch (e) {
-    await client.query("ROLLBACK").catch(() => {})
-    throw e
+
+  if (viaPsql) {
+    await restoreWithPsql()
+  } else {
+    await client.query("BEGIN")
+    try {
+      await client.query("DROP SCHEMA public CASCADE")
+      await client.query("CREATE SCHEMA public")
+      await client.query(dumpSql)
+      await client.query("COMMIT")
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => {})
+      throw e
+    }
   }
 
   console.log("Restore complete.\n")

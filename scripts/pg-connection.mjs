@@ -143,3 +143,18 @@ export function resolvePgSsl(host) {
 
   return undefined
 }
+
+/**
+ * Режим TLS для консольных утилит libpq (`pg_dump`, `psql`).
+ *
+ * `resolvePgSsl` отвечает драйверу `pg`, а у libpq словарь другой: `no-verify`
+ * там невалиден, и утилита падает с «invalid sslmode value». Наш `no-verify`
+ * означает «шифровать, но не проверять сертификат» — у libpq это `require`,
+ * ровно оно и нужно для самоподписанного сертификата провайдера.
+ */
+export function libpqSslMode(host) {
+  if (!resolvePgSsl(host)) return "disable"
+  const mode = process.env.PGSSLMODE?.trim().toLowerCase()
+  const known = ["allow", "prefer", "require", "verify-ca", "verify-full"]
+  return mode && known.includes(mode) ? mode : "require"
+}
