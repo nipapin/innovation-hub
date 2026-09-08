@@ -1,20 +1,28 @@
-name: Enable Auto Merge
+name: Auto Merge
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize]
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: [main]
 
 permissions:
   pull-requests: write
   contents: write
 
 jobs:
-  enable:
+  merge:
+    if: |
+      github.event.pull_request.user.login == 'alexIV-0' &&
+      github.event.pull_request.head.ref == 'UI_dev' &&
+      github.event.pull_request.head.repo.full_name == 'alexIV-0/innovation-hub' &&
+      github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-
     steps:
-      - name: Enable auto merge
+      - name: Merge pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          gh pr merge ${{ github.event.pull_request.number }} --auto --merge
+          # --auto works only when merge is blocked (required checks/reviews).
+          # Without branch protection the PR is already "clean", so fall back to a direct merge.
+          gh pr merge "$PR_URL" --merge --auto || gh pr merge "$PR_URL" --merge
