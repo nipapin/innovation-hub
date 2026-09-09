@@ -16,6 +16,7 @@ import {
 import { tf } from "@/components/account/i18n"
 import { cn } from "@/lib/utils"
 import { fmtDate, trashDaysLeft } from "./format"
+import { GiftBadge } from "./gift-badge"
 import type { Project } from "./types"
 import { useWorkspace } from "./workspace-context"
 
@@ -212,6 +213,10 @@ export function ProjectCard({
         >
           {project.name}
         </span>
+        {/* До счётчика расшаренных: «чем оплачен» важнее «скольким виден». */}
+        {project.gift ? (
+          <GiftBadge gift={project.gift} size="sm" className="shrink-0" />
+        ) : null}
         {sharedWith ? (
           <span
             title={tf(t.projectSharedWith, { users: sharedWith })}

@@ -5,6 +5,7 @@ import { FolderOpen, Loader2, Plus, Search, Trash2, Wrench } from "lucide-react"
 
 import { ResizeGrip } from "@/components/account/resize-grip"
 import { useDragSize } from "@/components/account/use-drag-size"
+import { GiftBadge, GiftCorner } from "@/components/account/workspace/gift-badge"
 import { useWorkspace } from "@/components/account/workspace/workspace-context"
 import { fmtDate } from "@/components/account/workspace/format"
 import { cn } from "@/lib/utils"
@@ -21,6 +22,22 @@ export function useToolTitle() {
 /** Подпись подключённого источника — она же подсказка «что вообще открыто». */
 function sourceLabel(tool: ToolInstance, fallback: string): string {
   return tool.source?.label || fallback
+}
+
+/**
+ * Подарок проекта, к которому подключён инструмент.
+ *
+ * Инструмент работает в чужой папке, и «за чей счёт» — это всегда вопрос к
+ * проекту, а не к самому инструменту. Поэтому не своё поле, а взгляд на список
+ * проектов: он уже загружен рядом, и второго источника правды не заводим.
+ */
+function useToolGift() {
+  const { projects } = useWorkspace()
+  return (tool: ToolInstance) => {
+    const projectId = tool.source?.projectId
+    if (!projectId) return null
+    return projects.find((p) => p.id === projectId)?.gift ?? null
+  }
 }
 
 /** Кнопка «Добавить инструмент» — на месте «Новый проект» в разделе проектов. */
@@ -49,9 +66,11 @@ function ToolRow({ tool }: { tool: ToolInstance }) {
   const { t } = useWorkspace()
   const { selected, openTool, removeTool } = useTools()
   const title = useToolTitle()
+  const toolGift = useToolGift()
   const definition = findTool(tool.toolKey)
   const Icon = definition ? toolIcon(definition.icon) : Wrench
   const active = selected?.id === tool.id
+  const gift = toolGift(tool)
 
   return (
     <div
@@ -72,8 +91,15 @@ function ToolRow({ tool }: { tool: ToolInstance }) {
           : "border-white/[0.08] bg-ws-panel hover:border-white/[0.16] hover:bg-ws-hover",
       )}
     >
-      <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] border border-ws-accent/30 bg-ws-accent/[0.08]">
+      <span className="relative flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] border border-ws-accent/30 bg-ws-accent/[0.08]">
         <Icon className="h-[18px] w-[18px] text-ws-accent" />
+        {gift ? (
+          <GiftBadge
+            gift={gift}
+            size="sm"
+            className="absolute -bottom-1 -right-1 ring-2 ring-ws-panel"
+          />
+        ) : null}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[14px] font-medium text-ws-1">
@@ -217,6 +243,7 @@ export function ToolsGrid() {
   const { t, lang } = useWorkspace()
   const { tools, loading, openTool, removeTool } = useTools()
   const title = useToolTitle()
+  const toolGift = useToolGift()
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -258,6 +285,7 @@ export function ToolsGrid() {
               {tools.map((tool) => {
                 const definition = findTool(tool.toolKey)
                 const Icon = definition ? toolIcon(definition.icon) : Wrench
+                const gift = toolGift(tool)
                 return (
                   <div
                     key={tool.id}
@@ -273,8 +301,9 @@ export function ToolsGrid() {
                     className="flex cursor-pointer flex-col gap-4 rounded-2xl border border-white/10 bg-ws-panel p-[22px] text-left hover:border-white/[0.18] hover:bg-ws-hover"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <span className="flex h-[46px] w-[46px] items-center justify-center rounded-full border border-ws-accent/30 bg-ws-accent/[0.08]">
+                      <span className="relative flex h-[46px] w-[46px] items-center justify-center rounded-full border border-ws-accent/30 bg-ws-accent/[0.08]">
                         <Icon className="h-[22px] w-[22px] text-ws-accent" />
+                        {gift ? <GiftCorner gift={gift} /> : null}
                       </span>
                       <button
                         type="button"

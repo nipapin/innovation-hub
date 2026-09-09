@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireUserApi } from "@/lib/admin-auth"
+import { listGiftProjects, type ProjectGift } from "@/lib/billing/grants"
 import { createProjectSchema } from "@/lib/project-schemas"
 import { writeProjectMeta } from "@/lib/project-storage"
 import { countUnreadForProjects } from "@/lib/repositories/project-chat"
@@ -85,6 +86,8 @@ function serializeProject(
     sharedWithMe: boolean
     memberRole: ProjectMemberRole | null
     deletedAt: string | null
+    /** Проект оплачен подарком: тестовым периодом или акцией. */
+    gift?: ProjectGift | null
   },
 ) {
   return {
@@ -111,6 +114,9 @@ function serializeProject(
     unreadCount: extra.unreadCount,
     // Скольким людям расшарен проект — число в углу карточки.
     memberCount: extra.memberCount,
+    // Чем оплачен. Не у каждого проекта есть подарок, и `null` здесь — это
+    // «платит владелец», а не «мы не знаем».
+    gift: extra.gift ?? null,
     yougileChatId: p.yougileChatId,
   }
 }
@@ -191,6 +197,19 @@ export async function GET(request: NextRequest) {
       memberCounts = {}
     }
 
+    /**
+     * Подарочные проекты — свои. У расшаренного платит владелец, и его подарок
+     * не наше дело: значок на чужой карточке обещал бы деньги, которых у
+     * смотрящего нет.
+     */
+    let gifts = new Map<string, ProjectGift>()
+    try {
+      gifts = await listGiftProjects(auth.userId)
+    } catch (error) {
+      console.error("[projects] gift projects failed", error)
+      // Non-fatal: значок пропадёт, список останется.
+    }
+
     const projects = [
       ...owned.map((p) =>
         serializeProject(p, {
@@ -199,6 +218,7 @@ export async function GET(request: NextRequest) {
           sharedWithMe: false,
           memberRole: null,
           deletedAt: toIso(p.deletedAt),
+          gift: gifts.get(p.id) ?? null,
         }),
       ),
       ...shared.map((p) =>

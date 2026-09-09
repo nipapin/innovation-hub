@@ -20,6 +20,7 @@ import { tf } from "@/components/account/i18n"
 import { cn } from "@/lib/utils"
 import { BottomPanel } from "./bottom-panel"
 import { Breadcrumbs, FileBrowser } from "./file-browser"
+import { GiftCorner } from "./gift-badge"
 import {
   TRASH_RETENTION_DAYS,
   fmtDate,
@@ -549,7 +550,7 @@ export function AllProjectsPage() {
                     <div className="flex items-start justify-between gap-3">
                       <span
                         className={cn(
-                          "flex h-[46px] w-[46px] items-center justify-center rounded-full border",
+                          "relative flex h-[46px] w-[46px] items-center justify-center rounded-full border",
                           p.isPaused
                             ? "border-white/10 bg-white/[0.04]"
                             : "border-ws-out/30 bg-ws-out/[0.08]",
@@ -561,6 +562,7 @@ export function AllProjectsPage() {
                             p.isPaused ? "text-ws-4" : "text-ws-out",
                           )}
                         />
+                        {p.gift ? <GiftCorner gift={p.gift} /> : null}
                       </span>
                       {p.memberCount > 0 ? (
                         <span

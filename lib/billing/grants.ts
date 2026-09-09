@@ -404,6 +404,72 @@ export async function resetTrialGrant(input: {
 }
 
 /**
+ * Проект живёт на подарок: чем оплачен и сколько ему осталось.
+ *
+ * Тестовый период и адресная акция здесь одно и то же — «за это платим не мы»,
+ * и человеку в списке проектов важно ровно это. Различие остаётся в `kind`:
+ * подпись у значка обязана называть вещь своим именем, а не говорить «подарок»
+ * там, где человек помнит слово «акция».
+ */
+export type ProjectGift = {
+  kind: GrantKind
+  /** До какого числа. null — бессрочный подарок. */
+  expiresAt: string | null
+  /**
+   * Остаток по ленте. Срок — не единственный конец: подарок кончается и по
+   * деньгам, причём обычно раньше, и подпись, обещающая «ещё 9 дней» при
+   * нулевом остатке, врёт человеку в лицо.
+   */
+  remainingCents: number
+}
+
+/**
+ * Подарочные проекты человека — одним запросом на весь список.
+ *
+ * Список проектов рисуется целиком, поэтому спрашивать про каждый проект
+ * отдельно нельзя: это N запросов на один экран. Берём только ДЕЙСТВУЮЩИЕ
+ * подарки: у закрытого нечего показывать, а значок на нём обещал бы бесплатную
+ * работу, которой уже нет.
+ *
+ * Если проект попал сразу в два подарка, побеждает тот, что кончится раньше:
+ * значок должен называть ближайший срок, а не самый удобный.
+ */
+export async function listGiftProjects(
+  userId: string,
+): Promise<Map<string, ProjectGift>> {
+  const result = await query<{
+    projectId: string
+    kind: GrantKind
+    expiresAt: Date | null
+    remainingCents: string
+  }>(
+    `SELECT gp.project_id AS "projectId",
+            g.kind,
+            g.expires_at   AS "expiresAt",
+            COALESCE((
+              SELECT SUM(b.amount_cents) FROM billing_transactions b
+               WHERE b.grant_id = g.id
+            ), 0)::text    AS "remainingCents"
+       FROM billing_grants g
+       JOIN billing_grant_projects gp ON gp.grant_id = g.id
+      WHERE g.user_id = $1 AND g.status = 'active'
+      ORDER BY g.expires_at ASC NULLS LAST`,
+    [userId],
+  )
+
+  const gifts = new Map<string, ProjectGift>()
+  for (const row of result.rows) {
+    if (gifts.has(row.projectId)) continue
+    gifts.set(row.projectId, {
+      kind: row.kind,
+      expiresAt: row.expiresAt ? new Date(row.expiresAt).toISOString() : null,
+      remainingCents: Math.max(0, Number(row.remainingCents)),
+    })
+  }
+  return gifts
+}
+
+/**
  * Акции глазами того, кому они достались.
  *
  * Отдельно от `listGrantsFor`: там строка гранта как она лежит в базе, здесь —

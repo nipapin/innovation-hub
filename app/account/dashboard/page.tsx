@@ -6,6 +6,7 @@ import {
 } from "@/components/account/sections/dashboard-section"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getCurrentUser } from "@/lib/admin-auth"
+import { listGiftProjects } from "@/lib/billing/grants"
 import { countUnreadForProjects } from "@/lib/repositories/project-chat"
 import {
   countMediaByUserId,
@@ -35,9 +36,12 @@ export default async function AccountDashboardPage() {
 }
 
 async function DashboardProjectsData({ userId }: { userId: string }) {
-  const [projects, mediaCount] = await Promise.all([
+  const [projects, mediaCount, gifts] = await Promise.all([
     listProjectsByUserId(userId, { archived: false }),
     countMediaByUserId(userId),
+    // Подарочные проекты — тем же запросом, что и список: значок про подарок
+    // должен появляться вместе с карточкой, а не догоняться отдельным вызовом.
+    listGiftProjects(userId),
   ])
   const unreadCounts = await countUnreadForProjects(projects.map((p) => p.id))
 
@@ -53,6 +57,7 @@ async function DashboardProjectsData({ userId }: { userId: string }) {
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
         unreadChatCount: unreadCounts[p.id] ?? 0,
+        gift: gifts.get(p.id) ?? null,
       }))}
     />
   )

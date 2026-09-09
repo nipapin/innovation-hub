@@ -24,6 +24,19 @@ export type InItemStatus = "queued" | "running" | "done" | "failed"
 
 export type ProjectGroupName = "personal" | "shared" | "tools" | "archive"
 
+/**
+ * Чем оплачен проект, если платит не владелец. Форма совпадает с серверной
+ * (`ProjectGift` в lib/billing/grants.ts) — тип оттуда сюда не тянем, чтобы
+ * клиентские типы не зависели от модуля, который ходит в базу.
+ */
+export type ProjectGift = {
+  kind: "trial" | "targeted"
+  /** До какого числа действует. null — бессрочный. */
+  expiresAt: string | null
+  /** Остаток подарка: он кончается и по деньгам, не только по сроку. */
+  remainingCents: number
+}
+
 export type Project = {
   id: string
   name: string
@@ -57,6 +70,12 @@ export type Project = {
    * Считается по project_members (функция расшаривания из upstream/main).
    */
   memberCount: number
+  /**
+   * Подарок, из которого этот проект оплачивается: тестовый период или акция.
+   * `null` — платит владелец. Приходит только по своим проектам: у
+   * расшаренного платит его хозяин, и чужой подарок смотрящего не касается.
+   */
+  gift?: ProjectGift | null
 }
 
 export type ChatMessage = {

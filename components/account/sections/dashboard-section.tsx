@@ -15,6 +15,8 @@ import { usePollUnreadCounts } from "@/lib/hooks/use-poll-unread-counts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CreateProjectButton } from "@/components/account/sections/create-project-button"
+import { GiftCorner } from "@/components/account/workspace/gift-badge"
+import type { ProjectGift } from "@/components/account/workspace/types"
 import { cn } from "@/lib/utils"
 
 export type DashboardProject = {
@@ -26,6 +28,8 @@ export type DashboardProject = {
   createdAt: string
   updatedAt: string
   unreadChatCount: number
+  /** Оплачен подарком: тестовым периодом или акцией. null — платит владелец. */
+  gift?: ProjectGift | null
 }
 
 function formatDate(iso: string) {
@@ -311,8 +315,11 @@ function ProjectCard({ project }: { project: DashboardProject }) {
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-gradient-to-b from-white/[0.06] to-transparent text-muted-foreground transition-colors duration-200 group-hover:border-primary/30 group-hover:text-primary">
+        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-gradient-to-b from-white/[0.06] to-transparent text-muted-foreground transition-colors duration-200 group-hover:border-primary/30 group-hover:text-primary">
           <FolderKanban className="h-[18px] w-[18px]" />
+          {project.gift ? (
+            <GiftCorner gift={project.gift} ringClass="ring-[hsl(var(--surface-2))]" />
+          ) : null}
         </span>
         <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-all duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-primary" />
       </div>
