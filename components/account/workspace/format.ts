@@ -9,7 +9,7 @@ import {
 
 import type { Dictionary } from "@/components/account/i18n"
 import { TRASH_RETENTION_DAYS } from "@/lib/storage/trash-policy"
-import type { DriveFile, Project } from "./types"
+import type { DriveFile, Project, ProjectGift } from "./types"
 
 export { TRASH_RETENTION_DAYS }
 
@@ -322,5 +322,35 @@ export function mapProject(raw: Record<string, unknown>): Project {
     updatedAt: String(raw.updatedAt ?? ""),
     unreadCount: Number(raw.unreadCount ?? 0),
     memberCount: Number(raw.memberCount ?? 0),
+    /**
+     * Почему проект стоит. Поле разбирается здесь, а не берётся как есть:
+     * карточка по нему решает, показывать ли «нет средств», и чужая строка на
+     * этом месте объявила бы проект остановленным биллингом ни за что.
+     */
+    pausedReason:
+      raw.pausedReason === "no-funds" ||
+      raw.pausedReason === "trial-over" ||
+      raw.pausedReason === "no-vendor-key"
+        ? raw.pausedReason
+        : null,
+    gift: mapGift(raw.gift),
+  }
+}
+
+/**
+ * Подарок, из которого оплачивается проект.
+ *
+ * Разбираем поштучно, а не приводим типом: значок обещает человеку бесплатную
+ * работу и срок, и собрать его из непроверенного объекта значило бы показать
+ * «осталось NaN дн.» при первом же расхождении с сервером.
+ */
+function mapGift(raw: unknown): ProjectGift | null {
+  if (!raw || typeof raw !== "object") return null
+  const gift = raw as Record<string, unknown>
+  if (gift.kind !== "trial" && gift.kind !== "targeted") return null
+  return {
+    kind: gift.kind,
+    expiresAt: typeof gift.expiresAt === "string" ? gift.expiresAt : null,
+    remainingCents: Number(gift.remainingCents ?? 0),
   }
 }

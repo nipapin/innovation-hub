@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAdminApi } from "@/lib/admin-auth"
 import { auditFrom } from "@/lib/audit"
+import { listGiftsForProjects, type ProjectGift } from "@/lib/billing/grants"
 import { listPipelineProjectsByOwner } from "@/lib/pipeline/repository"
 import { writeProjectMeta } from "@/lib/project-storage"
 import { createProject, deleteProject } from "@/lib/repositories/projects"
@@ -16,6 +17,10 @@ export const runtime = "nodejs"
  * Архивные приходят вместе с остальными и помечены isArchived — админ должен их
  * видеть и понимать, что они не обрабатываются. Расшаренность не показываем:
  * проект принадлежит владельцу, а кто ещё с ним работает — не вопрос конвейера.
+ *
+ * А вот подарок показываем: карточка одна и та же, что в кабинете, и значок на
+ * ней отвечает на первый вопрос поддержки — «почему у него тут работает
+ * бесплатно и сколько это ещё продлится».
  */
 export async function GET(request: NextRequest) {
   const auth = await requireAdminApi(request, "projects.access")
@@ -29,7 +34,18 @@ export async function GET(request: NextRequest) {
   }
 
   const projects = await listPipelineProjectsByOwner(userId)
-  return NextResponse.json({ projects })
+
+  let gifts = new Map<string, ProjectGift>()
+  try {
+    gifts = await listGiftsForProjects(projects.map((p) => p.id))
+  } catch (error) {
+    console.error("[workspaces] gift projects failed", error)
+    // Не роняем колонку из-за значка: список папок нужнее.
+  }
+
+  return NextResponse.json({
+    projects: projects.map((p) => ({ ...p, gift: gifts.get(p.id) ?? null })),
+  })
 }
 
 const createSchema = z.object({

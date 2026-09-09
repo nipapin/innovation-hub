@@ -424,7 +424,7 @@ export type ProjectGift = {
 }
 
 /**
- * Подарочные проекты человека — одним запросом на весь список.
+ * Подарочные проекты — одним запросом на весь список.
  *
  * Список проектов рисуется целиком, поэтому спрашивать про каждый проект
  * отдельно нельзя: это N запросов на один экран. Берём только ДЕЙСТВУЮЩИЕ
@@ -434,8 +434,9 @@ export type ProjectGift = {
  * Если проект попал сразу в два подарка, побеждает тот, что кончится раньше:
  * значок должен называть ближайший срок, а не самый удобный.
  */
-export async function listGiftProjects(
-  userId: string,
+async function readProjectGifts(
+  where: string,
+  params: unknown[],
 ): Promise<Map<string, ProjectGift>> {
   const result = await query<{
     projectId: string
@@ -452,9 +453,9 @@ export async function listGiftProjects(
             ), 0)::text    AS "remainingCents"
        FROM billing_grants g
        JOIN billing_grant_projects gp ON gp.grant_id = g.id
-      WHERE g.user_id = $1 AND g.status = 'active'
+      WHERE g.status = 'active' AND ${where}
       ORDER BY g.expires_at ASC NULLS LAST`,
-    [userId],
+    params,
   )
 
   const gifts = new Map<string, ProjectGift>()
@@ -467,6 +468,27 @@ export async function listGiftProjects(
     })
   }
   return gifts
+}
+
+/** Свои подарочные проекты: кабинет спрашивает про себя. */
+export async function listGiftProjects(
+  userId: string,
+): Promise<Map<string, ProjectGift>> {
+  return readProjectGifts("g.user_id = $1", [userId])
+}
+
+/**
+ * Подарочные проекты по списку — для админки, которая смотрит чужие папки.
+ *
+ * Владельца здесь не спрашиваем: подарок принадлежит хозяину проекта, и
+ * фильтровать по смотрящему значило бы прятать от администратора ровно тот
+ * факт, за которым он в эти папки и пришёл.
+ */
+export async function listGiftsForProjects(
+  projectIds: string[],
+): Promise<Map<string, ProjectGift>> {
+  if (projectIds.length === 0) return new Map()
+  return readProjectGifts("gp.project_id = ANY($1::text[])", [projectIds])
 }
 
 /**
