@@ -233,6 +233,15 @@ export const GRANT_STATUSES = [
 ] as const
 export type GrantStatus = (typeof GRANT_STATUSES)[number]
 
+/**
+ * Адрес работы копирования у гранта: один на грант — отсюда идемпотентность
+ * выдачи. Живёт здесь, а не рядом с выдачей: тот же адрес спрашивает сброс,
+ * а импорт друг из друга замкнул бы модули в кольцо.
+ */
+export function provisionEventId(grantId: string): string {
+  return `trial-provision:${grantId}`
+}
+
 export type GrantRecord = {
   id: string
   userId: string

@@ -184,6 +184,9 @@ export const ACTION_META: Record<
   // ни то ни другое быть не должно.
   "trial.revoked": { labelKey: "auditTrialRevoked", icon: Gift, tone: "danger" },
   "trial.reset": { labelKey: "auditTrialReset", icon: Gift, tone: "danger" },
+  // Дожим — «neutral»: он не двигает чужие деньги, а доводит до конца то, что
+  // человек уже запросил сам.
+  "trial.resumed": { labelKey: "auditTrialResumed", icon: Gift, tone: "neutral" },
 }
 
 export const TONE_CLASS = {

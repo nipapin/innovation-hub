@@ -62,6 +62,9 @@ export const AUDIT_ACTIONS = [
   // между «забрали деньги» и «разрешили заново» видна только по действию.
   "trial.revoked",
   "trial.reset",
+  // Дожим застрявшей выдачи: копии поехали не сами, а по команде админа. Без
+  // записи «проекты появились через неделю после активации» объяснить нечем.
+  "trial.resumed",
 ] as const
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]

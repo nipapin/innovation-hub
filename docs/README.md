@@ -91,6 +91,7 @@
 | [ADMIN_WORKSPACE_PLAN.md](./ADMIN_WORKSPACE_PLAN.md) | разделение конвейера и администрирования папок: перенос проектов, две ступени прав — этап 1 в коде, миграция не применена 🟡 |
 | [FOLDER_STATE_SSOT_PLAN.md](./FOLDER_STATE_SSOT_PLAN.md) | источник правды для тумблера — решение принято и реализовано |
 | [PROJECT_STATE_DB_S3_PROPOSAL.md](./PROJECT_STATE_DB_S3_PROPOSAL.md) | Postgres + S3 вместо файла на Drive — реализовано |
+| [COMPANY_ACCOUNTS_PLAN.md](./COMPANY_ACCOUNTS_PLAN.md) | компании внутри сайта: общий кошелёк, scope админки, оформление — решение принято, код не начат ⬜ |
 
 ## Архив
 

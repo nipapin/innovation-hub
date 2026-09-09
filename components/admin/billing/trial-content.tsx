@@ -49,8 +49,10 @@ type ActivationRow = {
   attempt: number
 }
 
+type TrialAction = "revoke" | "reset" | "resume"
+
 /** Что подтверждает открытый диалог. `null` — диалога нет. */
-type PendingAction = { row: ActivationRow; action: "revoke" | "reset" }
+type PendingAction = { row: ActivationRow; action: TrialAction }
 
 type PickRow = {
   projectId: string
@@ -180,14 +182,16 @@ export function AdminBillingTrial() {
         // 409 — грант не в том состоянии. Говорим, в каком именно: «не
         // получилось» тут бесполезно, человек не поймёт, что делать дальше.
         const body = (await res.json()) as { code?: string }
+        const reasons: Record<string, string> = {
+          "not-active": t.billingTrialNotActive,
+          "still-open": t.billingTrialStillOpen,
+          "already-reset": t.billingTrialAlreadyReset,
+          "in-flight": t.billingTrialInFlight,
+          "not-provisioning": t.billingTrialNotProvisioning,
+          "no-templates": t.billingTrialNoTemplates,
+        }
         toast.error(
-          body.code === "not-active"
-            ? t.billingTrialNotActive
-            : body.code === "still-open"
-              ? t.billingTrialStillOpen
-              : body.code === "already-reset"
-                ? t.billingTrialAlreadyReset
-                : t.billingTrialActionError,
+          (body.code ? reasons[body.code] : null) ?? t.billingTrialActionError,
         )
         return
       }
@@ -199,6 +203,8 @@ export function AdminBillingTrial() {
             amount: formatBalance(body.burnedCents, lang),
           }),
         )
+      } else if (action === "resume") {
+        toast.success(t.billingTrialResumed)
       } else {
         toast.success(t.billingTrialResetDone)
       }
@@ -446,9 +452,10 @@ export function AdminBillingTrial() {
                       ) : null}
                     </td>
                     <td className="py-2.5 text-right">
-                      {/* Две команды, а не одна кнопка с двумя смыслами: отзыв
-                          про деньги сейчас, сброс про право на будущее. Самый
-                          частый сценарий — нажать обе по очереди. */}
+                      {/* Три команды, а не одна кнопка с тремя смыслами: отзыв
+                          про деньги сейчас, сброс про право на будущее, дожим
+                          про застрявшую выдачу. Самый частый сценарий — отзыв и
+                          сброс по очереди. */}
                       <div className="flex justify-end gap-1">
                         {row.status === "active" ? (
                           <Button
@@ -460,9 +467,28 @@ export function AdminBillingTrial() {
                             {t.billingTrialRevoke}
                           </Button>
                         ) : null}
-                        {!row.resetAt &&
-                        row.status !== "active" &&
-                        row.status !== "provisioning" ? (
+                        {/* Дожим без диалога: он ничего не отнимает, а доводит
+                            до конца то, что человек запросил сам. Спрашивать
+                            подтверждение у безобидной команды — учить нажимать
+                            «ок» не глядя там, где рядом стоят опасные. */}
+                        {row.status === "provisioning" && !row.resetAt ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy === row.grantId}
+                            onClick={() =>
+                              void runTrialAction({ row, action: "resume" })
+                            }
+                          >
+                            {t.billingTrialResume}
+                          </Button>
+                        ) : null}
+                        {/* `provisioning` сюда попадает намеренно: выдача,
+                            которая не доехала, — единственное состояние, из
+                            которого раньше не было выхода вообще. Идущее
+                            копирование отобьёт сервер, а не спрятанная
+                            кнопка. */}
+                        {!row.resetAt && row.status !== "active" ? (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -500,12 +526,17 @@ export function AdminBillingTrial() {
             ? tf(t.billingTrialRevokeDesc, {
                 amount: formatBalance(pending.row.remainingCents, lang),
               })
-            : pending
-              ? tf(t.billingTrialResetDesc, {
-                  email: pending.row.email,
-                  count: pending.row.projectCount,
-                })
-              : undefined
+            : // У застрявшей выдачи ни копий, ни денег, и общий текст про
+              // «проекты прошлого набора» назвал бы ноль там, где вопрос совсем
+              // другой: дожать или начать заново.
+              pending?.row.status === "provisioning"
+              ? tf(t.billingTrialResetStuckDesc, { email: pending.row.email })
+              : pending
+                ? tf(t.billingTrialResetDesc, {
+                    email: pending.row.email,
+                    count: pending.row.projectCount,
+                  })
+                : undefined
         }
         confirmLabel={
           pending?.action === "revoke" ? t.billingTrialRevoke : t.billingTrialReset

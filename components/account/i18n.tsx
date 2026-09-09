@@ -538,10 +538,13 @@ export const dict = {
     billingActivationActions: "Команды",
     billingTrialRevoke: "Отозвать",
     billingTrialReset: "Разрешить заново",
+    billingTrialResume: "Дожать выдачу",
     billingTrialRevokeTitle: "Отозвать период у {email}?",
     billingTrialRevokeDesc:
       "Остаток {amount} будет погашен строкой в ленте, а не стёрт. Пробные проекты останутся у человека — это его файлы и его работа поверх шаблона; если своих денег нет, обработка в них встанет. Человек это увидит: баланс упадёт, проекты остановятся.",
     billingTrialResetTitle: "Разрешить пройти период заново?",
+    billingTrialResetStuckDesc:
+      "Выдача так и не доехала: копий у {email} нет, деньги не начислялись. Сброс отдаёт право пройти период заново — с новым сроком и текущим набором шаблонов, а незаконченное копирование отменяется. Если копии всё же нужны по прежнему периоду, вместо сброса дожмите выдачу.",
     billingTrialResetDesc:
       "Кнопка «Попробовать» у {email} загорится снова, и следующая активация скопирует ТЕКУЩИЙ набор шаблонов. Проектов прошлого набора у него {count} — они останутся, список станет длиннее. Прежний период не удаляется: он остаётся в истории и в ленте.",
     billingTrialRevoked: "Период отозван, погашено {amount}",
@@ -550,6 +553,10 @@ export const dict = {
     billingTrialStillOpen: "Сначала отзовите действующий период",
     billingTrialAlreadyReset: "Этот период уже сброшен",
     billingTrialActionError: "Не удалось выполнить команду",
+    billingTrialResumed: "Копирование запущено — проекты появятся у человека",
+    billingTrialInFlight: "Копии едут прямо сейчас — дождитесь конца",
+    billingTrialNotProvisioning: "Дожимать нечего: выдача уже закончилась",
+    billingTrialNoTemplates: "Пробный набор пуст — копировать нечего",
     billingUnpricedTitle: "Проекты без единицы",
     billingUnpricedDesc:
       "У этих проектов оси тарификации не заданы на сайте. Список неполный: граф мог объявить их сам, и тогда проект попал сюда напрасно. Полный ответ даёт разовый прогон сборки в «Конвейере».",
@@ -2034,10 +2041,13 @@ export const dict = {
     billingActivationActions: "Commands",
     billingTrialRevoke: "Revoke",
     billingTrialReset: "Allow again",
+    billingTrialResume: "Resume copying",
     billingTrialRevokeTitle: "Revoke the trial for {email}?",
     billingTrialRevokeDesc:
       "The remaining {amount} will be written off as a ledger line, not erased. The trial projects stay with the person — they are their files and their work on top of the template; with no own funds, processing there will stop. They will notice: the balance drops and projects halt.",
     billingTrialResetTitle: "Allow the trial to be taken again?",
+    billingTrialResetStuckDesc:
+      "Provisioning never finished: {email} has no copies and no money was credited. The reset gives back the right to take the trial again — with a fresh lifetime and the current set of templates, and the unfinished copying is cancelled. If the copies are still wanted under the old grant, resume it instead.",
     billingTrialResetDesc:
       "The «Try it» button for {email} lights up again, and the next activation copies the CURRENT set of templates. They already have {count} projects from the previous set — those stay, so the list gets longer. The old grant is not deleted: it remains in history and in the ledger.",
     billingTrialRevoked: "Trial revoked, {amount} written off",
@@ -2046,6 +2056,10 @@ export const dict = {
     billingTrialStillOpen: "Revoke the active trial first",
     billingTrialAlreadyReset: "This trial has already been reset",
     billingTrialActionError: "The command failed",
+    billingTrialResumed: "Copying started — the projects will show up for them",
+    billingTrialInFlight: "The copies are on their way right now — wait for them",
+    billingTrialNotProvisioning: "Nothing to resume: provisioning is over",
+    billingTrialNoTemplates: "The trial set is empty — nothing to copy",
     billingUnpricedTitle: "Projects without a unit",
     billingUnpricedDesc:
       "These projects have no billing axes set on the site. The list is incomplete: the graph may declare them itself, in which case the project is here for nothing. The full answer comes from a one-off collect run in Pipeline.",

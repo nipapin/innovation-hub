@@ -31,6 +31,9 @@ export type StorageJobRecord = {
   updatedAt: string
 }
 
+/** Работа в `running` дольше этого срока считается зависшей, а не идущей. */
+const STALE_RUNNING_MS = 30 * 60 * 1000
+
 const JOB_FIELDS = `
   id,
   user_id AS "userId",
@@ -177,23 +180,69 @@ export async function claimJob(id: string): Promise<StorageJobRecord | null> {
 }
 
 /**
- * Вернуть упавшую работу в очередь.
+ * Вернуть зависшую работу в очередь — поимённо и только по просьбе.
  *
- * Только из `failed`/`cancelled` и только по просьбе: молчаливый автоповтор
- * упёрся бы в ту же причину и крутил бы её до бесконечности. Ошибку стираем —
- * она относилась к прошлой попытке, и оставить её значило бы показывать провал
- * рядом с идущей работой.
+ * Молчаливый автоповтор упёрся бы в ту же причину и крутил бы её до
+ * бесконечности, поэтому здесь нет расписания: за эту функцию дёргают «Повторить»
+ * в кабинете и «Дожать» в админке. Ошибку стираем — она относилась к прошлой
+ * попытке, и оставить её значило бы показывать провал рядом с идущей работой.
+ *
+ * Берём не только упавшую. Работа, вставшая в `running` (процесс перезапустили
+ * посреди копирования), иначе не сдвигается ничем, кроме общего обхода, а тот
+ * ходит только из cron: до его прихода повтор упирался бы в `claimJob`, который
+ * берёт лишь `queued`, и не делал ничего — со стороны это выглядит как молчание
+ * кнопки. Порог «зависла» тот же, что у обхода, и это не совпадение: работа,
+ * двигавшаяся минуту назад, идёт, и второй прогон по ней повторил бы уже
+ * сделанное. `done` не обнуляем — прогон продолжится с места остановки.
  */
-export async function requeueJob(id: string): Promise<StorageJobRecord | null> {
+export async function requeueStuckJob(
+  id: string,
+): Promise<StorageJobRecord | null> {
   const result = await query<JobRow>(
     `UPDATE storage_jobs
-        SET state = 'queued', error = NULL, done = 0, updated_at = NOW()
-      WHERE id = $1 AND state IN ('failed', 'cancelled')
+        SET state = 'queued', error = NULL, updated_at = NOW()
+      WHERE id = $1
+        AND (
+          state IN ('failed', 'cancelled')
+          OR (
+            state = 'running'
+            AND updated_at < NOW() - ($2::text || ' milliseconds')::interval
+          )
+        )
       RETURNING ${JOB_FIELDS}`,
-    [id],
+    [id, String(STALE_RUNNING_MS)],
   )
   const row = result.rows[0]
   return row ? mapJob(row) : null
+}
+
+/**
+ * Работа идёт прямо сейчас — трогать её нельзя.
+ *
+ * Отдельный вопрос, а не отрицание `requeueStuckJob`: на него отвечают до
+ * записи, когда решают, можно ли сбросить выдачу, за которой ещё копируются
+ * проекты.
+ */
+export function isJobInFlight(job: StorageJobRecord): boolean {
+  if (job.state === "queued") return true
+  if (job.state !== "running") return false
+  return Date.now() - new Date(job.updatedAt).getTime() < STALE_RUNNING_MS
+}
+
+/**
+ * Отменить незаконченную работу.
+ *
+ * Только из `queued`/`running`: у законченной отмена ничего не значит, а
+ * переписать её состояние значило бы соврать журналу. Причину пишем в `error` —
+ * «отменена» без «кем и почему» через месяц не объясняет ничего.
+ */
+export async function cancelJob(id: string, reason: string): Promise<void> {
+  await query(
+    `UPDATE storage_jobs
+        SET state = 'cancelled', error = $2, updated_at = NOW()
+      WHERE id = $1 AND state IN ('queued', 'running')`,
+    [id, reason],
+  )
 }
 
 export async function setJobProgress(
@@ -278,9 +327,6 @@ export async function listQueuedJobs(limit = 20): Promise<StorageJobRecord[]> {
   )
   return result.rows.map(mapJob)
 }
-
-/** Stale running jobs older than this are re-queued by the cron. */
-const STALE_RUNNING_MS = 30 * 60 * 1000
 
 export async function requeueStaleRunningJobs(): Promise<number> {
   const result = await query(

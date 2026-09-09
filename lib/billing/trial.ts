@@ -1,11 +1,17 @@
 import type { PoolClient } from "pg"
-import { query, withTransaction } from "@/lib/db"
-import { createGrant, findTrialGrant } from "@/lib/billing/grants"
+import { query, queryVia, withTransaction } from "@/lib/db"
+import { activateGrant, createGrant, findTrialGrant } from "@/lib/billing/grants"
 import { listTemplateProjects } from "@/lib/billing/projects"
 import { readBillingSettings } from "@/lib/billing/settings"
-import { createJob, requeueJob } from "@/lib/storage/jobs"
+import {
+  createJob,
+  findJobByEventId,
+  isJobInFlight,
+  requeueStuckJob,
+  type StorageJobRecord,
+} from "@/lib/storage/jobs"
 import { scheduleJob } from "@/lib/storage/job-runner"
-import type { GrantRecord } from "@/lib/billing/types"
+import { provisionEventId, type GrantRecord } from "@/lib/billing/types"
 
 /**
  * Тестовый период: подарок на баланс и копии подготовленных проектов.
@@ -131,11 +137,11 @@ export async function activateTrial(userId: string): Promise<ActivateResult> {
 
   if (!outcome.ok) return outcome
 
-  // Упавшую работу возвращаем в очередь ПОСЛЕ коммита: requeue идёт своим
-  // запросом и не должен откатываться вместе с чужой транзакцией.
-  if (outcome.job.state === "failed" || outcome.job.state === "cancelled") {
-    await requeueJob(outcome.job.id)
-  }
+  // Зависшую работу возвращаем в очередь ПОСЛЕ коммита: requeue идёт своим
+  // запросом и не должен откатываться вместе с чужой транзакцией. Берём и
+  // упавшую, и вставшую в `running`: вторую иначе не сдвинуть ничем, кроме
+  // общего обхода из cron, и «Повторить» молчал бы до его прихода.
+  await requeueStuckJob(outcome.job.id)
 
   scheduleJob(outcome.job.id)
   return {
@@ -156,7 +162,11 @@ export async function activateTrial(userId: string): Promise<ActivateResult> {
  */
 async function ensureProvisionJob(
   input: { grant: GrantRecord; templateIds: string[] },
-  client: PoolClient,
+  /**
+   * Транзакция активации. У дожима её нет: грант давно лежит в базе, и
+   * связывать с ним нечего — работа ставится своим запросом.
+   */
+  client?: PoolClient,
 ) {
   const job = await createJob(
     {
@@ -165,16 +175,70 @@ async function ensureProvisionJob(
       kind: "trial-provision",
       total: input.templateIds.length,
       payload: { grantId: input.grant.id, templateIds: input.templateIds },
-      eventId: `trial-provision:${input.grant.id}`,
+      eventId: provisionEventId(input.grant.id),
     },
     client,
   )
 
-  await client.query(
+  await queryVia(client)(
     `UPDATE billing_grants SET provision_job_id = $2, updated_at = NOW()
       WHERE id = $1`,
     [input.grant.id, job.id],
   )
 
   return job
+}
+
+export type ResumeTrialResult =
+  | { ok: true; jobId: string }
+  | { ok: false; reason: "not-provisioning" | "no-templates" | "in-flight" }
+
+/**
+ * Дожать незаконченную выдачу.
+ *
+ * То же, что делает «Повторить» в кабинете, но по чужому гранту и без вопроса
+ * «включена ли кнопка»: право на период человек уже получил, и выключенная
+ * впоследствии кнопка не повод оставлять его с вечным «проекты копируются».
+ *
+ * Идущее копирование не трогаем: второй прогон по живой работе — это вторые
+ * копии тех же проектов.
+ */
+export async function resumeTrialProvision(
+  grant: GrantRecord,
+): Promise<ResumeTrialResult> {
+  if (grant.kind !== "trial" || grant.status !== "provisioning" || grant.resetAt) {
+    return { ok: false, reason: "not-provisioning" }
+  }
+
+  const existing = await findJobByEventId(provisionEventId(grant.id))
+  if (existing && isJobInFlight(existing)) {
+    return { ok: false, reason: "in-flight" }
+  }
+
+  // Работа доехала, а грант остался в `provisioning` — копии есть, денег нет.
+  // Дожимать нечего: недостаёт ровно начисления, его и делаем.
+  if (existing?.state === "done") {
+    const projectIds = (existing.payload.projectIds as string[] | undefined) ?? []
+    await activateGrant({ grantId: grant.id, projectIds })
+    return { ok: true, jobId: existing.id }
+  }
+
+  let job: StorageJobRecord
+  if (existing) {
+    job = existing
+  } else {
+    // Работы нет вовсе — так выглядит выдача, у которой вставка работы упала
+    // после коммита гранта. Ставим её по ТЕКУЩЕМУ набору: другого набора у нас
+    // нет, а прежний нигде не записан.
+    const templates = await listTemplateProjects()
+    if (templates.length === 0) return { ok: false, reason: "no-templates" }
+    job = await ensureProvisionJob({
+      grant,
+      templateIds: templates.map((t) => t.projectId),
+    })
+  }
+
+  await requeueStuckJob(job.id)
+  scheduleJob(job.id)
+  return { ok: true, jobId: job.id }
 }

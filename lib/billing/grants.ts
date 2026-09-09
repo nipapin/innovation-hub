@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto"
 import type { PoolClient } from "pg"
 import { query, queryVia, withTransaction } from "@/lib/db"
 import { recordTransaction } from "@/lib/billing/ledger"
-import type { GrantKind, GrantRecord, GrantStatus } from "@/lib/billing/types"
+import { cancelJob, findJobByEventId, isJobInFlight } from "@/lib/storage/jobs"
+import {
+  provisionEventId,
+  type GrantKind,
+  type GrantRecord,
+  type GrantStatus,
+} from "@/lib/billing/types"
 
 /**
  * Подарки: тестовый период и адресные начисления.
@@ -204,9 +210,13 @@ export async function activateGrant(input: {
 }): Promise<GrantRecord | null> {
   return withTransaction(async (client) => {
     const updated = await client.query<GrantRecord>(
+      // `reset_at IS NULL` — не формальность: работа копирования могла быть
+      // отменена сбросом и всё же доехать до конца (её уже забрал прогон), и
+      // без этого условия она начислила бы деньги по периоду, которого у
+      // человека больше нет.
       `UPDATE billing_grants
           SET status = 'active', updated_at = NOW()
-        WHERE id = $1 AND status = 'provisioning'
+        WHERE id = $1 AND status = 'provisioning' AND reset_at IS NULL
         RETURNING ${GRANT_FIELDS}`,
       [input.grantId],
     )
@@ -325,7 +335,16 @@ export async function revokeTrialGrant(input: {
 
 export type TrialResetResult =
   | { ok: true; attempt: number }
-  | { ok: false; reason: "not-found" | "not-trial" | "already-reset" | "still-open" }
+  | {
+      ok: false
+      reason:
+        | "not-found"
+        | "not-trial"
+        | "already-reset"
+        | "still-open"
+        /** Копии едут прямо сейчас: дождитесь конца, потом отзыв и сброс. */
+        | "in-flight"
+    }
 
 /**
  * Разрешить человеку пройти период заново.
@@ -347,8 +366,24 @@ export async function resetTrialGrant(input: {
   if (!grant) return { ok: false, reason: "not-found" }
   if (grant.kind !== "trial") return { ok: false, reason: "not-trial" }
   if (grant.resetAt) return { ok: false, reason: "already-reset" }
-  if (grant.status === "active" || grant.status === "provisioning") {
-    return { ok: false, reason: "still-open" }
+  if (grant.status === "active") return { ok: false, reason: "still-open" }
+
+  /**
+   * Застрявшая выдача — тоже повод для сброса.
+   *
+   * Раньше `provisioning` отказывал наравне с `active`, и это оставляло
+   * единственное состояние, из которого нет выхода вообще: отзыв требует
+   * действующего периода, сброс — закрытого, а грант, чья работа копирования
+   * не встала в очередь, не является ни тем, ни другим. Человек оставался с
+   * вечным «проекты копируются», и починить это из интерфейса было нечем.
+   *
+   * Деньги при этом не трогаем: у `provisioning` их и нет — начисление делает
+   * `activateGrant`, до которого дело не дошло.
+   */
+  if (grant.status === "provisioning") {
+    const job = await findJobByEventId(provisionEventId(grant.id))
+    if (job && isJobInFlight(job)) return { ok: false, reason: "in-flight" }
+    if (job) await cancelJob(job.id, "Тестовый период сброшен")
   }
 
   await query(

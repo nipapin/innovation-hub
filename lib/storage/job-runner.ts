@@ -140,7 +140,19 @@ async function listTemplateRoots(
  * «всё»; три отдельные — нет, за ними пришлось бы кому-то следить.
  */
 async function runTrialProvisionJob(job: StorageJobRecord): Promise<void> {
-  const payload = job.payload as { grantId?: string; templateIds?: string[] }
+  const payload = job.payload as {
+    grantId?: string
+    templateIds?: string[]
+    /** Уже созданные копии — их отдаём гранту. */
+    projectIds?: string[]
+    /**
+     * Шаблоны, с которыми уже разобрались. Второй прогон обязан их пропустить:
+     * работа возвращается в очередь после перезапуска процесса, и без этого
+     * списка человек получил бы вторые копии тех же проектов. Считать по длине
+     * `projectIds` нельзя — пропавший шаблон копии не даёт, и счёт разъедется.
+     */
+    doneTemplateIds?: string[]
+  }
   const grantId = payload.grantId
   const templateIds = payload.templateIds ?? []
 
@@ -152,12 +164,22 @@ async function runTrialProvisionJob(job: StorageJobRecord): Promise<void> {
     return
   }
 
-  const createdIds: string[] = []
-  let done = 0
+  const createdIds: string[] = [...(payload.projectIds ?? [])]
+  const handled = new Set(payload.doneTemplateIds ?? [])
+  let done = handled.size
 
   for (const templateId of templateIds) {
+    if (handled.has(templateId)) continue
     const template = await findProjectById(templateId)
-    if (!template) continue
+    if (!template) {
+      // Шаблон исчез из набора — второй раз его искать незачем.
+      handled.add(templateId)
+      done++
+      await setJobProgress(job.id, done, templateIds.length, {
+        doneTemplateIds: [...handled],
+      })
+      continue
+    }
 
     // Проект создаётся на паузе: копирование пишет обычные put-события в
     // журнал, и под слежением сканер начал бы делать задачи прямо в процессе.
@@ -198,9 +220,11 @@ async function runTrialProvisionJob(job: StorageJobRecord): Promise<void> {
       }
     }
 
+    handled.add(templateId)
     done++
     await setJobProgress(job.id, done, templateIds.length, {
       projectIds: createdIds,
+      doneTemplateIds: [...handled],
     })
   }
 

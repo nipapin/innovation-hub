@@ -177,6 +177,7 @@ export const adminDict = {
     auditServiceIncident: "Сбой внешнего сервиса",
     auditTrialRevoked: "Тестовый период отозван",
     auditTrialReset: "Тестовый период разрешён заново",
+    auditTrialResumed: "Выдача периода дожата",
 
     // capability tags
     capsMenuItem: "Доступы",
@@ -901,6 +902,7 @@ export const adminDict = {
     auditServiceIncident: "External service incident",
     auditTrialRevoked: "Trial period revoked",
     auditTrialReset: "Trial period allowed again",
+    auditTrialResumed: "Trial provisioning resumed",
 
     // capability tags
     capsMenuItem: "Access",
