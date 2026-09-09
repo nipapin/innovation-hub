@@ -11,6 +11,7 @@ import {
   rublesToCents,
 } from "@/components/admin/billing/fields"
 import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog"
+import { GrantLists, type GrantListRow } from "@/components/admin/billing/grant-list"
 import { AdminPageHeader } from "@/components/admin/shell/admin-page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,21 +34,11 @@ type TemplateRow = {
   cost: { centsPerSec: number | null; charges: number } | null
 }
 
-type ActivationRow = {
-  grantId: string
-  email: string
-  fullName: string
-  status: string
-  amountCents: number
-  remainingCents: number
-  activatedAt: string
-  registeredAt: string
-  projectCount: number
-  /** Сброшен — значит кнопка «Попробовать» у человека доступна снова (П9.1). */
-  resetAt: string | null
-  /** Который это период у него по счёту: серия сбросов должна быть видна. */
-  attempt: number
-}
+/**
+ * Строка активации. Тип общий с «Акциями» — списки разные, а выдача одна и та
+ * же строка `billing_grants`, и расходиться их полям не с чего.
+ */
+type ActivationRow = GrantListRow
 
 type TrialAction = "revoke" | "reset" | "resume"
 
@@ -66,7 +57,12 @@ export function AdminBillingTrial() {
   const [trial, setTrial] = useState<TrialSettings | null>(null)
   const [revision, setRevision] = useState(0)
   const [templates, setTemplates] = useState<TemplateRow[]>([])
-  const [activations, setActivations] = useState<ActivationRow[]>([])
+  /**
+   * Счётчик перечитки списка активаций. Список грузит себя сам постранично, и
+   * дёргать его после команды можно только так: отозванный период обязан
+   * переехать в завершённые сразу, а не после перезагрузки страницы.
+   */
+  const [activationsKey, setActivationsKey] = useState(0)
   const [q, setQ] = useState("")
   const [picks, setPicks] = useState<PickRow[]>([])
   const [busy, setBusy] = useState<string | null>(null)
@@ -81,12 +77,11 @@ export function AdminBillingTrial() {
         trial: TrialSettings
         revision: number
         templates: TemplateRow[]
-        activations: ActivationRow[]
       }
       setTrial(data.trial)
       setRevision(data.revision)
       setTemplates(data.templates)
-      setActivations(data.activations)
+      setActivationsKey((prev) => prev + 1)
     } catch {
       toast.error(t.billingLoadError)
     }
@@ -384,128 +379,116 @@ export function AdminBillingTrial() {
         description={t.billingActivationsDesc}
         help="billing.trial.activations"
       >
-        {activations.length === 0 ? (
-          <p className="text-sm text-muted-foreground/80">
-            {t.billingActivationsEmpty}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="text-left text-xs uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="pb-2 font-medium">{t.billingActivationUser}</th>
-                  <th className="pb-2 font-medium">
-                    {t.billingActivationRegistered}
-                  </th>
-                  <th className="pb-2 font-medium">
-                    {t.billingActivationActivated}
-                  </th>
-                  <th className="pb-2 font-medium">{t.billingActivationLeft}</th>
-                  <th className="pb-2 font-medium">{t.billingActivationStatus}</th>
-                  <th className="pb-2 text-right font-medium">
-                    {t.billingActivationActions}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {activations.map((row) => (
-                  <tr key={row.grantId}>
-                    <td className="py-2.5 pr-4">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-foreground">{row.email}</span>
-                        {/* Номер попытки рядом с почтой, а не отдельной
-                            колонкой: серия сбросов у одного человека должна
-                            бросаться в глаза так же, как серия однотипных
-                            регистраций. */}
-                        {row.attempt > 1 ? (
-                          <span className="shrink-0 rounded border border-amber-500/40 px-1.5 py-0.5 text-[11px] text-amber-500">
-                            {tf(t.billingActivationAttempt, { n: row.attempt })}
-                          </span>
-                        ) : null}
-                      </div>
-                      {row.fullName ? (
-                        <div className="truncate text-xs text-muted-foreground">
-                          {row.fullName}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="py-2.5 pr-4 text-muted-foreground">
-                      {date(row.registeredAt)}
-                    </td>
-                    <td className="py-2.5 pr-4 text-muted-foreground">
-                      {date(row.activatedAt)}
-                    </td>
-                    <td className="py-2.5 pr-4">
-                      {formatBalance(row.remainingCents, lang)}
-                      <span className="ml-1 text-xs text-muted-foreground">
-                        / {formatBalance(row.amountCents, lang)}
-                      </span>
-                    </td>
-                    <td className="py-2.5 pr-4 text-muted-foreground">
-                      {row.status}
-                      {row.resetAt ? (
-                        <div className="text-xs text-amber-500/80">
-                          {tf(t.billingActivationResetAt, {
-                            date: date(row.resetAt),
-                          })}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="py-2.5 text-right">
-                      {/* Три команды, а не одна кнопка с тремя смыслами: отзыв
-                          про деньги сейчас, сброс про право на будущее, дожим
-                          про застрявшую выдачу. Самый частый сценарий — отзыв и
-                          сброс по очереди. */}
-                      <div className="flex justify-end gap-1">
-                        {row.status === "active" ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy === row.grantId}
-                            onClick={() => setPending({ row, action: "revoke" })}
-                          >
-                            {t.billingTrialRevoke}
-                          </Button>
-                        ) : null}
-                        {/* Дожим без диалога: он ничего не отнимает, а доводит
-                            до конца то, что человек запросил сам. Спрашивать
-                            подтверждение у безобидной команды — учить нажимать
-                            «ок» не глядя там, где рядом стоят опасные. */}
-                        {row.status === "provisioning" && !row.resetAt ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy === row.grantId}
-                            onClick={() =>
-                              void runTrialAction({ row, action: "resume" })
-                            }
-                          >
-                            {t.billingTrialResume}
-                          </Button>
-                        ) : null}
-                        {/* `provisioning` сюда попадает намеренно: выдача,
-                            которая не доехала, — единственное состояние, из
-                            которого раньше не было выхода вообще. Идущее
-                            копирование отобьёт сервер, а не спрятанная
-                            кнопка. */}
-                        {!row.resetAt && row.status !== "active" ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy === row.grantId}
-                            onClick={() => setPending({ row, action: "reset" })}
-                          >
-                            {t.billingTrialReset}
-                          </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <GrantLists
+          endpoint="/api/admin/billing/trial/activations"
+          reloadKey={activationsKey}
+          head={
+            <tr>
+              <th className="pb-2 font-medium">{t.billingActivationUser}</th>
+              <th className="pb-2 font-medium">
+                {t.billingActivationRegistered}
+              </th>
+              <th className="pb-2 font-medium">
+                {t.billingActivationActivated}
+              </th>
+              <th className="pb-2 font-medium">{t.billingActivationLeft}</th>
+              <th className="pb-2 font-medium">{t.billingActivationStatus}</th>
+              <th className="pb-2 text-right font-medium">
+                {t.billingActivationActions}
+              </th>
+            </tr>
+          }
+          renderRow={(row) => (
+            <tr key={row.grantId}>
+              <td className="py-2.5 pr-4">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-foreground">{row.email}</span>
+                  {/* Номер попытки рядом с почтой, а не отдельной колонкой:
+                      серия сбросов у одного человека должна бросаться в глаза
+                      так же, как серия однотипных регистраций. */}
+                  {row.attempt > 1 ? (
+                    <span className="shrink-0 rounded border border-amber-500/40 px-1.5 py-0.5 text-[11px] text-amber-500">
+                      {tf(t.billingActivationAttempt, { n: row.attempt })}
+                    </span>
+                  ) : null}
+                </div>
+                {row.fullName ? (
+                  <div className="truncate text-xs text-muted-foreground">
+                    {row.fullName}
+                  </div>
+                ) : null}
+              </td>
+              <td className="py-2.5 pr-4 text-muted-foreground">
+                {date(row.registeredAt)}
+              </td>
+              <td className="py-2.5 pr-4 text-muted-foreground">
+                {date(row.activatedAt)}
+              </td>
+              <td className="py-2.5 pr-4">
+                {formatBalance(row.remainingCents, lang)}
+                <span className="ml-1 text-xs text-muted-foreground">
+                  / {formatBalance(row.amountCents, lang)}
+                </span>
+              </td>
+              <td className="py-2.5 pr-4 text-muted-foreground">
+                {row.status}
+                {row.resetAt ? (
+                  <div className="text-xs text-amber-500/80">
+                    {tf(t.billingActivationResetAt, {
+                      date: date(row.resetAt),
+                    })}
+                  </div>
+                ) : null}
+              </td>
+              <td className="py-2.5 text-right">
+                {/* Три команды, а не одна кнопка с тремя смыслами: отзыв про
+                    деньги сейчас, сброс про право на будущее, дожим про
+                    застрявшую выдачу. Самый частый сценарий — отзыв и сброс по
+                    очереди. */}
+                <div className="flex justify-end gap-1">
+                  {row.status === "active" ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy === row.grantId}
+                      onClick={() => setPending({ row, action: "revoke" })}
+                    >
+                      {t.billingTrialRevoke}
+                    </Button>
+                  ) : null}
+                  {/* Дожим без диалога: он ничего не отнимает, а доводит до
+                      конца то, что человек запросил сам. Спрашивать
+                      подтверждение у безобидной команды — учить нажимать «ок»
+                      не глядя там, где рядом стоят опасные. */}
+                  {row.status === "provisioning" && !row.resetAt ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy === row.grantId}
+                      onClick={() => void runTrialAction({ row, action: "resume" })}
+                    >
+                      {t.billingTrialResume}
+                    </Button>
+                  ) : null}
+                  {/* `provisioning` сюда попадает намеренно: выдача, которая не
+                      доехала, — единственное состояние, из которого раньше не
+                      было выхода вообще. Идущее копирование отобьёт сервер, а
+                      не спрятанная кнопка. */}
+                  {!row.resetAt && row.status !== "active" ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy === row.grantId}
+                      onClick={() => setPending({ row, action: "reset" })}
+                    >
+                      {t.billingTrialReset}
+                    </Button>
+                  ) : null}
+                </div>
+              </td>
+            </tr>
+          )}
+        />
       </Section>
 
       {/* Диалог, а не window.confirm: подтверждение обязано назвать числа —

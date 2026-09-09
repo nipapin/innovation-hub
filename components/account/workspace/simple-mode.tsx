@@ -19,7 +19,7 @@ import {
 import { tf } from "@/components/account/i18n"
 import { cn } from "@/lib/utils"
 import { BottomPanel } from "./bottom-panel"
-import { Breadcrumbs, FileBrowser } from "./file-browser"
+import { Breadcrumbs, FileBrowser, useLivePath } from "./file-browser"
 import { GiftCorner } from "./gift-badge"
 import {
   TRASH_RETENTION_DAYS,
@@ -74,6 +74,7 @@ function Pane({
 }) {
   const { t, view } = useWorkspace()
   const Icon = kind === "in" ? Download : kind === "out" ? Upload : FolderOpen
+  useLivePath(root, path, onNavigate)
   const items = itemsAtPath(root, path)
 
   /**

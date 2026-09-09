@@ -10,6 +10,7 @@ import {
   rublesToCents,
 } from "@/components/admin/billing/fields"
 import { AdminPageHeader } from "@/components/admin/shell/admin-page-header"
+import { GrantLists } from "@/components/admin/billing/grant-list"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -63,6 +64,9 @@ export function AdminBillingPromo() {
   const [comment, setComment] = useState("")
   const [overdraft, setOverdraft] = useState("")
   const [busy, setBusy] = useState(false)
+  /** Перечитать общий список выданного: после начисления новая строка обязана
+   *  появиться сразу, иначе непонятно, прошло ли начисление. */
+  const [issuedKey, setIssuedKey] = useState(0)
 
   useEffect(() => {
     if (q.trim().length < 2) {
@@ -113,6 +117,31 @@ export function AdminBillingPromo() {
     }
   }, [])
 
+  /**
+   * Открыть человека из строки общего списка.
+   *
+   * Через поиск, а не сборкой `UserPick` из строки: в строке нет балансов, а
+   * карточка выбранного показывает именно их. Собрать её с нулями значило бы
+   * показать неправду в самом заметном месте экрана.
+   */
+  const pickByEmail = useCallback(
+    async (email: string) => {
+      try {
+        const res = await fetch(
+          `/api/admin/billing/promo?q=${encodeURIComponent(email)}`,
+          { cache: "no-store" },
+        )
+        if (!res.ok) return
+        const body = (await res.json()) as { users: UserPick[] }
+        const found = body.users.find((u) => u.email === email) ?? body.users[0]
+        if (found) await loadUser(found)
+      } catch {
+        // Не открылось — строка осталась на месте, можно найти человека руками.
+      }
+    },
+    [loadUser],
+  )
+
   const grant = async () => {
     if (!picked) return
     const amountCents = rublesToCents(amount)
@@ -140,6 +169,7 @@ export function AdminBillingPromo() {
       setAmount("")
       setComment("")
       setSelected(new Set())
+      setIssuedKey((prev) => prev + 1)
       await loadUser(picked)
     } catch {
       toast.error(t.promoGrantError)
@@ -382,6 +412,69 @@ export function AdminBillingPromo() {
           </Section>
         </>
       ) : null}
+
+      {/* Общий список — вне блока выбранного человека и всегда на виду. До него
+          увидеть выданное можно было, только заранее зная, кому оно выдано:
+          история открывалась внутри найденного пользователя. */}
+      <Section
+        title={t.promoIssuedTitle}
+        description={t.promoIssuedDesc}
+        help="billing.promo.history"
+      >
+        <GrantLists
+          endpoint="/api/admin/billing/promo/grants"
+          reloadKey={issuedKey}
+          head={
+            <tr>
+              <th className="pb-2 font-medium">{t.billingActivationUser}</th>
+              <th className="pb-2 font-medium">{t.promoIssuedWhen}</th>
+              <th className="pb-2 font-medium">{t.billingActivationLeft}</th>
+              <th className="pb-2 font-medium">{t.promoIssuedWhere}</th>
+              <th className="pb-2 font-medium">{t.billingActivationStatus}</th>
+              <th className="pb-2 font-medium">{t.promoIssuedComment}</th>
+            </tr>
+          }
+          renderRow={(row) => (
+            <tr
+              key={row.grantId}
+              onClick={() => void pickByEmail(row.email)}
+              className="cursor-pointer hover:bg-accent/40"
+            >
+              <td className="py-2.5 pr-4">
+                <div className="truncate text-foreground">{row.email}</div>
+                {row.fullName ? (
+                  <div className="truncate text-xs text-muted-foreground">
+                    {row.fullName}
+                  </div>
+                ) : null}
+              </td>
+              <td className="py-2.5 pr-4 text-muted-foreground">
+                {date(row.activatedAt)}
+                <div className="text-xs text-muted-foreground/80">
+                  {row.expiresAt
+                    ? tf(t.promoIssuedUntil, { date: date(row.expiresAt) })
+                    : t.promoIssuedForever}
+                </div>
+              </td>
+              <td className="py-2.5 pr-4">
+                {formatBalance(row.remainingCents, lang)}
+                <span className="ml-1 text-xs text-muted-foreground">
+                  / {formatBalance(row.amountCents, lang)}
+                </span>
+              </td>
+              <td className="py-2.5 pr-4 text-xs text-muted-foreground">
+                {row.projectCount === 0
+                  ? t.promoEverywhere
+                  : tf(t.promoIssuedProjects, { n: row.projectCount })}
+              </td>
+              <td className="py-2.5 pr-4 text-muted-foreground">{row.status}</td>
+              <td className="max-w-[280px] py-2.5 text-xs text-muted-foreground/80">
+                <span className="line-clamp-2">{row.comment}</span>
+              </td>
+            </tr>
+          )}
+        />
+      </Section>
     </div>
   )
 }

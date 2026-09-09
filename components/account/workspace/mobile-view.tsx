@@ -16,7 +16,7 @@ import {
 
 import { cn } from "@/lib/utils"
 import { ChatTab, DescriptionTab, SettingsTab } from "./bottom-panel"
-import { Breadcrumbs, FileBrowser } from "./file-browser"
+import { Breadcrumbs, FileBrowser, useLivePath } from "./file-browser"
 import { PreviewTab } from "./file-preview"
 import { AllProjectsPage } from "./simple-mode"
 import type { BottomTab, DriveFile } from "./types"
@@ -86,10 +86,13 @@ export function MobileWorkspace() {
   const current =
     folders.find((f) => f.name === folderName) ?? folders[0] ?? null
 
-  if (!selected) return <AllProjectsPage />
-
   // Папок в корне может не быть вовсе — тогда листаем сам корень проекта.
   const browseRoot = current ? (current.children ?? []) : rootFiles
+
+  useLivePath(browseRoot, path, setPath)
+
+  if (!selected) return <AllProjectsPage />
+
   const basePath = current?.name
 
   const target = {

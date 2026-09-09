@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireAdminApi } from "@/lib/admin-auth"
 import { listTemplateProjects } from "@/lib/billing/projects"
-import { listTemplateCosts, listTrialActivations } from "@/lib/billing/reports"
+import { listTemplateCosts } from "@/lib/billing/reports"
 import { trialWriteSchema } from "@/lib/billing/schemas"
 import { readBillingSettings, writeBillingSettings } from "@/lib/billing/settings"
 
@@ -23,16 +23,16 @@ export async function GET(request: NextRequest) {
 
   const { settings, revision } = await readBillingSettings()
   const templates = await listTemplateProjects()
-  const [costs, activations] = await Promise.all([
-    listTemplateCosts(templates.map((t) => t.projectId)),
-    listTrialActivations(),
-  ])
+  const costs = await listTemplateCosts(templates.map((t) => t.projectId))
 
+  // Активаций здесь нет намеренно: их список постранично живёт своим адресом
+  // (`./trial/activations`). Отдавать его вместе с настройками значило бы
+  // тянуть всю историю выдач каждый раз, когда открывают экран ради суммы
+  // подарка.
   return NextResponse.json({
     trial: settings.trial,
     revision,
     templates: templates.map((t) => ({ ...t, cost: costs.get(t.projectId) ?? null })),
-    activations,
   })
 }
 

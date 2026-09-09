@@ -20,7 +20,11 @@ import {
 } from "@/components/account/i18n"
 import type { ExposedOptionChange } from "@/lib/options/apply"
 import type { ExposedOption } from "@/lib/options/types"
-import { uploadProjectFileDirect } from "@/lib/project-direct-upload"
+import {
+  UploadCancelled,
+  isUploadCancelled,
+  uploadProjectFileDirect,
+} from "@/lib/project-direct-upload"
 import {
   TRASH_RETENTION_DAYS,
   findChildByName,
@@ -50,6 +54,7 @@ import type {
   Project,
   UploadConflict,
   UploadConflictAction,
+  UploadProgress,
   UploadTarget,
   ViewMode,
   WorkspaceCapabilities,
@@ -264,6 +269,16 @@ type WorkspaceValue = {
 
   // операции с файлами
   uploading: boolean
+  /**
+   * Что сейчас едет наверх: папка, файл, проценты. `null` — заливки нет.
+   * Область файлов показывает по этому кольцо в той папке, куда льют.
+   */
+  uploadProgress: UploadProgress | null
+  /**
+   * Оборвать текущую пачку. Недокачанный файл в папке не появится, уже
+   * доехавшие остаются: отменяют то, что идёт, а не то, что случилось.
+   */
+  cancelUpload: () => void
   createFolder: (target: UploadTarget) => void
   renameItem: (file: DriveFile) => void
   /**
@@ -373,6 +388,8 @@ async function uploadViaXhr(
   target: UploadTarget,
   /** Как поступить с занятым именем: под новым именем или поверх старого. */
   resolution?: { name?: string; overwrite?: boolean },
+  /** Проценты наружу и сигнал отмены — одинаково для обоих путей заливки. */
+  hooks?: { onProgress?: (percent: number) => void; signal?: AbortSignal },
 ): Promise<void> {
   const name = resolution?.name ?? file.name
   // Через storage v1 (presign → PUT → notify) — так заливает кабинет и «Папки
@@ -385,19 +402,30 @@ async function uploadViaXhr(
       folderPath: target.folderPath ?? "",
       name: resolution?.name,
       overwrite: resolution?.overwrite,
+      onProgress: hooks?.onProgress,
+      signal: hooks?.signal,
     })
     return
   }
+  if (hooks?.signal?.aborted) throw new UploadCancelled()
   return new Promise((resolve, reject) => {
     const qs = new URLSearchParams({ fileName: name })
     if (target.parentId) qs.set("parentId", target.parentId)
     else qs.set("folderPath", target.folderPath ?? "")
     const xhr = new XMLHttpRequest()
+    const abort = () => xhr.abort()
+    const detach = () => hooks?.signal?.removeEventListener("abort", abort)
     xhr.open("POST", source.uploadUrl(projectId, qs))
     xhr.withCredentials = true
     if (file.type) xhr.setRequestHeader("Content-Type", file.type)
     xhr.setRequestHeader("x-file-name", encodeURIComponent(name))
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && hooks?.onProgress) {
+        hooks.onProgress(Math.round((event.loaded / event.total) * 100))
+      }
+    }
     xhr.onload = () => {
+      detach()
       try {
         const data = JSON.parse(xhr.responseText) as { message?: string }
         if (xhr.status >= 200 && xhr.status < 300) {
@@ -409,7 +437,18 @@ async function uploadViaXhr(
         reject(new Error(`Upload failed (${xhr.status})`))
       }
     }
-    xhr.onerror = () => reject(new Error("Network error during upload."))
+    xhr.onerror = () => {
+      detach()
+      reject(new Error("Network error during upload."))
+    }
+    // Здесь байты идут через Next, а не прямо в R2, поэтому оборванный запрос
+    // не оставляет за собой ничего: строку каталога пишет тот же обработчик,
+    // который принимает тело, и до неё дело не дойдёт.
+    xhr.onabort = () => {
+      detach()
+      reject(new UploadCancelled())
+    }
+    hooks?.signal?.addEventListener("abort", abort)
     xhr.send(file)
   })
 }
@@ -564,6 +603,14 @@ export function WorkspaceProvider({
   const [bottomTab, setBottomTab] = useState<BottomTab>("desc")
 
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
+    null,
+  )
+  /**
+   * Чем оборвать текущую пачку. В ref, а не в состоянии: контроллер живёт ровно
+   * столько же, сколько цикл заливки, и перерисовывать из-за него нечего.
+   */
+  const uploadAbortRef = useRef<AbortController | null>(null)
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [clipboard, setClipboard] = useState<Clipboard | null>(null)
   const [moveTargets, setMoveTargets] = useState<DriveFile[] | null>(null)
@@ -1498,9 +1545,12 @@ export function WorkspaceProvider({
       const folderPath = (target.folderPath ?? "").replace(/^\/+|\/+$/g, "")
       const resolve = makeConflictResolver()
 
+      const controller = new AbortController()
+      uploadAbortRef.current = controller
       setUploading(true)
       try {
         for (const [index, file] of files.entries()) {
+          if (controller.signal.aborted) break
           const verdict = await resolve(
             file,
             folderPath,
@@ -1508,6 +1558,14 @@ export function WorkspaceProvider({
           )
           if (verdict.skip) continue
 
+          const name = verdict.resolution?.name ?? file.name
+          setUploadProgress({
+            folderPath,
+            name,
+            index: index + 1,
+            total: files.length,
+            percent: 0,
+          })
           try {
             await uploadViaXhr(
               sourceRef.current,
@@ -1515,20 +1573,46 @@ export function WorkspaceProvider({
               file,
               target,
               verdict.resolution,
+              {
+                signal: controller.signal,
+                onProgress: (percent) =>
+                  setUploadProgress((prev) =>
+                    prev ? { ...prev, percent } : prev,
+                  ),
+              },
             )
           } catch (err) {
+            // Отмена обрывает всю пачку: человек нажал крестик, а не «пропусти
+            // этот файл». Про неё молчим — он и так знает, что сделал.
+            if (isUploadCancelled(err)) break
             toast.error(
               err instanceof Error ? err.message : `Upload failed: ${file.name}`,
             )
           }
         }
+        if (controller.signal.aborted) toast(tRef.current.uploadCancelled)
         await loadDrive(selectedId, true)
       } finally {
+        // Только если пачка ещё наша. Заливки могут наложиться — бросили файл,
+        // пока едет предыдущий, — и кончившаяся первой не должна уносить с
+        // экрана чужое кольцо и отбирать у второй крестик.
+        if (uploadAbortRef.current === controller) {
+          uploadAbortRef.current = null
+          setUploadProgress(null)
+        }
         setUploading(false)
       }
     },
     [selectedId, loadDrive, makeConflictResolver],
   )
+
+  /**
+   * Оборвать заливку. Молча, если её нет: крестик мог пережить последний файл
+   * пачки на те миллисекунды, что кольцо ещё на экране.
+   */
+  const cancelUpload = useCallback(() => {
+    uploadAbortRef.current?.abort()
+  }, [])
 
   const triggerUpload = useCallback((target: UploadTarget) => {
     uploadTargetRef.current = target
@@ -1548,6 +1632,11 @@ export function WorkspaceProvider({
         return name !== ".ds_store" && name !== "thumbs.db"
       })
       if (!files.length) return
+      // Кольцо стоит в той папке, куда бросили саму папку, а не в очередной
+      // вложенной: человек показал одно место, и отвечать надо в нём.
+      const ringPath = target.folderPath.replace(/^\/+|\/+$/g, "")
+      const controller = new AbortController()
+      uploadAbortRef.current = controller
       setUploading(true)
       try {
         const dirs = new Set<string>()
@@ -1578,6 +1667,7 @@ export function WorkspaceProvider({
         const resolve = makeConflictResolver()
 
         for (const [index, file] of files.entries()) {
+          if (controller.signal.aborted) break
           const rel = (file as File & { webkitRelativePath?: string })
             .webkitRelativePath
           let folderPath = target.folderPath
@@ -1601,6 +1691,13 @@ export function WorkspaceProvider({
           )
           if (verdict.skip) continue
 
+          setUploadProgress({
+            folderPath: ringPath,
+            name: verdict.resolution?.name ?? file.name,
+            index: index + 1,
+            total: files.length,
+            percent: 0,
+          })
           try {
             await uploadViaXhr(
               sourceRef.current,
@@ -1608,15 +1705,31 @@ export function WorkspaceProvider({
               file,
               { parentId: null, folderPath },
               verdict.resolution,
+              {
+                signal: controller.signal,
+                onProgress: (percent) =>
+                  setUploadProgress((prev) =>
+                    prev ? { ...prev, percent } : prev,
+                  ),
+              },
             )
           } catch (err) {
+            if (isUploadCancelled(err)) break
             toast.error(
               err instanceof Error ? err.message : `Upload failed: ${file.name}`,
             )
           }
         }
+        if (controller.signal.aborted) toast(tRef.current.uploadCancelled)
         await loadDrive(selectedId, true)
       } finally {
+        // Только если пачка ещё наша. Заливки могут наложиться — бросили файл,
+        // пока едет предыдущий, — и кончившаяся первой не должна уносить с
+        // экрана чужое кольцо и отбирать у второй крестик.
+        if (uploadAbortRef.current === controller) {
+          uploadAbortRef.current = null
+          setUploadProgress(null)
+        }
         setUploading(false)
       }
     },
@@ -1909,6 +2022,8 @@ export function WorkspaceProvider({
     previewSiblings,
     stepPreview,
     uploading,
+    uploadProgress,
+    cancelUpload,
     createFolder,
     canReprocess,
     reprocessItem,

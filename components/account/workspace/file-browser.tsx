@@ -17,8 +17,10 @@ import {
   fileMeta,
   itemsAtPath,
   pathToFolderPath,
+  resolvePath,
 } from "./format"
 import type { DriveFile, InItemStatus, UploadTarget, ViewMode } from "./types"
+import { UploadRing } from "./upload-ring"
 import { useWorkspace } from "./workspace-context"
 
 /** Профиль плотности: roomy — полный режим, snug — панели IN / OUT. */
@@ -33,6 +35,37 @@ function targetFor(
     parentId: nodes.length ? nodes[nodes.length - 1].id : null,
     folderPath: [basePath, tail].filter(Boolean).join("/"),
   }
+}
+
+/**
+ * Держит локальный путь панели на узлах свежего дерева.
+ *
+ * Путь хранится узлами, а содержимое папки `itemsAtPath` берёт из `children`
+ * последнего из них. Дерево же перечитывается целиком — после каждой заливки и
+ * по опросу delta, — и узлы в нём каждый раз новые объекты. Пока путь не
+ * пересобран, открытая подпапка показывает снимок, сделанный до перечитывания:
+ * файл на сервер лёг, а в папке не появился.
+ *
+ * Полного режима это не касается — там путь живёт в контексте, и `loadDrive`
+ * пересобирает его сам. Свои пути есть у мобильного вида и у панелей
+ * упрощённого режима, им и нужен этот хук.
+ */
+export function useLivePath(
+  root: DriveFile[],
+  path: DriveFile[],
+  onNavigate: (nodes: DriveFile[]) => void,
+) {
+  useEffect(() => {
+    if (path.length === 0) return
+    const next = resolvePath(root, path)
+    // Сравниваем по ссылке: те же узлы — дерево не менялось, трогать нечего.
+    // Без этой проверки хук зациклился бы на себе: `resolvePath` возвращает
+    // новый массив на каждый вызов.
+    const same =
+      next.length === path.length && next.every((n, i) => n === path[i])
+    if (same) return
+    onNavigate(next)
+  }, [root, path, onNavigate])
 }
 
 /**
@@ -399,12 +432,14 @@ function FileColumn({
   onNavigate: (nodes: DriveFile[]) => void
 }) {
   const ws = useWorkspace()
-  const { openMenu, menu } = ws
+  const { openMenu, menu, uploadProgress } = ws
   const drop = useDropZone(colTarget)
 
   // Меню открыто на этой колонке — подсвечиваем, чтобы было видно,
   // где именно произойдёт действие.
   const isMenuHere = menu?.target?.folderPath === colTarget.folderPath
+  // Льют в эту колонку — кольцо заливки её.
+  const ringHere = uploadProgress?.folderPath === colTarget.folderPath
 
   return (
     <div
@@ -474,6 +509,7 @@ function FileColumn({
         )}
       </div>
       {drop.active ? <DropHint target={colTarget} size={size} /> : null}
+      {ringHere ? <UploadRing size={size} /> : null}
     </div>
   )
 }
@@ -543,6 +579,7 @@ export function FileBrowser({
     menu,
     selectFile,
     clearFileSelection,
+    uploadProgress,
   } = ws
 
   const items = itemsAtPath(root, path)
@@ -554,6 +591,10 @@ export function FileBrowser({
   // Меню открыто в этой области — подсвечиваем, чтобы было видно,
   // где произойдёт действие. Правило одинаковое для всех видов.
   const menuHere = menu?.target?.folderPath === target.folderPath
+  // Льют в эту папку — значит кольцо заливки показывает эта область. Копий
+  // разметки на экране несколько (колонки, панели, мобильная и десктопная),
+  // и путь — единственное, чем они друг от друга отличаются.
+  const ringHere = uploadProgress?.folderPath === target.folderPath
 
   /**
    * Cmd/Ctrl — добавить или снять один элемент, Shift — выделить диапазон.
@@ -670,6 +711,7 @@ export function FileBrowser({
         )}
       </div>
       {drop.active ? <DropHint target={target} size={size} /> : null}
+      {ringHere ? <UploadRing size={size} /> : null}
     </div>
   )
 }

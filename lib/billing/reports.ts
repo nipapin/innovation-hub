@@ -1,5 +1,5 @@
 import { query } from "@/lib/db"
-import type { GrantStatus } from "@/lib/billing/types"
+import type { GrantKind, GrantStatus } from "@/lib/billing/types"
 
 /**
  * Выборки для наблюдения в «Тарифах»: кто активировал период, какие проекты
@@ -14,6 +14,7 @@ export type Activation = {
   userId: string
   email: string
   fullName: string
+  kind: GrantKind
   status: GrantStatus
   amountCents: number
   remainingCents: number
@@ -26,13 +27,52 @@ export type Activation = {
   /** Сброшен ли период — тогда человеку кнопка доступна снова (П9.1). */
   resetAt: Date | null
   /**
-   * Который это период у человека по счёту. Серия сбросов у одного должна быть
+   * Который это подарок у человека по счёту. Серия сбросов у одного должна быть
    * видна глазом — как и серия однотипных регистраций рядом.
    */
   attempt: number
+  /** Комментарий выдавшего. У периода он служебный, у акции — суть выдачи. */
+  comment: string
 }
 
-export async function listTrialActivations(limit = 200): Promise<Activation[]> {
+/**
+ * Половина списка, в которую смотрят.
+ *
+ * `active` — то, что ещё живёт и за что мы платим прямо сейчас; `closed` —
+ * история. Делить обязательно: закрытых со временем становится на порядок
+ * больше, и одним списком действующие тонут в них ровно тогда, когда за ними и
+ * пришли. Сброшенный период — в истории независимо от статуса: он больше не
+ * действует, даже если строка осталась в `provisioning`.
+ */
+export type GrantScope = "active" | "closed"
+
+const SCOPE_SQL: Record<GrantScope, string> = {
+  active: "g.status IN ('provisioning', 'active') AND g.reset_at IS NULL",
+  closed: "(g.status IN ('exhausted', 'expired', 'revoked') OR g.reset_at IS NOT NULL)",
+}
+
+/**
+ * Выданные подарки одного вида: страницами, с поиском и делением на живые и
+ * закрытые.
+ *
+ * Поиск идёт по базе, а не по загруженной странице: искать в двадцати строках,
+ * которые и так на экране, незачем — смысл ровно в том, чтобы найти выдачу,
+ * уехавшую вниз за давностью. Ищем по почте, имени и комментарию: у акции
+ * комментарий и есть её название («новогодняя»), и не искать по нему значило бы
+ * заставлять помнить, кому именно её выдали.
+ *
+ * Номер попытки считается ДО отбора — оконной функцией по всем подаркам
+ * человека этого вида. Посчитанный после он врал бы: на второй странице у
+ * первого же периода вышло бы «период №1», хотя он третий.
+ */
+export async function listGrants(input: {
+  kind: GrantKind
+  scope: GrantScope
+  search?: string
+  limit?: number
+  offset?: number
+}): Promise<Activation[]> {
+  const search = (input.search ?? "").trim()
   const result = await query<
     Omit<Activation, "amountCents" | "remainingCents" | "projectCount" | "attempt"> & {
       amountCents: string
@@ -41,10 +81,19 @@ export async function listTrialActivations(limit = 200): Promise<Activation[]> {
       attempt: number
     }
   >(
-    `SELECT g.id                 AS "grantId",
+    `WITH ranked AS (
+       SELECT g.*,
+              ROW_NUMBER() OVER (
+                PARTITION BY g.user_id ORDER BY g.created_at
+              )::int AS attempt
+         FROM billing_grants g
+        WHERE g.kind = $1
+     )
+     SELECT g.id                 AS "grantId",
             g.user_id            AS "userId",
             u.email,
             COALESCE(u.full_name, '') AS "fullName",
+            g.kind,
             g.status,
             g.amount_cents::text AS "amountCents",
             COALESCE((
@@ -57,15 +106,20 @@ export async function listTrialActivations(limit = 200): Promise<Activation[]> {
             (SELECT COUNT(*)::int FROM billing_grant_projects gp
               WHERE gp.grant_id = g.id) AS "projectCount",
             g.reset_at           AS "resetAt",
-            ROW_NUMBER() OVER (
-              PARTITION BY g.user_id ORDER BY g.created_at
-            )::int               AS attempt
-       FROM billing_grants g
+            g.attempt,
+            COALESCE(g.comment, '') AS comment
+       FROM ranked g
        JOIN users u ON u.id = g.user_id
-      WHERE g.kind = 'trial'
+      WHERE ${SCOPE_SQL[input.scope]}
+        AND (
+          $2 = ''
+          OR u.email ILIKE '%' || $2 || '%'
+          OR COALESCE(u.full_name, '') ILIKE '%' || $2 || '%'
+          OR COALESCE(g.comment, '') ILIKE '%' || $2 || '%'
+        )
       ORDER BY g.created_at DESC
-      LIMIT $1`,
-    [limit],
+      LIMIT $3 OFFSET $4`,
+    [input.kind, search, input.limit ?? 20, input.offset ?? 0],
   )
 
   return result.rows.map((row) => ({

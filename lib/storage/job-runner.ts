@@ -2,6 +2,11 @@ import { activateGrant } from "@/lib/billing/grants"
 import { query } from "@/lib/db"
 import { sweepInFolders } from "@/lib/pipeline/sweep"
 import { setProjectPaused } from "@/lib/project-automation"
+import {
+  getObjectText,
+  projectDescriptionKey,
+  projectOptionsKey,
+} from "@/lib/project-storage"
 import { createProject, findProjectById } from "@/lib/repositories/projects"
 import { buildCopyPlan, copyPlanItem, type CopyPlanItem } from "@/lib/storage/copy"
 import {
@@ -13,6 +18,13 @@ import {
   setJobProgress,
   type StorageJobRecord,
 } from "@/lib/storage/jobs"
+import {
+  DESCRIPTION_FILE_NAME,
+  FOLDER_STATE_FILE_NAME,
+  OPTIONS_FILE_NAME,
+  OPTIONS_FOLDER_NAME,
+} from "@/lib/storage/keys"
+import { writeSidecarPut } from "@/lib/storage/write-path"
 import { rebuildCatalogSnapshot } from "@/lib/storage/catalog"
 import { purgeDeletedProjects } from "@/lib/storage/project-trash"
 import { purgeExpiredTrash } from "@/lib/storage/trash"
@@ -93,25 +105,98 @@ async function runCopyJob(job: StorageJobRecord): Promise<void> {
 }
 
 /**
- * Что из шаблона НЕ переезжает пользователю.
+ * Что из шаблона НЕ переезжает пользователю обычным копированием.
  *
  * `OUT` — результаты админских прогонов: человек открыл бы пробный проект и
  * увидел чужие ролики как свои. `options/_stats` — чужая статистика: приёмник
  * архива засчитал бы её как работу пользователя и съел бы подарок до первого
  * запуска. `folderState.json` — пишется заново при включении обработки.
  *
+ * Сама папка `options` и лежащие в ней `options.json` с `description.md` —
+ * тоже здесь, но по другой причине: они не пропускаются, а едут другим путём,
+ * `copyTemplateSidecars` (см. там же, почему обычное копирование их ломает).
+ *
  * Исключения списком, а не маской: «не скопировалось» никогда не должно быть
  * тихим.
  */
 const TEMPLATE_SKIP_ROOTS = new Set(["out"])
+
+/** Сайдкары: у них фиксированный адрес в хранилище, а не имя файла в папке. */
+const TEMPLATE_SIDECAR_NAMES = new Set([
+  OPTIONS_FILE_NAME.toLowerCase(),
+  DESCRIPTION_FILE_NAME.toLowerCase(),
+  FOLDER_STATE_FILE_NAME.toLowerCase(),
+])
 
 function isSkippedTemplateItem(item: CopyPlanItem): boolean {
   const rel = item.relativeFolder.toLowerCase()
   const name = item.source.name.toLowerCase()
   const full = rel ? `${rel}/${name}` : name
   if (full === "options/_stats" || rel.startsWith("options/_stats")) return true
-  if (full === "options/folderstate.json") return true
+  /**
+   * Папку `options` не заводим второй раз. Она уже есть: постановка проекта на
+   * паузу пишет `options/folderState.json`, а запись сайдкара заводит папку под
+   * него. Копирование про это не знает и, наткнувшись на занятое имя, честно
+   * разрешает конфликт — заводит `options (2)` и кладёт настройки туда. Так
+   * пробные проекты и получались с двумя папками, из которых «настоящая»
+   * называлась «(2)».
+   */
+  if (item.source.isFolder && full === OPTIONS_FOLDER_NAME) return true
+  if (rel === OPTIONS_FOLDER_NAME && TEMPLATE_SIDECAR_NAMES.has(name)) return true
   return false
+}
+
+/**
+ * Настройки и описание шаблона — по каноническому адресу, а не копированием.
+ *
+ * Обычная копия кладёт файл под ключ `options/<uuid>-options.json`: так
+ * устроена заливка, и для обычных файлов это правильно — одноимённые не
+ * затирают друг друга. Но `options.json` сайт читает НЕ по строке каталога, а
+ * по фиксированному ключу `options/options.json`
+ * ([`projectOptionsKey`](../project-storage.ts)); туда же смотрит сборщик
+ * задач. Скопированный обычным путём файл виден в дереве и не существует для
+ * конвейера: проект пропускается с причиной `no-options`, то есть пробный
+ * проект не работает вовсе.
+ *
+ * Поэтому читаем у шаблона и пишем в копию тем же путём, которым эти файлы
+ * пишет программа, — `writeSidecarPut`: он кладёт объект по каноническому ключу
+ * и заводит строку каталога.
+ */
+async function copyTemplateSidecars(input: {
+  template: { id: string; storageOwnerId: string }
+  destProjectId: string
+  destStorageOwnerId: string
+  actorUserId: string
+}): Promise<void> {
+  const sidecars = [
+    {
+      from: projectOptionsKey(input.template.storageOwnerId, input.template.id),
+      to: projectOptionsKey(input.destStorageOwnerId, input.destProjectId),
+      contentType: "application/json",
+    },
+    {
+      from: projectDescriptionKey(
+        input.template.storageOwnerId,
+        input.template.id,
+      ),
+      to: projectDescriptionKey(input.destStorageOwnerId, input.destProjectId),
+      contentType: "text/markdown; charset=utf-8",
+    },
+  ]
+
+  for (const sidecar of sidecars) {
+    const body = await getObjectText(sidecar.from)
+    // Нет файла — нечего и переносить: описание у шаблона может отсутствовать.
+    if (body == null) continue
+    await writeSidecarPut({
+      storageOwnerId: input.destStorageOwnerId,
+      projectId: input.destProjectId,
+      key: sidecar.to,
+      body,
+      contentType: sidecar.contentType,
+      actor: { userId: input.actorUserId, isUploader: true },
+    })
+  }
 }
 
 async function listTemplateRoots(
@@ -219,6 +304,15 @@ async function runTrialProvisionJob(job: StorageJobRecord): Promise<void> {
         })
       }
     }
+
+    // Настройки и описание — своим путём, по каноническому адресу. Без них
+    // копия видна в кабинете и невидима для конвейера.
+    await copyTemplateSidecars({
+      template: { id: templateId, storageOwnerId: template.storageOwnerId },
+      destProjectId: project.id,
+      destStorageOwnerId: job.userId,
+      actorUserId: job.userId,
+    })
 
     handled.add(templateId)
     done++
