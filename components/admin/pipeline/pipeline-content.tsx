@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useI18n } from "@/components/account/i18n"
 import type { PipelineState } from "@/lib/pipeline/state"
 import { AdminPageHeader } from "@/components/admin/shell/admin-page-header"
+import { PipelineAreas } from "./areas-content"
 import { RunPanel } from "./run-panel"
 import { TasksPanel } from "./tasks-panel"
 
@@ -75,6 +76,11 @@ export function PipelineContent() {
         help="pipeline.overview"
       />
       <RunPanel tick={tick} onState={onState} />
+      {/* Пульт областей — между тумблером установки и очередью: он отвечает на
+          вопрос «где что стоит», который задают ПОСЛЕ «идёт ли слежение» и ДО
+          того, как лезть в конкретные задачи. На установке без компаний не
+          рисуется вовсе. */}
+      <PipelineAreas tick={tick} />
       <TasksPanel
         tick={tick}
         running={running}

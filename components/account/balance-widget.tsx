@@ -39,6 +39,14 @@ export type BalanceState = {
   availableGiftCents: number
   overdraftLimitCents: number
   capacity: Capacity[]
+  /**
+   * За этого человека платит другой (docs/COMPANY_ACCOUNTS_PLAN.md §7). Суммы
+   * тогда нулевые и не показываются вовсе: деньги не его, и ноль на их месте
+   * читался бы как собственный пустой кошелёк.
+   */
+  paidBy?: { name: string } | null
+  /** За кого платит этот человек — объясняет чужие проекты в его ленте. */
+  payingFor?: string[]
 }
 
 /**
@@ -149,6 +157,21 @@ export function BalanceWidget({
 
   const own = state?.balances.own ?? 0
   const gift = state?.balances.gift ?? 0
+
+  // Не его кошелёк — ни суммы, ни кнопки пополнения: пополнить чужой он не
+  // может, а число здесь выглядело бы его собственным.
+  if (state?.paidBy) {
+    return (
+      <div className={cn("min-w-0", className)}>
+        <div className="truncate text-[13px] text-foreground">
+          {tf(t.paidByLine, { name: state.paidBy.name })}
+        </div>
+        <div className="mt-1 text-[11.5px] text-muted-foreground">
+          {t.paidByHint}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={cn("min-w-0", className)}>

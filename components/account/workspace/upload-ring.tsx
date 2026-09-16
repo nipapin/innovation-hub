@@ -93,7 +93,7 @@ export function UploadRing({ size = "roomy" }: { size?: "roomy" | "snug" }) {
               r={radius}
               fill="none"
               strokeWidth={geo.stroke}
-              className="stroke-white/[0.09]"
+              className="stroke-foreground/[0.09]"
             />
             <circle
               cx={center}

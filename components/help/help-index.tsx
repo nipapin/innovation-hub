@@ -71,7 +71,7 @@ export function HelpIndex({ entries }: { entries: HelpEntry[] }) {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={t.helpSearch}
-          className="h-11 w-full rounded-[11px] border border-white/[0.09] bg-ws-control pl-10 pr-4 text-[14px] text-ws-1 placeholder:text-ws-5 focus:border-ws-action focus:outline-none"
+          className="h-11 w-full rounded-[11px] border border-foreground/[0.09] bg-ws-control pl-10 pr-4 text-[14px] text-ws-1 placeholder:text-ws-5 focus:border-ws-action focus:outline-none"
         />
       </div>
 
@@ -112,7 +112,7 @@ export function HelpIndex({ entries }: { entries: HelpEntry[] }) {
                     <Link
                       key={entry.id}
                       href={`/help/${entry.id}`}
-                      className="group rounded-[11px] border border-white/[0.07] bg-ws-panel px-4 py-3.5 transition-colors hover:border-white/[0.14]"
+                      className="group rounded-[11px] border border-foreground/[0.07] bg-ws-panel px-4 py-3.5 transition-colors hover:border-foreground/[0.14]"
                     >
                       <div className="flex items-baseline gap-2.5">
                         <span className="text-[14.5px] font-medium text-ws-1 group-hover:text-white">
@@ -152,7 +152,7 @@ function TagPill({
         "rounded-full border px-3 py-1 text-[12px] transition-colors",
         active
           ? "border-ws-action bg-ws-action/15 text-ws-1"
-          : "border-white/[0.09] text-ws-4 hover:text-ws-2",
+          : "border-foreground/[0.09] text-ws-4 hover:text-ws-2",
       )}
     >
       {children}

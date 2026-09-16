@@ -454,7 +454,7 @@ function ChatBubble({ message }: { message: ProjectChatMessageDto }) {
           "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
           isClient
             ? "bg-primary/15 text-foreground"
-            : "border border-border/60 bg-white/[0.03] text-foreground",
+            : "border border-border/60 bg-foreground/[0.03] text-foreground",
         )}
       >
         <p className="mb-0.5 text-xs font-medium text-muted-foreground">

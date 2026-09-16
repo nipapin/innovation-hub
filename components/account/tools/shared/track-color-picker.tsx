@@ -58,7 +58,7 @@ export function TrackColorPicker({
                 onPick(swatch)
                 setOpen(false)
               }}
-              className="flex h-8 items-center justify-center rounded border border-white/10 hover:border-white/40"
+              className="flex h-8 items-center justify-center rounded border border-foreground/10 hover:border-foreground/40"
               style={{ background: swatch }}
             >
               {swatch.toLowerCase() === color.toLowerCase() ? (

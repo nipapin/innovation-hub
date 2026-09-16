@@ -8,7 +8,7 @@ import type { ProjectTab } from "@/components/account/workspace/workspace-contex
 
 type Counts = Record<ProjectTab, number>
 
-const EMPTY: Counts = { projects: 0, shared: 0, tools: 0, archive: 0, trash: 0 }
+const EMPTY: Counts = { projects: 0, tools: 0, archive: 0, trash: 0 }
 
 /**
  * Числа для разделов бокового меню.
@@ -34,7 +34,8 @@ export function useProjectCounts() {
           deletedAt?: string | null
         }
         if (p.deletedAt) acc.trash += 1
-        else if (p.sharedWithMe) acc.shared += 1
+        // Расшаренные — группа внутри «Проектов», своего раздела у них нет.
+        else if (p.sharedWithMe) acc.projects += 1
         else if (p.isArchived) acc.archive += 1
         else acc.projects += 1
       }

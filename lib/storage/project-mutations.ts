@@ -4,6 +4,7 @@ import { findClientById } from "@/lib/repositories/clients"
 import {
   createProject,
   deleteProject,
+  findCompanyProject,
   findOwnedProject,
   findProjectById,
   updateProject,
@@ -16,11 +17,12 @@ import {
 } from "@/lib/storage/auth"
 import { syncProjectMeta } from "@/lib/storage/project-catalog"
 import {
+  purgeProject,
   restoreDeletedProject,
   softDeleteProject,
 } from "@/lib/storage/project-trash"
 import { NextResponse } from "next/server"
-import { canReachAnyProject } from "@/lib/storage/auth"
+import { ownerInScope, reachScope } from "@/lib/storage/auth"
 import { recordAuditEvent } from "@/lib/repositories/admin-audit"
 
 export type MutationError = { error: string; status: number }
@@ -40,7 +42,7 @@ async function resolveClientId(
   if (clientId == null) return { data: null }
   const client = await findClientById(clientId)
   if (!client) return { error: "Client not found.", status: 400 }
-  if (!canReachAnyProject(auth) && client.userId !== auth.userId) {
+  if (!(await ownerInScope(auth, client.userId))) {
     return { error: "Client not found.", status: 400 }
   }
   return { data: client.id }
@@ -207,12 +209,19 @@ export async function restoreOwnedProject(
     }
   }
 
+  // Корзина — единственное место, где рамка смотрит с `includeDeleted`:
+  // восстановить можно только то, что уже было своим.
+  const restoreScope = reachScope(auth)
   const existing =
-    canReachAnyProject(auth)
+    restoreScope.kind === "all"
       ? await findProjectById(input.projectId, { includeDeleted: true })
-      : await findOwnedProject(input.projectId, auth.userId, {
-          includeDeleted: true,
-        })
+      : restoreScope.kind === "company"
+        ? await findCompanyProject(input.projectId, restoreScope.companyId, {
+            includeDeleted: true,
+          })
+        : await findOwnedProject(input.projectId, restoreScope.userId, {
+            includeDeleted: true,
+          })
 
   if (!existing?.deletedAt) {
     return { error: "Project not found.", status: 404 }
@@ -221,5 +230,68 @@ export async function restoreOwnedProject(
   const restored = await restoreDeletedProject(existing.id, existing.userId)
   if (!restored) return { error: "Project not found.", status: 404 }
   return { data: restored }
+}
+
+/**
+ * Стереть проект из корзины навсегда. Отменить это нечем.
+ *
+ * Рамка считается ровно как в `restoreOwnedProject` — с `includeDeleted`, потому
+ * что распоряжаются здесь уже удалённым, — и требование то же: проект обязан
+ * быть в корзине. Живой проект этим путём не сносится: сначала обычное удаление,
+ * и только потом, отдельным осознанным действием, чистка.
+ */
+export async function purgeOwnedProject(
+  auth: StorageApiAuth,
+  input: { projectId: string },
+): Promise<MutationResult<{ ok: true }> | NextResponse> {
+  if (auth.scopedProjectId) {
+    return {
+      error: "Scoped machine tokens cannot delete projects.",
+      status: 403,
+    }
+  }
+
+  const scope = reachScope(auth)
+  const existing =
+    scope.kind === "all"
+      ? await findProjectById(input.projectId, { includeDeleted: true })
+      : scope.kind === "company"
+        ? await findCompanyProject(input.projectId, scope.companyId, {
+            includeDeleted: true,
+          })
+        : await findOwnedProject(input.projectId, scope.userId, {
+            includeDeleted: true,
+          })
+
+  if (!existing?.deletedAt) {
+    return { error: "Project not found.", status: 404 }
+  }
+
+  // Адрес в хранилище — из самой строки: у переданного проекта он не совпадает
+  // с владельцем, и чистка по владельцу прошла бы по пустому префиксу.
+  await purgeProject(existing.id, existing.storageOwnerId)
+
+  // Запись обязательна и заметно важнее, чем у мягкого удаления: после неё от
+  // проекта не остаётся ни строки, ни байтов, и журнал — единственное, где
+  // сохранится, что он вообще существовал.
+  await recordAuditEvent({
+    actorId: auth.userId,
+    actorEmail: auth.email,
+    action: "project.purged",
+    targetType: "project",
+    targetId: existing.id,
+    targetLabel: existing.name,
+    meta: {
+      ownerId: existing.userId,
+      deletedAt: existing.deletedAt.toISOString(),
+      via: auth.computerId
+        ? "computer"
+        : auth.machineTokenId
+          ? "machine"
+          : "session",
+    },
+  })
+
+  return { data: { ok: true } }
 }
 

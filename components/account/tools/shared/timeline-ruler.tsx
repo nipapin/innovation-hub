@@ -91,7 +91,7 @@ export function TimelineRuler({
     <div
       ref={hostRef}
       onPointerDown={onScrub}
-      className="sticky top-0 z-[3] h-10 cursor-ew-resize border-b border-white/[0.07] bg-ws-panel"
+      className="sticky top-0 z-[3] h-10 cursor-ew-resize border-b border-foreground/[0.07] bg-ws-panel"
     >
       <canvas ref={canvasRef} aria-hidden style={{ position: "absolute", top: 0, height: RULER_H }} />
     </div>

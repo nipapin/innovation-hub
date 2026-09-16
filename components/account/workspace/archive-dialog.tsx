@@ -187,7 +187,7 @@ export function ArchiveDialog() {
         aria-describedby={undefined}
         className="max-w-lg border-border/60 bg-ws-raised p-0"
       >
-        <DialogHeader className="border-b border-white/[0.07] px-5 py-4">
+        <DialogHeader className="border-b border-foreground/[0.07] px-5 py-4">
           <DialogTitle className="flex items-center gap-2 text-[16px] font-semibold text-ws-1">
             <FileArchive className="h-[18px] w-[18px] opacity-80" />
             {t.archiveTitle}
@@ -227,8 +227,8 @@ export function ArchiveDialog() {
                   className={cn(
                     "rounded-[7px] border px-2 py-1 text-[12px] disabled:opacity-50",
                     size === partSize
-                      ? "border-ws-select bg-white/[0.07] text-ws-1"
-                      : "border-white/10 text-ws-3 hover:bg-white/[0.05]",
+                      ? "border-ws-select bg-foreground/[0.07] text-ws-1"
+                      : "border-foreground/10 text-ws-3 hover:bg-foreground/[0.05]",
                   )}
                 >
                   {fmtSize(size)}
@@ -250,7 +250,7 @@ export function ArchiveDialog() {
               {plan.parts.map((part) => (
                 <div
                   key={part.index}
-                  className="flex items-center gap-3 rounded-[9px] border border-white/[0.07] px-3 py-2"
+                  className="flex items-center gap-3 rounded-[9px] border border-foreground/[0.07] px-3 py-2"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] text-ws-1">
@@ -298,7 +298,7 @@ export function ArchiveDialog() {
           </p>
         </div>
 
-        <DialogFooter className="border-t border-white/[0.07] px-5 py-3">
+        <DialogFooter className="border-t border-foreground/[0.07] px-5 py-3">
           <Button
             type="button"
             variant="ghost"

@@ -80,6 +80,9 @@ export function createWorkspaceSource({
     // Прокси-роут для заливки не нужен вовсе — см. directUpload ниже.
     uploadUrl: (projectId) => `/api/admin/workspaces/projects/${projectId}/drive`,
     moveUrl: () => "/api/storage/v1/rename",
+    // /api/storage/v1 пускает ADMIN в любой проект, так что и перенос между
+    // проектами пользователя идёт тем же роутом, что в кабинете.
+    crossProjectMoveUrl: () => "/api/storage/v1/move",
     archivePlanUrl: (params) => `/api/storage/v1/archive/plan?${params.toString()}`,
     archivePartUrl: (params) => `/api/storage/v1/archive?${params.toString()}`,
     descriptionMdUrl: (projectId) =>

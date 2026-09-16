@@ -88,7 +88,7 @@ function ToolRow({ tool }: { tool: ToolInstance }) {
         "group mb-2 flex cursor-pointer items-start gap-3 rounded-[12px] border p-3 transition-colors",
         active
           ? "border-ws-select/50 bg-ws-select/[0.10]"
-          : "border-white/[0.08] bg-ws-panel hover:border-white/[0.16] hover:bg-ws-hover",
+          : "border-foreground/[0.08] bg-ws-panel hover:border-foreground/[0.16] hover:bg-ws-hover",
       )}
     >
       <span className="relative flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] border border-ws-accent/30 bg-ws-accent/[0.08]">
@@ -154,7 +154,7 @@ export function ToolsColumn() {
   return (
     <section
       style={{ width: size }}
-      className="relative hidden h-full shrink-0 flex-col overflow-hidden border-r border-white/[0.08] bg-ws-well lg:flex"
+      className="relative hidden h-full shrink-0 flex-col overflow-hidden border-r border-foreground/[0.08] bg-ws-well lg:flex"
     >
       <div className="shrink-0 px-4 pb-3 pt-4">
         <div className="flex items-baseline justify-between gap-2">
@@ -176,7 +176,7 @@ export function ToolsColumn() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t.searchTools}
-            className="h-[38px] w-full rounded-[9px] border border-white/10 bg-ws-control pl-[34px] pr-3 text-[13px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
+            className="h-[38px] w-full rounded-[9px] border border-foreground/10 bg-ws-control pl-[34px] pr-3 text-[13px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
           />
         </div>
       </div>
@@ -197,7 +197,7 @@ export function ToolsColumn() {
         )}
       </div>
 
-      <div className="shrink-0 border-t border-white/[0.07] p-3">
+      <div className="shrink-0 border-t border-foreground/[0.07] p-3">
         <AddToolButton />
       </div>
 
@@ -219,7 +219,7 @@ export function NoToolSelected() {
   const { openCatalog } = useTools()
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-foreground/10 bg-foreground/[0.04]">
         <Wrench className="h-7 w-7 text-ws-3" />
       </span>
       <div className="space-y-1.5">
@@ -247,7 +247,7 @@ export function ToolsGrid() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex-none border-b border-white/[0.07] px-6 pb-6 pt-8 md:px-12 md:pt-11">
+      <div className="flex-none border-b border-foreground/[0.07] px-6 pb-6 pt-8 md:px-12 md:pt-11">
         <div className="mx-auto max-w-[1120px]">
           <div className="flex items-center gap-3">
             <span className="h-0.5 w-[34px] rounded bg-ws-accent" />
@@ -298,7 +298,7 @@ export function ToolsGrid() {
                         openTool(tool.id)
                       }
                     }}
-                    className="flex cursor-pointer flex-col gap-4 rounded-2xl border border-white/10 bg-ws-panel p-[22px] text-left hover:border-white/[0.18] hover:bg-ws-hover"
+                    className="flex cursor-pointer flex-col gap-4 rounded-2xl border border-foreground/10 bg-ws-panel p-[22px] text-left hover:border-foreground/[0.18] hover:bg-ws-hover"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <span className="relative flex h-[46px] w-[46px] items-center justify-center rounded-full border border-ws-accent/30 bg-ws-accent/[0.08]">
@@ -328,7 +328,7 @@ export function ToolsGrid() {
                         </span>
                       </p>
                     </div>
-                    <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] pt-4">
+                    <div className="flex items-center justify-between gap-3 border-t border-foreground/[0.07] pt-4">
                       <span className="text-[12.5px] text-ws-5">
                         {tool.lastOpenedAt
                           ? fmtDate(tool.lastOpenedAt, lang)

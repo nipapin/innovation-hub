@@ -75,8 +75,36 @@ export function WalletsSection({
 }) {
   const { t, lang } = useI18n()
 
+  // Деньги не его: ни кошельков, ни ленты — только кто за него платит. Нулевые
+  // карточки на этом месте читались бы как собственный пустой кошелёк.
+  if (balance?.paidBy) {
+    return (
+      <section
+        className={cn(
+          "rounded-2xl border border-border/60 bg-card px-5 py-5",
+          className,
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <WalletIcon className="h-4 w-4 text-primary/80" />
+          <h2 className="text-base font-semibold">
+            {tf(t.paidByLine, { name: balance.paidBy.name })}
+          </h2>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground/80">{t.paidByHint}</p>
+      </section>
+    )
+  }
+
   return (
     <div className={cn("flex flex-col gap-4", className)}>
+      {/* Плательщик видит в ленте списания чужих проектов — без этой строки
+          они выглядели бы ошибкой. */}
+      {balance?.payingFor && balance.payingFor.length > 0 ? (
+        <p className="text-[12.5px] text-muted-foreground">
+          {tf(t.payingForLine, { names: balance.payingFor.join(", ") })}
+        </p>
+      ) : null}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <WalletCard
           icon={<WalletIcon className="h-4 w-4 text-primary/80" />}

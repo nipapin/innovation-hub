@@ -360,7 +360,13 @@ export type TrialResetResult =
  */
 export async function resetTrialGrant(input: {
   grantId: string
-  actorUserId: string
+  /**
+   * Кто сбросил. `null` — сбросило правило «набор обновлён», а не человек.
+   * Различать обязательно: `reset_by` это след в базе, и подставлять туда
+   * случайного администратора (или самого пользователя) значило бы приписать
+   * распоряжение тому, кто его не отдавал.
+   */
+  actorUserId: string | null
 }): Promise<TrialResetResult> {
   const grant = await findGrant(input.grantId)
   if (!grant) return { ok: false, reason: "not-found" }

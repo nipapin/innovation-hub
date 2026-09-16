@@ -1,5 +1,6 @@
 import { query } from "@/lib/db"
 import type { SocialPlatform } from "@/lib/social/types"
+import { companyAutomationSql } from "@/lib/company-features"
 
 /**
  * Запросы автопостинга: кого обходим, что уже опубликовано, что в очереди.
@@ -24,6 +25,12 @@ export type PostingProject = {
  * «автоматика по этому человеку включена» и «проект не на паузе» — решения о
  * проекте целиком, а не про конкретный вид работы. Заводить второй набор
  * тумблеров значило бы, что выключенный проект всё равно что-то делает.
+ *
+ * По той же причине сюда приехал и гейт компании (COMPANY_PIPELINE_PLAN §5):
+ * общий кусок `companyAutomationSql` стоит в обоих запросах. Маршрутизация
+ * постинга по машинам компании — отдельный разговор и отложена (§7), но
+ * ВЫКЛЮЧАТЕЛЬ обязан гасить компанию целиком: иначе «обработку остановили», а
+ * ролики продолжают уходить на площадки.
  */
 export async function listPostingProjects(): Promise<PostingProject[]> {
   const result = await query<PostingProject>(
@@ -39,6 +46,7 @@ export async function listPostingProjects(): Promise<PostingProject[]> {
         AND COALESCE(p.is_paused, FALSE) = FALSE
         AND COALESCE(p.is_archived, FALSE) = FALSE
         AND COALESCE(p.is_template, FALSE) = FALSE
+        AND ${companyAutomationSql("u")}
       ORDER BY p.created_at ASC`,
   )
   return result.rows

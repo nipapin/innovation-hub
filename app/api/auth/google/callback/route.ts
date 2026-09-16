@@ -134,6 +134,7 @@ export async function GET(request: Request) {
           passwordHash: null,
           authProvider: "google",
           providerAccountId: profile.sub,
+          kind: "person",
         }
       } catch (error) {
         console.error("[google-oauth] failed to create user", error)

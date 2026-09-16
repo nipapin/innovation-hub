@@ -108,7 +108,7 @@ function ToolButton({ title, icon: Icon, onClick, disabled, active }: ToolButton
       }}
       className={cn(
         "flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] transition-colors",
-        "text-ws-3 hover:bg-white/[0.07] hover:text-ws-1",
+        "text-ws-3 hover:bg-foreground/[0.07] hover:text-ws-1",
         "disabled:pointer-events-none disabled:opacity-40",
         active && "bg-ws-select/[0.18] text-ws-1",
       )}
@@ -118,7 +118,7 @@ function ToolButton({ title, icon: Icon, onClick, disabled, active }: ToolButton
   )
 }
 
-const Separator = () => <span className="mx-0.5 h-5 w-px shrink-0 bg-white/[0.08]" />
+const Separator = () => <span className="mx-0.5 h-5 w-px shrink-0 bg-foreground/[0.08]" />
 
 const HUE_LABELS: Record<string, keyof MdDict> = {
   blue: "hueBlue",
@@ -173,7 +173,7 @@ function ColorPalette({
         e.preventDefault()
         onPick(key)
       }}
-      className="flex h-[22px] w-[22px] items-center justify-center overflow-hidden rounded-[5px] border border-white/10 bg-ws-control hover:border-white/40"
+      className="flex h-[22px] w-[22px] items-center justify-center overflow-hidden rounded-[5px] border border-foreground/10 bg-ws-control hover:border-foreground/40"
     >
       {kind === "fg" ? (
         <span className={cn("text-[13px] font-semibold leading-none", `fg-${key}`)}>A</span>
@@ -193,7 +193,7 @@ function ColorPalette({
         </div>
       ))}
 
-      <div className="my-1 h-px w-full bg-white/[0.08]" />
+      <div className="my-1 h-px w-full bg-foreground/[0.08]" />
 
       <div className="flex gap-1">
         {MARKDOWN_GRAYS.map((gray) => swatch(gray, t[GRAY_LABELS[gray]]))}
@@ -285,7 +285,7 @@ export function MarkdownToolbar({
   const [emojiOpen, setEmojiOpen] = useState(false)
 
   return (
-    <div className="flex flex-wrap items-center gap-[2px] border-b border-white/[0.07] bg-ws-panel px-2 py-1.5">
+    <div className="flex flex-wrap items-center gap-[2px] border-b border-foreground/[0.07] bg-ws-panel px-2 py-1.5">
       {/* 1. История */}
       <ToolButton title={t.undo} icon={Undo2} onClick={undo} disabled={!canUndo} />
       <ToolButton title={t.redo} icon={Redo2} onClick={redo} disabled={!canRedo} />
@@ -313,7 +313,7 @@ export function MarkdownToolbar({
             type="button"
             title={t.textColor}
             aria-label={t.textColor}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-white/[0.07] hover:text-ws-1"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-foreground/[0.07] hover:text-ws-1"
           >
             <Baseline className="h-[15px] w-[15px]" strokeWidth={1.8} />
           </button>
@@ -336,7 +336,7 @@ export function MarkdownToolbar({
             type="button"
             title={t.fillColor}
             aria-label={t.fillColor}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-white/[0.07] hover:text-ws-1"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-foreground/[0.07] hover:text-ws-1"
           >
             <Highlighter className="h-[15px] w-[15px]" strokeWidth={1.8} />
           </button>
@@ -369,7 +369,7 @@ export function MarkdownToolbar({
             type="button"
             title={t.paragraphStyle}
             aria-label={t.paragraphStyle}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-white/[0.07] hover:text-ws-1"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-foreground/[0.07] hover:text-ws-1"
           >
             <Heading className="h-[15px] w-[15px]" strokeWidth={1.8} />
           </button>
@@ -395,7 +395,7 @@ export function MarkdownToolbar({
             type="button"
             title={t.alignment}
             aria-label={t.alignment}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-white/[0.07] hover:text-ws-1"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-foreground/[0.07] hover:text-ws-1"
           >
             <AlignLeft className="h-[15px] w-[15px]" strokeWidth={1.8} />
           </button>
@@ -470,7 +470,7 @@ export function MarkdownToolbar({
             type="button"
             title={t.emoji}
             aria-label={t.emoji}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-white/[0.07] hover:text-ws-1"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-foreground/[0.07] hover:text-ws-1"
           >
             <Smile className="h-[15px] w-[15px]" strokeWidth={1.8} />
           </button>
@@ -486,7 +486,7 @@ export function MarkdownToolbar({
                   api.insert(emoji)
                   setEmojiOpen(false)
                 }}
-                className="flex h-[26px] w-[26px] items-center justify-center rounded-[5px] text-[16px] hover:bg-white/[0.07]"
+                className="flex h-[26px] w-[26px] items-center justify-center rounded-[5px] text-[16px] hover:bg-foreground/[0.07]"
               >
                 {emoji}
               </button>
@@ -512,7 +512,7 @@ export function MarkdownToolbar({
               type="button"
               title={tf(t.fontSizeTitle, { size: fontSize })}
               aria-label={tf(t.fontSizeTitle, { size: fontSize })}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-white/[0.07] hover:text-ws-1"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-ws-3 transition-colors hover:bg-foreground/[0.07] hover:text-ws-1"
             >
               <ALargeSmall className="h-[15px] w-[15px]" strokeWidth={1.8} />
             </button>

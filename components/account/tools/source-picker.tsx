@@ -110,7 +110,7 @@ function ProjectSubmenu({
 
   return (
     <DropdownMenuSub onOpenChange={(open) => open && void load()}>
-      <DropdownMenuSubTrigger className="cursor-pointer gap-2 focus:bg-white/10">
+      <DropdownMenuSubTrigger className="cursor-pointer gap-2 focus:bg-foreground/10">
         <FolderOpen className="h-[15px] w-[15px] shrink-0 text-ws-4" />
         <span className="min-w-0 flex-1 truncate">{project.name}</span>
         {project.sharedWithMe ? (
@@ -135,7 +135,7 @@ function ProjectSubmenu({
               <DropdownMenuItem
                 key={name}
                 onClick={() => onPick(project, name)}
-                className="cursor-pointer gap-2 focus:bg-white/10"
+                className="cursor-pointer gap-2 focus:bg-foreground/10"
               >
                 <span className="truncate">{name}</span>
               </DropdownMenuItem>
@@ -178,7 +178,7 @@ export function SourcePicker({ tool }: { tool: ToolInstance }) {
         <button
           type="button"
           className={cn(
-            "flex h-[38px] min-w-0 max-w-[420px] items-center gap-2 rounded-[10px] border border-white/10 bg-ws-control px-3 text-[13.5px] text-ws-2 hover:border-white/20 hover:text-ws-1",
+            "flex h-[38px] min-w-0 max-w-[420px] items-center gap-2 rounded-[10px] border border-foreground/10 bg-ws-control px-3 text-[13.5px] text-ws-2 hover:border-foreground/20 hover:text-ws-1",
           )}
         >
           <FolderOpen className="h-[16px] w-[16px] shrink-0 text-ws-4" />

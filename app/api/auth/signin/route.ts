@@ -31,6 +31,16 @@ export async function POST(request: Request) {
       )
     }
 
+    // Служебный кошелёк компании (docs/COMPANY_ACCOUNTS_PLAN.md §7.3): нет
+    // пароля и не должен быть. Ответ такой же, как «нет такого email», а не
+    // ветка ниже про OAuth — она про другую причину и путала бы при разборе.
+    if (user.kind === "company_wallet") {
+      return NextResponse.json(
+        { message: "Invalid email or password." },
+        { status: 401 },
+      )
+    }
+
     if (!user.isActive) {
       return NextResponse.json(
         { message: "Account is inactive." },

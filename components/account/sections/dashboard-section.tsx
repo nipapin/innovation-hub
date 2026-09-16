@@ -277,7 +277,7 @@ function StatCard({
         <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
           {label}
         </span>
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-white/[0.03] text-muted-foreground transition-colors duration-200 group-hover:border-primary/30 group-hover:text-primary">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-foreground/[0.03] text-muted-foreground transition-colors duration-200 group-hover:border-primary/30 group-hover:text-primary">
           {icon}
         </span>
       </div>
@@ -315,7 +315,7 @@ function ProjectCard({ project }: { project: DashboardProject }) {
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-gradient-to-b from-white/[0.06] to-transparent text-muted-foreground transition-colors duration-200 group-hover:border-primary/30 group-hover:text-primary">
+        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-gradient-to-b from-foreground/[0.06] to-transparent text-muted-foreground transition-colors duration-200 group-hover:border-primary/30 group-hover:text-primary">
           <FolderKanban className="h-[18px] w-[18px]" />
           {project.gift ? (
             <GiftCorner gift={project.gift} ringClass="ring-[hsl(var(--surface-2))]" />
@@ -334,7 +334,7 @@ function ProjectCard({ project }: { project: DashboardProject }) {
         {!project.isActive ? (
           <Badge
             variant="outline"
-            className="border-border/60 bg-white/[0.03] text-[10px] font-medium text-muted-foreground"
+            className="border-border/60 bg-foreground/[0.03] text-[10px] font-medium text-muted-foreground"
           >
             Paused
           </Badge>
@@ -363,9 +363,9 @@ function QuickLink({
   return (
     <Link
       href={href}
-      className="group flex items-center gap-4 rounded-2xl border border-border/50 bg-white/[0.02] px-5 py-4 transition-all duration-200 hover:border-border hover:bg-white/[0.04]"
+      className="group flex items-center gap-4 rounded-2xl border border-border/50 bg-foreground/[0.02] px-5 py-4 transition-all duration-200 hover:border-border hover:bg-foreground/[0.04]"
     >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-white/[0.03] text-muted-foreground transition-colors duration-200 group-hover:text-foreground">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-foreground/[0.03] text-muted-foreground transition-colors duration-200 group-hover:text-foreground">
         {icon}
       </span>
       <div className="min-w-0 flex-1">

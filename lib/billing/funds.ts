@@ -55,12 +55,18 @@ export type Funds = {
 type ReserveRows = { byWallet: Balances; byGrant: Map<string, number> }
 
 /**
- * Живые резервы пользователя по всем его проектам.
+ * Живые резервы кошелька — по проектам всех, за кого он платит.
  *
- * Платит всегда владелец проекта (`projects.user_id`), а не тот, кто работает в
- * расшаренном: отдал доступ — платишь ты. Поэтому JOIN идёт по владельцу.
+ * Платит владелец проекта (`projects.user_id`), а не тот, кто работает в
+ * расшаренном: отдал доступ — платишь ты. А за владельца может платить другой
+ * (`users.payer_user_id`, docs/COMPANY_ACCOUNTS_PLAN.md §7): тогда резерв его
+ * задач лежит на кошельке плательщика.
+ *
+ * Считать по `p.user_id = $1` здесь нельзя: у плательщика своих проектов может
+ * не быть вовсе, резерв вышел бы нулевым, и допуск пропускал бы работ больше,
+ * чем покрывает остаток, — тем больше, чем больше людей работают одновременно.
  */
-async function liveReserves(userId: string): Promise<ReserveRows> {
+async function liveReserves(walletUserId: string): Promise<ReserveRows> {
   const result = await query<{
     wallet: Wallet | null
     grantId: string | null
@@ -71,7 +77,8 @@ async function liveReserves(userId: string): Promise<ReserveRows> {
             COALESCE(SUM(t.estimate_cents), 0)::text AS cents
        FROM tasks t
        JOIN projects p ON p.id = t.project_id
-      WHERE p.user_id = $1
+       JOIN users o ON o.id = p.user_id
+      WHERE COALESCE(o.payer_user_id, o.id) = $1
         AND t.pay_wallet IS NOT NULL
         AND (
           t.status IN ('queued', 'claimed', 'running')
@@ -85,7 +92,7 @@ async function liveReserves(userId: string): Promise<ReserveRows> {
           )
         )
       GROUP BY t.pay_wallet, t.pay_grant_id`,
-    [userId],
+    [walletUserId],
   )
 
   const byWallet: Balances = { own: 0, gift: 0 }
@@ -171,6 +178,12 @@ async function overdraftLimitFor(
   return own == null ? settings.overdraftLimitCents : Number(own)
 }
 
+/**
+ * Деньги КОШЕЛЬКА. `userId` — тот, чей кошелёк: плательщик, а не обязательно
+ * владелец проекта. Кто за кого платит — lib/billing/payer.ts; передать сюда
+ * владельца, за которого платит другой, значит прочитать его пустой личный
+ * кошелёк вместо настоящего.
+ */
 export async function getFunds(userId: string): Promise<Funds> {
   const { settings } = await readBillingSettings()
   const [balances, reserves] = await Promise.all([
@@ -250,4 +263,34 @@ export function chooseWallet(input: {
   }
 
   return { ok: false, reason: "insufficient-funds" }
+}
+
+/**
+ * Учесть только что допущенную задачу в уже прочитанных деньгах.
+ *
+ * Конвейер читает деньги один раз на проход и держит их в кэше по кошельку
+ * (lib/pipeline/scan.ts). Резерв задачи появляется в базе вместе с её строкой,
+ * но кэш об этом не знает — и без этой поправки все элементы пачки допускались
+ * бы по одному и тому же остатку. С общим кошельком это уже не частный случай:
+ * в одну пачку попадают задачи всех, за кого платит один кошелёк.
+ */
+export function holdReserve(
+  funds: Funds,
+  hold: { wallet: Wallet | null; grantId: string | null; estimateCents: number },
+): void {
+  const cents = Math.max(0, Math.round(hold.estimateCents))
+  if (cents === 0 || hold.wallet == null) return
+
+  funds.reserved[hold.wallet] += cents
+  if (hold.wallet === "own") {
+    funds.availableOwnCents -= cents
+    return
+  }
+
+  const grant = funds.grants.find((g) => g.grantId === hold.grantId)
+  if (grant) {
+    grant.reservedCents += cents
+    grant.availableCents = Math.max(0, grant.availableCents - cents)
+  }
+  funds.availableGiftCents = Math.max(0, funds.availableGiftCents - cents)
 }

@@ -37,36 +37,102 @@ export type TrashItem = {
   isFolder: boolean
   deletedAt: string
   sizeBytes: number
+  /**
+   * Проект, из которого файл удалён. В выборке по одному проекту он и так
+   * известен, но корень корзины показывает файлы всех проектов сразу, и без
+   * этого поля строку не к чему привязать — ни подсветить проект слева, ни
+   * восстановить её потом.
+   */
+  projectId: string
+  /** Имя проекта — только в выборке по владельцу, иначе пусто. */
+  projectName: string
+  /** Тип содержимого: по нему интерфейс рисует значок файла. */
+  contentType: string
+  /**
+   * Файл попал в корзину вместе со всем проектом, а не сам по себе. Своей
+   * пометки удаления у него нет, поэтому поштучно вернуть или стереть его
+   * нельзя — только целиком проект.
+   */
+  projectDeleted: boolean
 }
 
-export async function listTrash(projectId: string): Promise<TrashItem[]> {
-  const result = await query<{
-    fileId: string
-    name: string
-    folderPath: string
-    isFolder: boolean
-    deletedAt: Date
-    sizeBytes: number
-  }>(
-    `SELECT id AS "fileId",
-            name,
-            folder_path AS "folderPath",
-            is_folder AS "isFolder",
-            deleted_at AS "deletedAt",
-            size_bytes::float8 AS "sizeBytes"
-       FROM project_files
-      WHERE project_id = $1 AND deleted_at IS NOT NULL
-      ORDER BY deleted_at DESC, lower(name) ASC`,
-    [projectId],
-  )
-  return result.rows.map((row) => ({
+type TrashRow = {
+  fileId: string
+  name: string
+  folderPath: string
+  isFolder: boolean
+  fileDeletedAt: Date | null
+  projectDeletedAt: Date | null
+  sizeBytes: number
+  projectId: string
+  projectName: string | null
+  contentType: string | null
+}
+
+function toTrashItem(row: TrashRow): TrashItem {
+  const deletedAt = row.fileDeletedAt ?? row.projectDeletedAt
+  return {
     fileId: row.fileId,
     name: row.name,
     folderPath: row.folderPath,
     isFolder: row.isFolder,
-    deletedAt: new Date(row.deletedAt).toISOString(),
+    deletedAt: deletedAt ? new Date(deletedAt).toISOString() : "",
     sizeBytes: row.sizeBytes,
-  }))
+    projectId: row.projectId,
+    projectName: row.projectName ?? "",
+    contentType: row.contentType ?? "",
+    projectDeleted: row.fileDeletedAt === null,
+  }
+}
+
+const TRASH_FIELDS = `
+  f.id AS "fileId",
+  f.name,
+  f.folder_path AS "folderPath",
+  f.is_folder AS "isFolder",
+  f.size_bytes::float8 AS "sizeBytes",
+  f.content_type AS "contentType",
+  f.project_id AS "projectId"
+`
+
+export async function listTrash(projectId: string): Promise<TrashItem[]> {
+  const result = await query<TrashRow>(
+    `SELECT ${TRASH_FIELDS},
+            f.deleted_at AS "fileDeletedAt",
+            NULL::timestamptz AS "projectDeletedAt",
+            NULL::text AS "projectName"
+       FROM project_files f
+      WHERE f.project_id = $1 AND f.deleted_at IS NOT NULL
+      ORDER BY f.deleted_at DESC, lower(f.name) ASC`,
+    [projectId],
+  )
+  return result.rows.map(toTrashItem)
+}
+
+/**
+ * Корень корзины: всё удалённое по всем проектам владельца сразу.
+ *
+ * Сюда идут вещи двух родов. Поштучно выброшенные файлы помечены своим
+ * `deleted_at`. А у файлов внутри удалённого проекта такой пометки нет —
+ * удалён проект целиком, — но человек-то выбросил и их, и в общем списке он
+ * ждёт увидеть именно всё. Поэтому время удаления для них берётся у проекта, а
+ * сами они помечены `projectDeleted`: восстанавливать и стирать их поодиночке
+ * нельзя, пока не решена судьба самого проекта.
+ */
+export async function listTrashForOwner(ownerId: string): Promise<TrashItem[]> {
+  const result = await query<TrashRow>(
+    `SELECT ${TRASH_FIELDS},
+            f.deleted_at AS "fileDeletedAt",
+            p.deleted_at AS "projectDeletedAt",
+            p.name AS "projectName"
+       FROM project_files f
+       JOIN projects p ON p.id = f.project_id
+      WHERE p.user_id = $1
+        AND (f.deleted_at IS NOT NULL OR p.deleted_at IS NOT NULL)
+      ORDER BY COALESCE(f.deleted_at, p.deleted_at) DESC, lower(f.name) ASC`,
+    [ownerId],
+  )
+  return result.rows.map(toTrashItem)
 }
 
 async function parentFolderLive(
@@ -225,6 +291,97 @@ export async function restoreFromTrash(input: {
   })
 }
 
+/** Сносит строки и их объекты в R2. Общий хвост всех ручных чисток корзины. */
+async function dropFileRows(
+  rows: { id: string; s3Key: string | null }[],
+): Promise<{ purged: number; keys: string[] }> {
+  if (rows.length === 0) return { purged: 0, keys: [] }
+  const ids = rows.map((r) => r.id)
+  const keys = rows.map((r) => r.s3Key).filter((k): k is string => Boolean(k))
+
+  await query(`DELETE FROM project_files WHERE id = ANY($1::text[])`, [ids])
+
+  if (keys.length > 0 && isS3Configured()) {
+    const client = getS3Client()
+    const bucket = getS3Bucket()
+    await Promise.allSettled(
+      keys.map((key) =>
+        client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })),
+      ),
+    )
+  }
+  return { purged: ids.length, keys }
+}
+
+/**
+ * Удаление одной вещи из корзины навсегда — без отсечки по сроку хранения.
+ *
+ * Папка уходит со всем, что в ней лежало: подчинённые строки ищутся ровно так
+ * же, как при восстановлении (`restoreFromTrash`) — по совпадению `deleted_at` и
+ * префиксу пути. Совпадение времени здесь и есть признак «удалено этим же
+ * действием»: файл, который человек выбросил из той же папки отдельно и раньше,
+ * останется в корзине сам по себе, и его срок хранения не оборвётся чужой
+ * чисткой.
+ */
+export async function purgeTrashItem(input: {
+  projectId: string
+  fileId: string
+}): Promise<{ purged: number }> {
+  const found = await query<{
+    id: string
+    s3Key: string | null
+    name: string
+    folderPath: string
+    isFolder: boolean
+    deletedAt: Date
+  }>(
+    `SELECT id,
+            s3_key AS "s3Key",
+            name,
+            folder_path AS "folderPath",
+            is_folder AS "isFolder",
+            deleted_at AS "deletedAt"
+       FROM project_files
+      WHERE id = $1 AND project_id = $2 AND deleted_at IS NOT NULL`,
+    [input.fileId, input.projectId],
+  )
+  const existing = found.rows[0]
+  if (!existing) {
+    throw new StorageWriteError("File not found in trash.", 404)
+  }
+
+  const rows = [{ id: existing.id, s3Key: existing.s3Key }]
+  if (existing.isFolder) {
+    const prefix = folderPrefix(existing.folderPath, existing.name)
+    const children = await query<{ id: string; s3Key: string | null }>(
+      `SELECT id, s3_key AS "s3Key"
+         FROM project_files
+        WHERE project_id = $1
+          AND deleted_at = $2
+          AND (folder_path = $3 OR folder_path LIKE $3 || '/%')`,
+      [input.projectId, existing.deletedAt, prefix],
+    )
+    rows.push(...children.rows)
+  }
+
+  const result = await dropFileRows(rows)
+  return { purged: result.purged }
+}
+
+/** Чистит корзину проекта целиком — то же, но без выбора вещи. */
+export async function emptyProjectTrash(
+  projectId: string,
+): Promise<{ purged: number }> {
+  const rows = await query<{ id: string; s3Key: string | null }>(
+    `SELECT id, s3_key AS "s3Key"
+       FROM project_files
+      WHERE project_id = $1 AND deleted_at IS NOT NULL`,
+    [projectId],
+  )
+  const result = await dropFileRows(rows.rows)
+  return { purged: result.purged }
+}
+
 export async function purgeExpiredTrash(): Promise<{
   purged: number
   keys: string[]
@@ -239,22 +396,5 @@ export async function purgeExpiredTrash(): Promise<{
       LIMIT 500`,
     [cutoff],
   )
-  if (rows.rows.length === 0) return { purged: 0, keys: [] }
-
-  const keys = rows.rows.map((r) => r.s3Key).filter((k): k is string => Boolean(k))
-  const ids = rows.rows.map((r) => r.id)
-
-  await query(`DELETE FROM project_files WHERE id = ANY($1::text[])`, [ids])
-
-  if (keys.length > 0 && isS3Configured()) {
-    const client = getS3Client()
-    const bucket = getS3Bucket()
-    await Promise.allSettled(
-      keys.map((key) =>
-        client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })),
-      ),
-    )
-  }
-
-  return { purged: ids.length, keys }
+  return dropFileRows(rows.rows)
 }

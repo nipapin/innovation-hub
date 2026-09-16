@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useState } from "react"
 import { Gift, Loader2, Search } from "lucide-react"
 import { toast } from "sonner"
-import { formatBalance, tf, useI18n } from "@/components/account/i18n"
+import {
+  formatBalance,
+  tf,
+  useI18n,
+  type Dictionary,
+} from "@/components/account/i18n"
 import {
   NumberField,
   Section,
@@ -39,6 +44,8 @@ type UserPick = {
 
 type ProjectRow = { projectId: string; name: string; isArchived: boolean }
 
+type PersonRef = { userId: string; email: string; fullName: string }
+
 type GrantRow = {
   grantId: string
   kind: string
@@ -63,6 +70,9 @@ export function AdminBillingPromo() {
   const [lifetime, setLifetime] = useState("")
   const [comment, setComment] = useState("")
   const [overdraft, setOverdraft] = useState("")
+  /** Кто платит за выбранного и за кого платит он сам (§7 плана компаний). */
+  const [payer, setPayer] = useState<PersonRef | null>(null)
+  const [dependents, setDependents] = useState<PersonRef[]>([])
   const [busy, setBusy] = useState(false)
   /** Перечитать общий список выданного: после начисления новая строка обязана
    *  появиться сразу, иначе непонятно, прошло ли начисление. */
@@ -94,6 +104,10 @@ export function AdminBillingPromo() {
     setUsers([])
     setQ("")
     setSelected(new Set())
+    // Сразу, а не после ответа: иначе до его прихода экран показывал бы чужого
+    // плательщика и строил по нему подсказки у подарка и лимита.
+    setPayer(null)
+    setDependents([])
     try {
       const res = await fetch(
         `/api/admin/billing/promo?userId=${encodeURIComponent(user.userId)}`,
@@ -104,9 +118,13 @@ export function AdminBillingPromo() {
         projects: ProjectRow[]
         grants: GrantRow[]
         overdraftLimitCents: number | null
+        payer: PersonRef | null
+        dependents: PersonRef[]
       }
       setProjects(body.projects)
       setGrants(body.grants)
+      setPayer(body.payer)
+      setDependents(body.dependents)
       setOverdraft(
         body.overdraftLimitCents == null
           ? ""
@@ -164,7 +182,15 @@ export function AdminBillingPromo() {
           comment: comment.trim(),
         }),
       })
-      if (!res.ok) throw new Error(String(res.status))
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { code?: string }
+        toast.error(
+          body.code === "projects-required"
+            ? t.promoProjectsRequired
+            : t.promoGrantError,
+        )
+        return
+      }
       toast.success(t.promoGranted)
       setAmount("")
       setComment("")
@@ -275,7 +301,19 @@ export function AdminBillingPromo() {
 
       {picked ? (
         <>
+          <PayerSection
+            userId={picked.userId}
+            payer={payer}
+            dependents={dependents}
+            onChanged={() => void loadUser(picked)}
+          />
+
           <Section title={t.promoGrantTitle} help="billing.promo.grant">
+            {payer ? (
+              <p className="text-sm text-warning">
+                {tf(t.promoGrantToPayer, { who: payer.email })}
+              </p>
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-2">
               <NumberField
                 id="promo-amount"
@@ -342,7 +380,14 @@ export function AdminBillingPromo() {
               </ul>
             )}
 
-            <Button onClick={grant} disabled={busy || !rublesToCents(amount)}>
+            <Button
+              onClick={grant}
+              disabled={
+                busy ||
+                !rublesToCents(amount) ||
+                (payer != null && selected.size === 0)
+              }
+            >
               {busy ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -357,15 +402,23 @@ export function AdminBillingPromo() {
             description={t.promoOverdraftDesc}
             help="billing.promo.overdraft"
           >
-            <NumberField
-              id="promo-overdraft"
-              label={t.promoOverdraftValue}
-              value={overdraft}
-              onChange={setOverdraft}
-            />
-            <Button variant="outline" onClick={saveOverdraft} disabled={busy}>
-              {t.promoOverdraftSave}
-            </Button>
+            {payer ? (
+              <p className="text-sm text-muted-foreground">
+                {tf(t.promoOverdraftPayer, { who: payer.email })}
+              </p>
+            ) : (
+              <>
+                <NumberField
+                  id="promo-overdraft"
+                  label={t.promoOverdraftValue}
+                  value={overdraft}
+                  onChange={setOverdraft}
+                />
+                <Button variant="outline" onClick={saveOverdraft} disabled={busy}>
+                  {t.promoOverdraftSave}
+                </Button>
+              </>
+            )}
           </Section>
 
           <Section title={t.promoHistory} help="billing.promo.history">
@@ -476,5 +529,166 @@ export function AdminBillingPromo() {
         />
       </Section>
     </div>
+  )
+}
+
+/** Причина отказа — словами, а не кодом: каждая называет, что сделать. */
+function payerErrorText(code: string | undefined, t: Dictionary): string {
+  switch (code) {
+    case "self":
+      return t.promoPayerErrSelf
+    case "payer-has-payer":
+      return t.promoPayerErrChain
+    case "has-dependents":
+      return t.promoPayerErrDependents
+    case "has-open-grants":
+      return t.promoPayerErrGrants
+    case "payer-grants-cover-projects":
+      return t.promoPayerErrCovered
+    case "not-found":
+    case "payer-not-found":
+      return t.promoPayerErrNotFound
+    default:
+      return t.promoPayerError
+  }
+}
+
+/**
+ * Кто платит за выбранного человека.
+ *
+ * Стоит перед подарком и лимитом, потому что меняет их смысл: у того, за кого
+ * платит другой, подарок ложится на плательщика, а лимит не задаётся вовсе.
+ *
+ * Поиск прячется у того, кто сам платит за других: цепочек нет, и предлагать
+ * выбор, который сервер всё равно отклонит, незачем.
+ */
+function PayerSection({
+  userId,
+  payer,
+  dependents,
+  onChanged,
+}: {
+  userId: string
+  payer: PersonRef | null
+  dependents: PersonRef[]
+  onChanged: () => void
+}) {
+  const { t } = useI18n()
+  const [q, setQ] = useState("")
+  const [hits, setHits] = useState<UserPick[]>([])
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (q.trim().length < 2) {
+      setHits([])
+      return
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/billing/promo?q=${encodeURIComponent(q)}`,
+          { cache: "no-store" },
+        )
+        if (!res.ok) return
+        const body = (await res.json()) as { users: UserPick[] }
+        setHits(body.users.filter((user) => user.userId !== userId))
+      } catch {
+        // Подсказка поиска — не то, ради чего показывают ошибку.
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [q, userId])
+
+  const save = async (payerId: string | null) => {
+    setBusy(true)
+    try {
+      const res = await fetch("/api/admin/billing/promo/payer", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, payerId }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { code?: string }
+        toast.error(payerErrorText(body.code, t))
+        return
+      }
+      toast.success(t.promoPayerSaved)
+      setQ("")
+      setHits([])
+      onChanged()
+    } catch {
+      toast.error(t.promoPayerError)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Section
+      title={t.promoPayerTitle}
+      description={t.promoPayerDesc}
+      help="billing.promo.payer"
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm text-foreground">
+          {payer ? tf(t.promoPayerIs, { who: payer.email }) : t.promoPayerSelf}
+        </span>
+        {payer ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void save(null)}
+            disabled={busy}
+          >
+            {t.promoPayerClear}
+          </Button>
+        ) : null}
+      </div>
+
+      {dependents.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {tf(t.promoPayingFor, {
+            list: dependents.map((person) => person.email).join(", "),
+          })}
+        </p>
+      ) : (
+        <>
+          <div className="relative max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+              placeholder={t.promoPayerSearch}
+              className="pl-9"
+              disabled={busy}
+            />
+          </div>
+
+          {hits.length > 0 ? (
+            <ul className="max-w-md divide-y divide-border/50 rounded-lg border border-border/60">
+              {hits.map((user) => (
+                <li key={user.userId}>
+                  <button
+                    type="button"
+                    onClick={() => void save(user.userId)}
+                    disabled={busy}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent/40 disabled:opacity-60"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {user.email}
+                      {user.fullName ? (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {user.fullName}
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      )}
+    </Section>
   )
 }

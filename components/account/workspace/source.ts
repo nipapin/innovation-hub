@@ -30,6 +30,7 @@ export const CABINET_SOURCE: WorkspaceSource = {
   uploadUrl: (projectId, params) =>
     `/api/projects/${projectId}/media?${params.toString()}`,
   moveUrl: () => "/api/storage/v1/rename",
+  crossProjectMoveUrl: () => "/api/storage/v1/move",
   archivePlanUrl: (params) => `/api/storage/v1/archive/plan?${params.toString()}`,
   archivePartUrl: (params) => `/api/storage/v1/archive?${params.toString()}`,
   exposedOptionsUrl: (projectId) => `/api/projects/${projectId}/drive/options`,
@@ -40,6 +41,17 @@ export const CABINET_SOURCE: WorkspaceSource = {
   chatUrl: (projectId) => `/api/projects/${projectId}/chat`,
   chatReadUrl: (projectId) => `/api/projects/${projectId}/chat/read`,
   chatPerspective: "client",
+  trashUrl: (projectId) =>
+    projectId
+      ? `/api/storage/v1/trash?projectId=${encodeURIComponent(projectId)}`
+      : "/api/storage/v1/trash",
+  trashRestoreUrl: () => "/api/storage/v1/trash/restore",
+  trashPurgeUrl: (projectId, fileId) => {
+    const params = new URLSearchParams({ projectId })
+    if (fileId) params.set("fileId", fileId)
+    return `/api/storage/v1/trash?${params.toString()}`
+  },
+  projectPurgeUrl: () => "/api/storage/v1/project-purge",
   showServiceFolders: false,
   directUpload: true,
   can: {

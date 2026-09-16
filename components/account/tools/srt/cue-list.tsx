@@ -48,12 +48,12 @@ export function CueList() {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-ws-well">
-      <div className="flex h-11 flex-none items-center gap-2.5 border-b border-white/[0.07] px-3">
+      <div className="flex h-11 flex-none items-center gap-2.5 border-b border-foreground/[0.07] px-3">
         <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.4px] text-ws-accent">
           <span className="text-ws-action">—</span>
           {t.srtCues}
         </div>
-        <label className="flex h-[30px] max-w-[320px] flex-1 items-center gap-2 rounded-full border border-white/[0.07] bg-ws-raised px-2.5">
+        <label className="flex h-[30px] max-w-[320px] flex-1 items-center gap-2 rounded-full border border-foreground/[0.07] bg-ws-raised px-2.5">
           <Search className="h-4 w-4 shrink-0 text-ws-4" />
           <input
             value={srt.cueQuery}
@@ -71,7 +71,7 @@ export function CueList() {
             const at = srt.clock.getTimeMs()
             srt.selectCue(srt.ops.addCue(trackId, at, at + 2000), { seek: false })
           }}
-          className="flex h-[30px] items-center gap-1.5 rounded border border-white/[0.07] px-2.5 text-[12px] text-ws-2 hover:bg-ws-hover"
+          className="flex h-[30px] items-center gap-1.5 rounded border border-foreground/[0.07] px-2.5 text-[12px] text-ws-2 hover:bg-ws-hover"
         >
           <Plus className="h-4 w-4" />
           {t.srtNewCue}
@@ -80,7 +80,7 @@ export function CueList() {
 
       <div
         style={{ gridTemplateColumns: GRID }}
-        className="grid h-8 flex-none items-center border-b border-white/[0.07] bg-ws-panel px-3 text-[11px] font-semibold uppercase tracking-[0.32px] text-ws-4"
+        className="grid h-8 flex-none items-center border-b border-foreground/[0.07] bg-ws-panel px-3 text-[11px] font-semibold uppercase tracking-[0.32px] text-ws-4"
       >
         <div>{t.srtColNum}</div>
         <div>{t.srtColTiming}</div>
@@ -138,10 +138,10 @@ function CueRow({
       onClick={() => srt.selectCue(cue.id)}
       style={{ gridTemplateColumns: GRID }}
       className={cn(
-        "mx-2 mb-1.5 grid cursor-pointer items-stretch rounded-[5px] border-b border-white/[0.05] border-l-[3px] px-3 py-3.5",
+        "mx-2 mb-1.5 grid cursor-pointer items-stretch rounded-[5px] border-b border-foreground/[0.05] border-l-[3px] px-3 py-3.5",
         selected ? "border-l-ws-action bg-ws-select/[0.10]" : "border-l-transparent",
-        !selected && playing && "bg-white/[0.03]",
-        !selected && "hover:bg-white/[0.03]",
+        !selected && playing && "bg-foreground/[0.03]",
+        !selected && "hover:bg-foreground/[0.03]",
       )}
     >
       <div className="pt-1.5 font-mono text-[0.88em] tabular-nums text-ws-4">
@@ -253,7 +253,7 @@ function CueField({
       // вызов сбросил бы каретку в начало текста.
       onClick={(e) => e.stopPropagation()}
       className={cn(
-        "h-full min-h-[54px] w-full resize-none overflow-hidden rounded border border-transparent bg-transparent px-2 py-1.5 text-[1em] leading-[1.45] outline-none hover:border-white/[0.10] focus:border-ws-action focus:bg-ws-well disabled:opacity-50",
+        "h-full min-h-[54px] w-full resize-none overflow-hidden rounded border border-transparent bg-transparent px-2 py-1.5 text-[1em] leading-[1.45] outline-none hover:border-foreground/[0.10] focus:border-ws-action focus:bg-ws-well disabled:opacity-50",
         className,
       )}
       style={{ fieldSizing: "content" } as React.CSSProperties}

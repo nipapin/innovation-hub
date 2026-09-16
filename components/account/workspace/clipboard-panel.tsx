@@ -17,7 +17,6 @@ export function ClipboardPanel() {
     clipboard,
     removeFromClipboard,
     clearClipboard,
-    openMoveDialog,
     pasteClipboard,
     currentTarget,
   } = useWorkspace()
@@ -36,7 +35,7 @@ export function ClipboardPanel() {
         isCut ? "border-warning/40" : "border-ws-select/40",
       )}
     >
-      <header className="flex items-center gap-2 border-b border-white/[0.07] px-3 py-2.5">
+      <header className="flex items-center gap-2 border-b border-foreground/[0.07] px-3 py-2.5">
         <OpIcon
           className={cn(
             "h-4 w-4 shrink-0",
@@ -54,7 +53,7 @@ export function ClipboardPanel() {
           onClick={clearClipboard}
           title={t.clipboardClear}
           aria-label={t.clipboardClear}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ws-4 hover:bg-white/10 hover:text-ws-1"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ws-4 hover:bg-foreground/10 hover:text-ws-1"
         >
           <X className="h-4 w-4" />
         </button>
@@ -66,7 +65,7 @@ export function ClipboardPanel() {
           return (
             <li
               key={file.id}
-              className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/[0.05]"
+              className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-foreground/[0.05]"
             >
               <Icon
                 className={cn("h-4 w-4 shrink-0", fileIconClass(file))}
@@ -80,7 +79,7 @@ export function ClipboardPanel() {
                 onClick={() => removeFromClipboard(file.id)}
                 title={t.clipboardRemove}
                 aria-label={`${t.clipboardRemove}: ${file.name}`}
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ws-5 opacity-0 transition-opacity hover:bg-white/10 hover:text-ws-1 focus-visible:opacity-100 group-hover:opacity-100"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ws-5 opacity-0 transition-opacity hover:bg-foreground/10 hover:text-ws-1 focus-visible:opacity-100 group-hover:opacity-100"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -89,17 +88,14 @@ export function ClipboardPanel() {
         })}
       </ul>
 
-      <footer className="border-t border-white/[0.07] p-2">
+      <footer className="border-t border-foreground/[0.07] p-2">
+        {/* Вставляем в открытую папку: папку уже выбрали, открыв её. */}
         <button
           type="button"
-          onClick={() =>
-            isCut
-              ? openMoveDialog(clipboard.items)
-              : pasteClipboard(currentTarget.folderPath)
-          }
+          onClick={() => pasteClipboard(currentTarget.folderPath)}
           className="h-8 w-full rounded-lg bg-ws-action text-[13px] font-medium text-white hover:bg-ws-action-hover"
         >
-          {isCut ? t.moveTitle : t.clipboardPaste}
+          {t.clipboardPaste}
         </button>
       </footer>
     </aside>

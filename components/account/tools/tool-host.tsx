@@ -148,7 +148,7 @@ function TaskSummary({ tool }: { tool: ToolInstance }) {
           ].map((s) => (
             <div
               key={s.label}
-              className="rounded-[12px] border border-white/[0.08] bg-ws-panel px-4 py-3"
+              className="rounded-[12px] border border-foreground/[0.08] bg-ws-panel px-4 py-3"
             >
               <p className="text-[22px] font-semibold tabular-nums text-ws-1">{s.value}</p>
               <p className="mt-0.5 text-[11.5px] uppercase tracking-[1.2px] text-ws-5">
@@ -158,13 +158,13 @@ function TaskSummary({ tool }: { tool: ToolInstance }) {
           ))}
         </div>
 
-        <div className="mt-5 overflow-hidden rounded-[12px] border border-white/[0.08]">
+        <div className="mt-5 overflow-hidden rounded-[12px] border border-foreground/[0.08]">
           {tracks.map((track) => {
             const own = cues.filter((c) => c.trackId === track.id)
             return (
               <div
                 key={track.id}
-                className="flex items-center gap-3 border-b border-white/[0.06] px-4 py-2.5 last:border-b-0"
+                className="flex items-center gap-3 border-b border-foreground/[0.06] px-4 py-2.5 last:border-b-0"
               >
                 <span className="w-7 shrink-0 text-[12.5px] tabular-nums text-ws-5">
                   {String(track.no).padStart(2, "0")}
@@ -177,7 +177,7 @@ function TaskSummary({ tool }: { tool: ToolInstance }) {
                     "shrink-0 rounded-full border px-2 py-[2px] text-[11.5px]",
                     track.audio
                       ? "border-ws-out/40 bg-ws-out/10 text-ws-out"
-                      : "border-white/[0.10] text-ws-5",
+                      : "border-foreground/[0.10] text-ws-5",
                   )}
                 >
                   {track.audio ? "audio" : "srt"}
@@ -224,7 +224,7 @@ export function ToolHost({ tool }: { tool: ToolInstance }) {
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {/* Имя инструмента и путь живут в топбаре раздела; здесь — источник. */}
-      <header className="flex flex-none flex-wrap items-center gap-2.5 border-b border-white/[0.07] px-4 py-2.5 md:px-6">
+      <header className="flex flex-none flex-wrap items-center gap-2.5 border-b border-foreground/[0.07] px-4 py-2.5 md:px-6">
         <SourcePicker tool={tool} />
         <button
           type="button"

@@ -62,7 +62,7 @@ export function SrtSettingsDialog({
         aria-describedby={undefined}
         className="flex max-h-[82vh] w-[680px] max-w-[92vw] flex-col gap-0 overflow-hidden p-0"
       >
-        <DialogHeader className="flex-none border-b border-white/[0.07] px-5 py-4">
+        <DialogHeader className="flex-none border-b border-foreground/[0.07] px-5 py-4">
           <DialogTitle className="text-[16px] font-semibold">{t.srtSettings}</DialogTitle>
         </DialogHeader>
 
@@ -131,11 +131,11 @@ export function SrtSettingsDialog({
           <ProjectRulesSection tool={tool} />
         </div>
 
-        <div className="flex flex-none items-center gap-2.5 border-t border-white/[0.07] px-5 py-3.5">
+        <div className="flex flex-none items-center gap-2.5 border-t border-foreground/[0.07] px-5 py-3.5">
           <button
             type="button"
             onClick={onOpenHelp}
-            className="flex h-[34px] items-center gap-1.5 rounded border border-white/[0.07] px-3 text-[13px] text-ws-2 hover:bg-ws-hover"
+            className="flex h-[34px] items-center gap-1.5 rounded border border-foreground/[0.07] px-3 text-[13px] text-ws-2 hover:bg-ws-hover"
           >
             <Keyboard className="h-4 w-4" />
             {t.srtHotkeys}
@@ -144,7 +144,7 @@ export function SrtSettingsDialog({
           <button
             type="button"
             onClick={resetView}
-            className="h-[34px] rounded border border-white/[0.07] px-3 text-[13px] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+            className="h-[34px] rounded border border-foreground/[0.07] px-3 text-[13px] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
           >
             {t.srtResetLayout}
           </button>

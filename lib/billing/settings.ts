@@ -73,6 +73,13 @@ export function normalizeSettings(raw: unknown): BillingSettings {
       ? (src.trial as Record<string, unknown>)
       : {}
   const lifetime = trialRaw.lifetimeDays
+  // Мусор в дате — это «даты нет», а не «сбросить всем»: неразобранное значение
+  // не должно превращаться в распоряжение, которого никто не отдавал.
+  const resetFrom =
+    typeof trialRaw.resetFrom === "string" &&
+    Number.isFinite(Date.parse(trialRaw.resetFrom))
+      ? trialRaw.resetFrom
+      : null
   return {
     rates,
     marginPct: num(src.marginPct, d.marginPct),
@@ -84,6 +91,7 @@ export function normalizeSettings(raw: unknown): BillingSettings {
       amountCents: Math.round(num(trialRaw.amountCents, d.trial.amountCents)),
       lifetimeDays:
         lifetime == null ? null : Math.max(1, Math.round(num(lifetime, 1))),
+      resetFrom,
     },
     enforceForOwnProjects: src.enforceForOwnProjects === true,
     vendorCurrency:

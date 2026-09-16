@@ -165,10 +165,17 @@ const HELP_TOPICS_BY_VARIANT: Record<
     metric: "statistics.metrics",
     breakdown: "statistics.breakdowns",
   },
+  // Компания читает админские статьи: набор осей у неё тот же, без машин, и
+  // «спенд» означает ровно то же самое — списанное с кошелька. Своя пара
+  // появится, когда у витрины заведётся что-то своё; пока это была бы копия.
+  company: {
+    metric: "statistics.metrics",
+    breakdown: "statistics.breakdowns",
+  },
 }
 
 type Props = {
-  /** `/api/admin/statistics` или `/api/account/statistics`. */
+  /** `/api/admin/statistics`, `/api/account/statistics` или `/api/company/statistics`. */
   endpoint: string
   /** Какие оси показывать. Совпадает с тем, что посчитает сервер по скоупу. */
   variant: StatVariant

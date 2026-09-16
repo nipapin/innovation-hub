@@ -55,6 +55,13 @@ type PickRow = {
 export function AdminBillingTrial() {
   const { t, lang } = useI18n()
   const [trial, setTrial] = useState<TrialSettings | null>(null)
+  /**
+   * Снимок того, что лежит в базе. Форму сравниваем с ним, а не с умолчаниями:
+   * кнопка сохранения должна быть неактивна ровно тогда, когда сохранять
+   * нечего. Иначе она не сообщает ничего — её вид одинаков и до правки, и
+   * после записи, и человеку остаётся гадать, ушло ли изменение на сервер.
+   */
+  const [saved, setSaved] = useState<TrialSettings | null>(null)
   const [revision, setRevision] = useState(0)
   const [templates, setTemplates] = useState<TemplateRow[]>([])
   /**
@@ -79,6 +86,7 @@ export function AdminBillingTrial() {
         templates: TemplateRow[]
       }
       setTrial(data.trial)
+      setSaved(data.trial)
       setRevision(data.revision)
       setTemplates(data.templates)
       setActivationsKey((prev) => prev + 1)
@@ -115,12 +123,16 @@ export function AdminBillingTrial() {
 
   const save = async () => {
     if (!trial) return
+    // Что именно ушло на сервер. Сравнивать форму надо с отправленным, а не с
+    // ответом: ответ несёт одну ревизию, а человек за время запроса мог успеть
+    // поправить поле — и эта правка обязана остаться несохранённой.
+    const sent = trial
     setSaving(true)
     try {
       const res = await fetch("/api/admin/billing/trial", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trial, baseRevision: revision }),
+        body: JSON.stringify({ trial: sent, baseRevision: revision }),
       })
       if (res.status === 409) {
         toast.error(t.billingConflict)
@@ -130,6 +142,7 @@ export function AdminBillingTrial() {
       if (!res.ok) throw new Error(String(res.status))
       const data = (await res.json()) as { revision: number }
       setRevision(data.revision)
+      setSaved(sent)
       toast.success(t.billingSaved)
     } catch {
       toast.error(t.billingSaveError)
@@ -137,6 +150,17 @@ export function AdminBillingTrial() {
       setSaving(false)
     }
   }
+
+  /**
+   * Есть ли что сохранять.
+   *
+   * Сравнение через JSON годится здесь потому, что обе стороны — один и тот же
+   * плоский документ настроек: `trial` получается из `saved` распылением, так
+   * что набор и порядок ключей совпадают по построению. Для произвольных
+   * объектов такое сравнение было бы неверным.
+   */
+  const dirty =
+    trial !== null && JSON.stringify(trial) !== JSON.stringify(saved)
 
   const setTemplate = async (projectId: string, isTemplate: boolean) => {
     setBusy(projectId)
@@ -235,7 +259,7 @@ export function AdminBillingTrial() {
         description={t.adminBillingTrialDesc}
         help="billing.trial"
         actions={
-          <Button onClick={save} disabled={saving}>
+          <Button onClick={save} disabled={saving || !dirty}>
             {saving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -291,6 +315,29 @@ export function AdminBillingTrial() {
             }}
           />
         </div>
+
+        {/* Обновление набора. Кнопка, а не поле с датой: руками сюда вписывают
+            либо сегодняшнее число, либо опечатку, а смысл действия — «набор
+            сменился прямо сейчас». Сохранение обычное, общей кнопкой сверху. */}
+        <div className="flex flex-wrap items-center gap-3 border-t border-border/50 pt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setTrial({ ...trial, resetFrom: new Date().toISOString() })
+            }
+          >
+            {t.billingTrialResetFrom}
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {trial.resetFrom
+              ? tf(t.billingTrialResetFromAt, { date: date(trial.resetFrom) })
+              : t.billingTrialResetFromNever}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground/80">
+          {t.billingTrialResetFromHint}
+        </p>
       </Section>
 
       <Section

@@ -108,7 +108,13 @@ export function RegisterForm({ googleEnabled = false }: RegisterFormProps = {}) 
           </div>
         ) : null}
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          {/* См. разбор в login-form.tsx: до гидратации Enter отправил бы форму
+              методом GET, то есть пароль попал бы в адресную строку. */}
+          <form
+            method="post"
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-4"
+          >
             <FormField
               control={form.control}
               name="fullName"

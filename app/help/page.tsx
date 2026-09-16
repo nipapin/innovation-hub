@@ -1,3 +1,4 @@
+import { getCompanyContext } from "@/lib/company-auth"
 import { redirect } from "next/navigation"
 
 import { HelpIndex, type HelpEntry } from "@/components/help/help-index"
@@ -19,10 +20,11 @@ function meta(article: HelpArticle) {
 export default async function HelpIndexPage() {
   const user = await getCurrentUser()
   if (!user) redirect("/login")
+  const viewer = { ...user, companyAdmin: (await getCompanyContext()) !== null }
 
   // Фильтрация по правам — здесь, до рендера: в браузер не должно уехать даже
   // название статьи из раздела, который человеку не открыт.
-  const entries: HelpEntry[] = visibleTopics(user).flatMap((topic) => {
+  const entries: HelpEntry[] = visibleTopics(viewer).flatMap((topic) => {
     const bundle = loadBundle(topic.id)
     // Тема без файла — ошибка сборки, её ловит `npm run help:check`. В рантайме
     // лучше не показать одну карточку, чем уронить весь индекс.

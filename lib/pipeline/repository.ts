@@ -1,6 +1,7 @@
 import { query } from "@/lib/db"
-import type { ProjectRecord } from "@/lib/domain-types"
+import { REMOTE_COMPUTER_ONLINE_MS, type ProjectRecord } from "@/lib/domain-types"
 import { TEAM_UNREAD_COUNT_SQL } from "@/lib/repositories/project-chat"
+import { companyAutomationSql } from "@/lib/company-features"
 
 /**
  * Запросы «Конвейера» — админского вида на обработку всех проектов сайта.
@@ -23,8 +24,19 @@ export type PipelineUser = {
   archivedCount: number
   /** Последняя активность в хранилище по любому проекту пользователя. */
   lastActivityAt: Date | null
+  /** NULL — общий раздел. По ним «Папки» разбиваются на области. */
+  companyId: string | null
+  companyTitle: string | null
 }
 
+/**
+ * Кто участвует в обработке — колонка 1 «Папок».
+ *
+ * Служебные кошельки компаний (`kind = 'company_wallet'`) исключены: это не
+ * люди, а счета. Войти ими нельзя, папок у них нет и не будет, а в списке они
+ * выглядели как двое сотрудников общего раздела, у которых почему-то ноль
+ * проектов. Та же причина, по которой их не показывает консоль компании.
+ */
 export async function listPipelineUsers(): Promise<PipelineUser[]> {
   const result = await query<PipelineUser>(
     `SELECT u.id,
@@ -35,8 +47,11 @@ export async function listPipelineUsers(): Promise<PipelineUser[]> {
             COALESCE(p.total, 0)::int       AS "projectCount",
             COALESCE(p.watched, 0)::int     AS "watchedCount",
             COALESCE(p.archived, 0)::int    AS "archivedCount",
-            p.last_activity                 AS "lastActivityAt"
+            p.last_activity                 AS "lastActivityAt",
+            u.company_id                    AS "companyId",
+            c.title                         AS "companyTitle"
        FROM users u
+       LEFT JOIN companies c ON c.id = u.company_id
        LEFT JOIN (
          SELECT user_id,
                 COUNT(*) AS total,
@@ -52,7 +67,13 @@ export async function listPipelineUsers(): Promise<PipelineUser[]> {
           WHERE deleted_at IS NULL
           GROUP BY user_id
        ) p ON p.user_id = u.id
-      ORDER BY COALESCE(u.automation_enabled, FALSE) DESC,
+      WHERE u.kind = 'person'
+      -- Общий раздел первым, компании по названию — тот же порядок, что на
+      -- пульте конвейера. Две страницы про одно и то же не должны читаться
+      -- по-разному. Внутри области — как было: сначала включённые.
+      ORDER BY u.company_id IS NOT NULL,
+               lower(COALESCE(c.title, '')),
+               COALESCE(u.automation_enabled, FALSE) DESC,
                COALESCE(p.total, 0) DESC,
                u.email ASC`,
   )
@@ -151,16 +172,33 @@ export type WatchedProject = {
    * освобождение иногда нужно и не-админу.
    */
   ownerBillingExempt: boolean
+  /**
+   * Чей кошелёк платит за работу в проекте: плательщик владельца или сам
+   * владелец (docs/COMPANY_ACCOUNTS_PLAN.md §7). По нему конвейер читает деньги.
+   */
+  payerId: string
+  /**
+   * За владельца платит другой. Нужен для причины остановки: деньги кончились
+   * не у него, и «пополните баланс» послало бы его туда, где он бессилен.
+   */
+  ownerHasPayer: boolean
 }
 
 /**
  * Проекты, за которыми конвейер следит прямо сейчас.
  *
- * Три условия, и все три — решение разных людей: гейт ставит админ, паузу
- * пользователь, архив тоже пользователь. Четвёртое — не решение, а свойство:
- * шаблоны пробного набора исключены всегда. Наличие options.json здесь не
- * проверяется: это поход в объектное хранилище, и сканер делает его сам, уже
- * зная, что по проекту есть новые события.
+ * Четыре условия, и все четыре — решение разных людей: гейт на человеке и гейт
+ * на компании ставит админ, паузу пользователь, архив тоже пользователь. Пятое —
+ * не решение, а свойство: шаблоны пробного набора исключены всегда. Наличие
+ * options.json здесь не проверяется: это поход в объектное хранилище, и сканер
+ * делает его сам, уже зная, что по проекту есть новые события.
+ *
+ * Гейт компании (docs/COMPANY_PIPELINE_PLAN.md §5) — одно условие в этом самом
+ * запросе, а не свой курсор скана и не свой фоновый цикл на компанию. Курсор на
+ * компанию означал бы N проходов по одному журналу `storage_changes` и N
+ * состояний, которые можно рассинхронизировать; цикл на компанию превратил бы
+ * один процесс в N. Пропущенное при этом не теряется: его добирает обход
+ * каталога (sweep.ts), ровно как при паузе проекта сегодня.
  *
  * Корзина отсекается отдельно от паузы и архива: объекты удалённого проекта
  * лежат в R2 до истечения срока хранения, и без этого условия сканер ещё
@@ -177,7 +215,9 @@ export async function listWatchedProjects(): Promise<WatchedProject[]> {
             p.pay_base  AS "payBase",
             p.pay_meter AS "payMeter",
             p.estimate_units::float8 AS "estimateUnits",
-            COALESCE(u.billing_exempt, FALSE) AS "ownerBillingExempt"
+            COALESCE(u.billing_exempt, FALSE) AS "ownerBillingExempt",
+            COALESCE(u.payer_user_id, u.id) AS "payerId",
+            (u.payer_user_id IS NOT NULL) AS "ownerHasPayer"
        FROM projects p
        JOIN users u ON u.id = p.user_id
       WHERE u.is_active
@@ -188,7 +228,135 @@ export async function listWatchedProjects(): Promise<WatchedProject[]> {
         -- Шаблон пробного набора не обрабатывает сам себя: иначе его _stats
         -- уедут в статистику как чужая работа, а копии пользователей получат
         -- уже наполненный OUT.
-        AND COALESCE(p.is_template, FALSE) = FALSE`,
+        AND COALESCE(p.is_template, FALSE) = FALSE
+        -- Гейт компании — рядом с гейтом человека, а не вместо него: работа идёт,
+        -- когда открыты оба. Тот же кусок стоит в обходе на постинг, поэтому он
+        -- общий: разойтись этим двум условиям нельзя.
+        AND ${companyAutomationSql("u")}`,
+  )
+  return result.rows
+}
+
+/**
+ * Строка пульта: одна область конвейера — общий раздел или компания.
+ *
+ * `companyId: null` — общий раздел, то есть все, кто не в компании. Это не
+ * «остальные»: до появления компаний так работала вся установка, и строка про
+ * неё на пульте первая.
+ */
+export type PipelineArea = {
+  /** NULL — общий раздел. */
+  companyId: string | null
+  title: string
+  /**
+   * Слежение по области.
+   *
+   * У компании — её выключатель (§5). У общего раздела выключателя НЕТ: там
+   * гейт стоит на каждом человеке отдельно, и одного ответа «да/нет» на всю
+   * область не существует. Поэтому `null`, а не выдуманное `true`: тумблер,
+   * показывающий состояние, которого нет, врал бы при первом же взгляде.
+   */
+  automationEnabled: boolean | null
+  /** Людей с открытым гейтом и всего людей — чем живёт строка общего раздела. */
+  peopleWatched: number
+  peopleTotal: number
+  queued: number
+  running: number
+  /**
+   * Ошибки ЗА СУТКИ, а не за всё время.
+   *
+   * Пожизненный счётчик на пульте бесполезен: он растёт и никогда не убывает,
+   * поэтому через месяц красным горят все строки сразу и отличить сегодняшнюю
+   * поломку от прошлогодней нельзя. Пульт отвечает на вопрос «что не так
+   * СЕЙЧАС».
+   */
+  failedDay: number
+  /** Своих машин у компании. У общего раздела — наших, ничьих. */
+  machines: number
+  machinesOnline: number
+}
+
+/**
+ * Все области конвейера одной таблицей — docs/COMPANY_PIPELINE_PLAN.md §6.
+ *
+ * Смысл страницы в том, чтобы НЕ ходить по компаниям: она отвечает «где что
+ * стоит» одним взглядом, а не после обхода десяти консолей.
+ *
+ * Компании берутся из `companies`, а не из задач: компания без единой задачи
+ * обязана быть на пульте строкой с нулями. Появляйся строка от задач, только что
+ * заведённая компания выглядела бы как несуществующая — и именно в тот момент,
+ * когда за ней надо следить внимательнее всего.
+ */
+export async function listPipelineAreas(): Promise<PipelineArea[]> {
+  const result = await query<PipelineArea>(
+    `WITH areas AS (
+       SELECT c.id AS company_id, c.title
+         FROM companies c
+       UNION ALL
+       -- Общий раздел: строки в companies у него нет и не будет, поэтому он
+       -- приписывается здесь. Названия у него тоже нет — рисует его интерфейс,
+       -- на своём языке.
+       SELECT NULL, NULL
+     ),
+     people AS (
+       SELECT u.company_id,
+              COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE COALESCE(u.automation_enabled, FALSE)
+                                 AND u.is_active)::int AS watched
+         FROM users u
+        -- Служебный кошелёк компании — не человек: он не входит, не работает и
+        -- в «людей области» попадать не должен (COMPANY_ACCOUNTS_PLAN §7.3).
+        WHERE u.kind = 'person'
+        GROUP BY u.company_id
+     ),
+     work AS (
+       SELECT u.company_id,
+              COUNT(*) FILTER (WHERE t.status = 'queued')::int AS queued,
+              COUNT(*) FILTER (WHERE t.status IN ('claimed', 'running'))::int AS running,
+              COUNT(*) FILTER (
+                WHERE t.status = 'failed'
+                  AND t.updated_at > NOW() - interval '1 day'
+              )::int AS failed_day
+         FROM tasks t
+         JOIN projects p ON p.id = t.project_id
+         JOIN users u ON u.id = p.user_id
+        GROUP BY u.company_id
+     ),
+     iron AS (
+       SELECT rc.company_id,
+              COUNT(*)::int AS machines,
+              COUNT(*) FILTER (
+                WHERE rc.last_heartbeat_at > NOW() - ($1 || ' milliseconds')::interval
+              )::int AS online
+         FROM remote_computers rc
+        WHERE rc.revoked_at IS NULL
+        GROUP BY rc.company_id
+     )
+     SELECT a.company_id AS "companyId",
+            a.title,
+            -- Тот же кусок, что стоит гейтом в listWatchedProjects: лампочка на
+            -- пульте обязана означать ровно то, что делает конвейер. Свой,
+            -- «эквивалентный» предикат здесь однажды разошёлся бы с настоящим, и
+            -- пульт показывал бы работу там, где её нет.
+            CASE
+              WHEN a.company_id IS NULL THEN NULL
+              ELSE ${companyAutomationSql("a")}
+            END AS "automationEnabled",
+            COALESCE(pe.watched, 0) AS "peopleWatched",
+            COALESCE(pe.total, 0) AS "peopleTotal",
+            COALESCE(w.queued, 0) AS "queued",
+            COALESCE(w.running, 0) AS "running",
+            COALESCE(w.failed_day, 0) AS "failedDay",
+            COALESCE(i.machines, 0) AS "machines",
+            COALESCE(i.online, 0) AS "machinesOnline"
+       FROM areas a
+       LEFT JOIN people pe ON pe.company_id IS NOT DISTINCT FROM a.company_id
+       LEFT JOIN work   w  ON w.company_id  IS NOT DISTINCT FROM a.company_id
+       LEFT JOIN iron   i  ON i.company_id  IS NOT DISTINCT FROM a.company_id
+      -- Общий раздел первым, компании по названию: пульт читают сверху вниз, и
+      -- порядок строк не должен меняться от того, у кого сегодня больше задач.
+      ORDER BY a.company_id IS NOT NULL, a.title`,
+    [String(REMOTE_COMPUTER_ONLINE_MS)],
   )
   return result.rows
 }

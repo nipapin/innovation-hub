@@ -146,7 +146,7 @@ export function PostingRunPanel({
   const inFlight = counts ? counts.running : 0
 
   return (
-    <section className="rounded-xl border border-white/10 bg-ws-well px-4 py-3">
+    <section className="rounded-xl border border-foreground/10 bg-ws-well px-4 py-3">
       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ws-4">
         <span className="flex items-center gap-1.5">
           <span
@@ -223,7 +223,7 @@ export function PostingRunPanel({
           type="button"
           onClick={() => void scanNow()}
           disabled={scanning || !running}
-          className="flex h-[52px] shrink-0 items-center gap-2.5 rounded-[11px] border border-white/[0.14] px-5 text-[14px] text-ws-2 hover:bg-white/5 disabled:opacity-50"
+          className="flex h-[52px] shrink-0 items-center gap-2.5 rounded-[11px] border border-foreground/[0.14] px-5 text-[14px] text-ws-2 hover:bg-foreground/5 disabled:opacity-50"
         >
           {scanning ? (
             <Loader2 className="h-[18px] w-[18px] animate-spin" />

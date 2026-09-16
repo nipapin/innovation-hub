@@ -52,7 +52,7 @@ export function PreviewPane({
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 bg-ws-well p-3">
-      <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-[5px] border border-white/[0.07] bg-black">
+      <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-[5px] border border-foreground/[0.07] bg-black">
         {videoUrl ? (
           <video
             ref={videoRef}
@@ -80,7 +80,7 @@ export function PreviewPane({
         onStep={onStep}
       />
 
-      <div className="flex items-center gap-2.5 rounded-[5px] border border-white/[0.07] bg-ws-raised px-3 py-2.5">
+      <div className="flex items-center gap-2.5 rounded-[5px] border border-foreground/[0.07] bg-ws-raised px-3 py-2.5">
         <AudioLines
           className={cn("h-[18px] w-[18px] shrink-0", silent ? "text-ws-5" : "text-ws-accent")}
         />
@@ -120,7 +120,7 @@ function Transport({
   }, [clock])
 
   return (
-    <div className="flex items-center gap-2.5 rounded-[5px] border border-white/[0.07] bg-ws-raised px-2.5 py-2">
+    <div className="flex items-center gap-2.5 rounded-[5px] border border-foreground/[0.07] bg-ws-raised px-2.5 py-2">
       <button
         type="button"
         onClick={clock.togglePlay}
@@ -133,7 +133,7 @@ function Transport({
         type="button"
         onClick={() => onStep(-1)}
         title={labels.prev}
-        className="flex h-[30px] w-[30px] items-center justify-center rounded border border-white/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+        className="flex h-[30px] w-[30px] items-center justify-center rounded border border-foreground/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
       >
         <SkipBack className="h-[18px] w-[18px]" />
       </button>
@@ -141,7 +141,7 @@ function Transport({
         type="button"
         onClick={() => onStep(1)}
         title={labels.next}
-        className="flex h-[30px] w-[30px] items-center justify-center rounded border border-white/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+        className="flex h-[30px] w-[30px] items-center justify-center rounded border border-foreground/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
       >
         <SkipForward className="h-[18px] w-[18px]" />
       </button>

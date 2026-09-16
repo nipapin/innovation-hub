@@ -393,7 +393,7 @@ export function ProjectsSection({ projects: initial }: Props) {
               aria-label="Search projects"
             />
           </div>
-          <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-white/[0.02] p-1">
+          <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-foreground/[0.02] p-1">
             <ViewToggleButton
               active={view === "grid"}
               label="Grid view"
@@ -432,7 +432,7 @@ export function ProjectsSection({ projects: initial }: Props) {
           </div>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-2xl border border-border/60 bg-white/[0.02] px-6 py-12 text-center">
+        <div className="rounded-2xl border border-border/60 bg-foreground/[0.02] px-6 py-12 text-center">
           <p className="font-medium text-foreground">Nothing found</p>
           <p className="mt-1 text-sm text-muted-foreground">
             No projects match “{query}”. Try a different search.
@@ -537,7 +537,7 @@ function ViewToggleButton({
         "flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150",
         active
           ? "bg-primary/15 text-primary"
-          : "text-muted-foreground hover:bg-white/[0.05] hover:text-foreground",
+          : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",
       )}
     >
       {children}
@@ -697,7 +697,7 @@ function ProjectGridCard({
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-gradient-to-b from-white/[0.06] to-transparent text-muted-foreground transition-colors duration-200 group-hover:border-primary/30 group-hover:text-primary">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-gradient-to-b from-foreground/[0.06] to-transparent text-muted-foreground transition-colors duration-200 group-hover:border-primary/30 group-hover:text-primary">
           <FolderKanban className="h-[18px] w-[18px]" />
         </span>
         <ProjectActionsMenu
@@ -757,7 +757,7 @@ function ProjectListRow({
           : "border-border/40 opacity-75 hover:border-border/60",
       )}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-white/[0.03] text-muted-foreground group-hover:text-primary">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-foreground/[0.03] text-muted-foreground group-hover:text-primary">
         <FolderKanban className="h-4 w-4" />
       </span>
 

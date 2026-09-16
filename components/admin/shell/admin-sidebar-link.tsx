@@ -25,7 +25,7 @@ export function AdminSidebarLink({ item, label, badge, onNavigate }: Props) {
         "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
         active
           ? "bg-primary/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.25)]"
-          : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground",
+          : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground",
       )}
     >
       <span
@@ -40,7 +40,7 @@ export function AdminSidebarLink({ item, label, badge, onNavigate }: Props) {
           "flex h-8 w-8 items-center justify-center rounded-lg border transition-colors",
           active
             ? "border-primary/40 bg-primary/15 text-primary"
-            : "border-transparent bg-white/[0.03] text-muted-foreground group-hover:border-border group-hover:text-foreground",
+            : "border-transparent bg-foreground/[0.03] text-muted-foreground group-hover:border-border group-hover:text-foreground",
         )}
       >
         <Icon className="h-4 w-4" />

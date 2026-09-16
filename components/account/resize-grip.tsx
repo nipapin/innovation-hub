@@ -69,7 +69,7 @@ export function ResizeGrip({
       <span
         aria-hidden
         className={cn(
-          "relative rounded-full bg-white/15 transition-colors group-hover:bg-ws-select group-focus-visible:bg-ws-select",
+          "relative rounded-full bg-foreground/15 transition-colors group-hover:bg-ws-select group-focus-visible:bg-ws-select",
           vertical ? "h-9 w-[3px]" : "h-[3px] w-9",
           dragging && "bg-ws-select",
         )}

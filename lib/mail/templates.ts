@@ -1,5 +1,22 @@
 import { SITE_NAME, SITE_MONOGRAM } from "@/lib/site"
 
+/**
+ * Чьим именем подписано письмо — docs/THEMING_PLAN.md §6.3.
+ *
+ * Аргументом, а не константой сборки: `SITE_NAME` один на установку, а компаний
+ * на ней много, и сотрудник компании получал бы приглашение в свой проект за
+ * подписью чужой площадки.
+ *
+ * Умолчание — сама установка: письма, отправленные вне компании, остаются
+ * ровно такими, какими были.
+ */
+export type MailBrand = { name: string; monogram: string }
+
+export const INSTALLATION_BRAND: MailBrand = {
+  name: SITE_NAME,
+  monogram: SITE_MONOGRAM,
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -37,13 +54,13 @@ function roleCopy(role: ShareRole): { label: string; hint: string } {
 /** Экспортируется для писем: label и hint там нужны и в тексте, и в бейдже. */
 export { roleCopy as shareRoleCopy }
 
-function wrapEmail(inner: string): string {
+function wrapEmail(inner: string, brand: MailBrand): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>${SITE_NAME}</title>
+  <title>${escapeHtml(brand.name)}</title>
 </head>
 <body style="margin:0;padding:0;background:#eef1f6;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;padding:32px 12px;">
@@ -54,8 +71,8 @@ function wrapEmail(inner: string): string {
             <td style="background:#0b0f17;padding:22px 32px;">
               <table role="presentation" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;background:#1a2433;border-radius:9px;color:#8ec8ff;font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:0.4px;">${SITE_MONOGRAM}</td>
-                  <td style="padding-left:12px;color:#e8eef6;font-family:${FONT};font-size:16px;font-weight:600;letter-spacing:-0.2px;">${SITE_NAME}</td>
+                  <td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;background:#1a2433;border-radius:9px;color:#8ec8ff;font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:0.4px;">${escapeHtml(brand.monogram)}</td>
+                  <td style="padding-left:12px;color:#e8eef6;font-family:${FONT};font-size:16px;font-weight:600;letter-spacing:-0.2px;">${escapeHtml(brand.name)}</td>
                 </tr>
               </table>
             </td>
@@ -63,7 +80,7 @@ function wrapEmail(inner: string): string {
           ${inner}
           <tr>
             <td style="padding:0 32px 28px;font-family:${FONT};font-size:12px;line-height:18px;color:#8b93a7;">
-              You’re receiving this because someone shared a project with you on ${SITE_NAME}.
+              You’re receiving this because someone shared a project with you on ${escapeHtml(brand.name)}.
               If you weren’t expecting this, you can ignore the email.
             </td>
           </tr>
@@ -105,6 +122,7 @@ export function projectAccessGrantedHtml(input: {
   role: ShareRole
   inviterName: string
   openUrl: string
+  brand: MailBrand
 }): string {
   const inner = `<tr>
     <td style="padding:32px 32px 8px;font-family:${FONT};color:#0f172a;">
@@ -116,7 +134,7 @@ export function projectAccessGrantedHtml(input: {
       ${ctaButton(input.openUrl, "Open project")}
     </td>
   </tr>`
-  return wrapEmail(inner)
+  return wrapEmail(inner, input.brand)
 }
 
 export function projectInviteWithPasswordHtml(input: {
@@ -127,13 +145,14 @@ export function projectInviteWithPasswordHtml(input: {
   email: string
   temporaryPassword: string
   loginUrl: string
+  brand: MailBrand
 }): string {
   const inner = `<tr>
     <td style="padding:32px 32px 8px;font-family:${FONT};color:#0f172a;">
       <p style="margin:0 0 6px;font-size:13px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;color:#64748b;">You’re invited</p>
       <h1 style="margin:0 0 20px;font-size:24px;line-height:30px;font-weight:700;letter-spacing:-0.4px;">${escapeHtml(input.projectName)}</h1>
       <p style="margin:0;font-size:16px;line-height:24px;color:#334155;">Hi ${escapeHtml(input.inviteeName)},</p>
-      <p style="margin:12px 0 0;font-size:16px;line-height:24px;color:#334155;"><strong style="color:#0f172a;">${escapeHtml(input.inviterName)}</strong> invited you to ${SITE_NAME} and shared this project.</p>
+      <p style="margin:12px 0 0;font-size:16px;line-height:24px;color:#334155;"><strong style="color:#0f172a;">${escapeHtml(input.inviterName)}</strong> invited you to ${escapeHtml(input.brand.name)} and shared this project.</p>
       ${roleBadge(input.role)}
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0 4px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
         <tr>
@@ -145,8 +164,8 @@ export function projectInviteWithPasswordHtml(input: {
           </td>
         </tr>
       </table>
-      ${ctaButton(input.loginUrl, `Sign in to ${SITE_NAME}`)}
+      ${ctaButton(input.loginUrl, `Sign in to ${escapeHtml(input.brand.name)}`)}
     </td>
   </tr>`
-  return wrapEmail(inner)
+  return wrapEmail(inner, input.brand)
 }

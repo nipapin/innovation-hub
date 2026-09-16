@@ -126,13 +126,13 @@ function Toolbar({ minimap }: { minimap: React.ReactNode }) {
   const voice = useVoice()
 
   return (
-    <div className="flex h-10 flex-none items-center gap-2.5 border-b border-white/[0.07] px-3">
+    <div className="flex h-10 flex-none items-center gap-2.5 border-b border-foreground/[0.07] px-3">
       <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.4px] text-ws-accent">
         <span className="text-ws-action">—</span>
         {t.voiceZoneTimeline}
       </div>
 
-      <label className="flex h-7 w-[200px] items-center gap-2 rounded-full border border-white/[0.07] bg-ws-raised px-2.5">
+      <label className="flex h-7 w-[200px] items-center gap-2 rounded-full border border-foreground/[0.07] bg-ws-raised px-2.5">
         <Search className="h-[15px] w-[15px] shrink-0 text-ws-4" />
         <input
           value={voice.trackQuery}
@@ -146,7 +146,7 @@ function Toolbar({ minimap }: { minimap: React.ReactNode }) {
         type="button"
         onClick={() => voice.setHideShy(!voice.hideShy)}
         className={cn(
-          "flex h-7 items-center gap-1.5 rounded border border-white/[0.07] px-2.5 text-[12px]",
+          "flex h-7 items-center gap-1.5 rounded border border-foreground/[0.07] px-2.5 text-[12px]",
           voice.hideShy ? "bg-[#8b6fd6] text-ws-well" : "text-ws-3 hover:bg-ws-hover",
         )}
       >
@@ -159,7 +159,7 @@ function Toolbar({ minimap }: { minimap: React.ReactNode }) {
         title={tf(t.srtMainWave, { key: keyLabel(voice.prefs.keymap.mainWave) })}
         onClick={() => voice.setPref("mainWave", !voice.prefs.mainWave)}
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded border border-white/[0.07]",
+          "flex h-7 w-7 items-center justify-center rounded border border-foreground/[0.07]",
           voice.prefs.mainWave ? "bg-ws-action/25 text-ws-accent" : "text-ws-3 hover:bg-ws-hover",
         )}
       >
@@ -170,7 +170,7 @@ function Toolbar({ minimap }: { minimap: React.ReactNode }) {
 
       <div
         title={t.srtZoomWheel}
-        className="flex h-7 items-center gap-2 rounded border border-white/[0.07] bg-ws-raised px-2.5"
+        className="flex h-7 items-center gap-2 rounded border border-foreground/[0.07] bg-ws-raised px-2.5"
       >
         <button
           type="button"
@@ -211,7 +211,7 @@ function ColumnHeader() {
   const voice = useVoice()
 
   return (
-    <div className="flex h-10 flex-none items-center gap-1 border-b border-white/[0.07] px-3">
+    <div className="flex h-10 flex-none items-center gap-1 border-b border-foreground/[0.07] px-3">
       <span className="text-[11px] font-semibold uppercase tracking-[0.32px] text-ws-4">
         {t.srtTracks}
       </span>
@@ -265,7 +265,7 @@ function TrackRow({ track }: { track: Track }) {
       onClick={() => voice.selectTrack(track.id)}
       style={{ height: voice.prefs.trackH }}
       className={cn(
-        "flex items-center gap-1.5 border-b border-white/[0.06] px-2.5",
+        "flex items-center gap-1.5 border-b border-foreground/[0.06] px-2.5",
         selected && "bg-ws-select/[0.10]",
       )}
     >
@@ -403,7 +403,7 @@ function FlagButton({
         onClick()
       }}
       className={cn(
-        "flex h-6 w-6 flex-none items-center justify-center rounded border border-white/[0.07]",
+        "flex h-6 w-6 flex-none items-center justify-center rounded border border-foreground/[0.07]",
         active && activeClass ? activeClass : "text-ws-3 hover:bg-ws-hover",
         className,
         disabled && "cursor-default text-ws-5 opacity-50 hover:bg-transparent",
@@ -435,7 +435,7 @@ function ModeButton({
       onClick={onClick}
       className={cn(
         "flex h-6 w-6 items-center justify-center rounded border",
-        on ? activeClass : "border-white/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1",
+        on ? activeClass : "border-foreground/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1",
       )}
     >
       {children}
@@ -457,7 +457,7 @@ function Lane({ track }: { track: Track }) {
     <div
       style={{ height }}
       className={cn(
-        "relative border-b border-white/[0.06]",
+        "relative border-b border-foreground/[0.06]",
         selected && "bg-ws-select/[0.05]",
       )}
     >
@@ -476,8 +476,8 @@ function Lane({ track }: { track: Track }) {
             width: Math.max(2, msToX(cue.endMs - cue.startMs, voice.pps)),
           }}
           className={cn(
-            "absolute bottom-0 top-0 overflow-hidden border-x border-white/[0.06] bg-white/[0.035]",
-            cue.id === voice.selectedCueId && "bg-white/[0.07]",
+            "absolute bottom-0 top-0 overflow-hidden border-x border-foreground/[0.06] bg-foreground/[0.035]",
+            cue.id === voice.selectedCueId && "bg-foreground/[0.07]",
           )}
         >
           <span className="pointer-events-none block truncate px-1.5 pt-0.5 text-[10px] text-ws-5">
@@ -488,7 +488,7 @@ function Lane({ track }: { track: Track }) {
 
       <div
         aria-hidden
-        className="pointer-events-none absolute bottom-0 right-0 top-0 border-l border-white/[0.10] bg-ws-well/60"
+        className="pointer-events-none absolute bottom-0 right-0 top-0 border-l border-foreground/[0.10] bg-ws-well/60"
         style={{ left: msToX(voice.mediaEndMs, voice.pps) }}
       />
 
@@ -804,7 +804,7 @@ function VersionPicker({
           type="button"
           title={t.voiceTakeMenu}
           onPointerDown={(e) => e.stopPropagation()}
-          className="flex h-5 items-center gap-0.5 rounded border border-white/[0.14] bg-ws-well/80 px-1 font-mono text-[10px] text-ws-2 hover:border-white/30"
+          className="flex h-5 items-center gap-0.5 rounded border border-foreground/[0.14] bg-ws-well/80 px-1 font-mono text-[10px] text-ws-2 hover:border-foreground/30"
         >
           {takes.indexOf(current) + 1}/{takes.length}
           <ChevronDown className="h-3 w-3" />
@@ -817,7 +817,7 @@ function VersionPicker({
         {takes.map((take, index) => (
           <div
             key={take.id}
-            className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] hover:bg-white/5"
+            className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] hover:bg-foreground/5"
           >
             <button
               type="button"
@@ -855,7 +855,7 @@ function VersionPicker({
             voice.ops.fitTake(cue.id, current.id)
             setOpen(false)
           }}
-          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] hover:bg-white/5"
+          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] hover:bg-foreground/5"
         >
           <Scaling className="h-[14px] w-[14px] text-ws-4" />
           {t.voiceFitShort}
@@ -866,7 +866,7 @@ function VersionPicker({
             voice.ops.resetTake(cue.id, current.id)
             setOpen(false)
           }}
-          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] hover:bg-white/5"
+          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] hover:bg-foreground/5"
         >
           <RotateCcw className="h-[14px] w-[14px] text-ws-4" />
           {t.voiceResetTake}

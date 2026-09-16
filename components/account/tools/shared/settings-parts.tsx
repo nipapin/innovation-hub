@@ -91,7 +91,7 @@ export function Toggle({
       onClick={onClick}
       className={cn(
         "flex h-5 w-[34px] flex-none items-center rounded-full p-[2px] justify-self-start",
-        on ? "bg-ws-action" : "bg-white/[0.14]",
+        on ? "bg-ws-action" : "bg-foreground/[0.14]",
         disabled && "cursor-default opacity-40",
       )}
     >
@@ -122,7 +122,7 @@ export function NativeSelect({
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
       className={cn(
-        "h-[30px] w-full rounded border border-white/[0.10] bg-ws-well px-2 text-[12px] text-ws-2 outline-none focus:border-ws-action disabled:cursor-default disabled:opacity-40",
+        "h-[30px] w-full rounded border border-foreground/[0.10] bg-ws-well px-2 text-[12px] text-ws-2 outline-none focus:border-ws-action disabled:cursor-default disabled:opacity-40",
         className,
       )}
     >
@@ -180,7 +180,7 @@ export function HotkeyRow({
           "h-7 min-w-[92px] shrink-0 rounded border px-2 font-mono text-[12px]",
           capturing
             ? "border-ws-action bg-ws-action/15 text-ws-1"
-            : "border-white/[0.10] bg-ws-well text-ws-2 hover:border-white/25",
+            : "border-foreground/[0.10] bg-ws-well text-ws-2 hover:border-foreground/25",
         )}
       >
         {capturing ? t.srtKeyCapture : keyLabel(code)}
@@ -311,7 +311,7 @@ export function ProjectRulesSection({ tool }: { tool: ToolInstance }) {
         return (
           <div
             key={project.id}
-            className="grid grid-cols-[1fr_260px] items-center gap-3 border-t border-white/[0.06] py-2"
+            className="grid grid-cols-[1fr_260px] items-center gap-3 border-t border-foreground/[0.06] py-2"
           >
             <div className="flex min-w-0 items-center gap-2.5">
               <Toggle

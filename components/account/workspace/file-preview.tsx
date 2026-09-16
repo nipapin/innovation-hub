@@ -105,7 +105,7 @@ function PreviewMeta({
       {rows.map((row) => (
         <div
           key={row.label}
-          className="flex justify-between gap-2 border-t border-white/[0.07] py-[5px] text-[11.5px]"
+          className="flex justify-between gap-2 border-t border-foreground/[0.07] py-[5px] text-[11.5px]"
         >
           <dt className="shrink-0 text-ws-4">{row.label}</dt>
           <dd className="truncate text-ws-2">{row.value}</dd>
@@ -152,7 +152,7 @@ export function PreviewTab() {
   return (
     // На узком экране медиа сверху, данные под ним: рядом они не помещаются.
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden md:flex-row md:gap-4">
-      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] border border-white/[0.08] bg-ws-control p-1.5 max-md:h-[55%]">
+      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[10px] border border-foreground/[0.08] bg-ws-control p-1.5 max-md:h-[55%]">
         <PreviewMedia
           key={file.id}
           file={file}
@@ -181,14 +181,14 @@ export function PreviewTab() {
           >
             <Maximize2 className="h-4 w-4 shrink-0" />
             {t.previewFull}
-            <kbd className="rounded border border-white/25 px-1.5 py-px text-[10.5px] font-normal">
+            <kbd className="rounded border border-foreground/25 px-1.5 py-px text-[10.5px] font-normal">
               {t.previewSpaceHint}
             </kbd>
           </button>
           <button
             type="button"
             onClick={() => downloadItem(file)}
-            className="flex items-center justify-center gap-2 rounded-[9px] border border-white/10 px-3 py-[7px] text-[12.5px] text-ws-2 hover:bg-white/5"
+            className="flex items-center justify-center gap-2 rounded-[9px] border border-foreground/10 px-3 py-[7px] text-[12.5px] text-ws-2 hover:bg-foreground/5"
           >
             <Download className="h-4 w-4 shrink-0" />
             {t.mDownload}
@@ -284,9 +284,9 @@ export function PreviewDialog() {
     <Dialog open onOpenChange={(next) => !next && closePreview()}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex h-[min(88vh,920px)] w-[min(1180px,94vw)] max-w-none flex-col gap-0 overflow-hidden border-white/10 bg-ws-raised p-0 sm:rounded-2xl"
+        className="flex h-[min(88vh,920px)] w-[min(1180px,94vw)] max-w-none flex-col gap-0 overflow-hidden border-foreground/10 bg-ws-raised p-0 sm:rounded-2xl"
       >
-        <div className="flex flex-none items-center gap-3 border-b border-white/[0.07] px-5 py-3.5 pr-14">
+        <div className="flex flex-none items-center gap-3 border-b border-foreground/[0.07] px-5 py-3.5 pr-14">
           <Icon className={cn("h-5 w-5 shrink-0", fileIconClass(file))} />
           <div className="min-w-0 flex-1">
             <DialogTitle className="truncate text-[15px] font-medium text-ws-1">
@@ -323,7 +323,7 @@ export function PreviewDialog() {
                 type="button"
                 onClick={() => stepPreview(-1)}
                 aria-label={t.previewPrev}
-                className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-ws-raised/85 text-ws-2 hover:bg-ws-hover hover:text-ws-1"
+                className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-foreground/10 bg-ws-raised/85 text-ws-2 hover:bg-ws-hover hover:text-ws-1"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
@@ -331,7 +331,7 @@ export function PreviewDialog() {
                 type="button"
                 onClick={() => stepPreview(1)}
                 aria-label={t.previewNext}
-                className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-ws-raised/85 text-ws-2 hover:bg-ws-hover hover:text-ws-1"
+                className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-foreground/10 bg-ws-raised/85 text-ws-2 hover:bg-ws-hover hover:text-ws-1"
               >
                 <ChevronRight className="h-5 w-5" />
               </button>
@@ -339,12 +339,12 @@ export function PreviewDialog() {
           ) : null}
         </div>
 
-        <div className="flex flex-none items-center justify-between gap-4 border-t border-white/[0.07] px-5 py-3">
+        <div className="flex flex-none items-center justify-between gap-4 border-t border-foreground/[0.07] px-5 py-3">
           <p className="truncate text-[11.5px] text-ws-5">{t.previewKeysHint}</p>
           <button
             type="button"
             onClick={() => downloadItem(file)}
-            className="flex shrink-0 items-center gap-2 rounded-[9px] border border-white/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-white/5"
+            className="flex shrink-0 items-center gap-2 rounded-[9px] border border-foreground/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-foreground/5"
           >
             <Download className="h-4 w-4" />
             {t.mDownload}

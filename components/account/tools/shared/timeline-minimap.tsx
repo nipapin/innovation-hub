@@ -246,7 +246,7 @@ export function TimelineMinimap({
       style={{ height: H }}
       // `min-w-0` намеренно: в узком окне карта сжимается первой, а кнопки
       // инструментов и масштаб остаются целыми. Она здесь удобство, а они работа.
-      className="relative min-w-0 flex-1 cursor-grab overflow-hidden rounded border border-white/[0.07] bg-ws-well active:cursor-grabbing"
+      className="relative min-w-0 flex-1 cursor-grab overflow-hidden rounded border border-foreground/[0.07] bg-ws-well active:cursor-grabbing"
     >
       <canvas ref={canvasRef} className="pointer-events-none absolute left-0 top-0" />
       <div

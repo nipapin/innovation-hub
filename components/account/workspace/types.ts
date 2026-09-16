@@ -48,7 +48,7 @@ export type Project = {
    * Почему проект стоит: `null` — остановил человек, иначе биллинг. Тумблер в
    * этом случае обратно не включается, пока платить нечем.
    */
-  pausedReason?: "no-funds" | "trial-over" | "no-vendor-key" | null
+  pausedReason?: "no-funds" | "trial-over" | "no-vendor-key" | "payer-no-funds" | null
   /** В архиве: скрыт из рабочего списка, обработки по нему не идут. */
   isArchived: boolean
   /** Soft-deleted project (cabinet trash tab). */
@@ -262,6 +262,11 @@ export type WorkspaceSource = {
   /** Перемещение элемента между папками. */
   moveUrl: () => string
   /**
+   * Перенос в другой проект: копия туда, оригинал в корзину, одной работой.
+   * Пусто — чужие проекты в диалоге переноса видны, но кнопка выключена.
+   */
+  crossProjectMoveUrl?: () => string
+  /**
    * Архив папки: `archivePlanUrl` — состав частей, `archivePartUrl` — сама
    * часть потоком. У обеих зон адреса совпадают: это /api/storage/v1, он
    * принимает сессию и пускает ADMIN в любой проект (lib/storage/auth.ts).
@@ -308,6 +313,26 @@ export type WorkspaceSource = {
    * сколько бы прав ни давала зона.
    */
   transferUrl?: (projectId: string) => string
+  /**
+   * Корзина. Все четыре адреса необязательны и идут вместе: их наличие и
+   * включает раздел корзины. У админского источника их нет — там показывают
+   * чужие рабочие папки, а не чужую корзину, и разделов у него вообще нет
+   * (`splitByTab: false`).
+   *
+   * `trashUrl(null)` — корень корзины, удалённые файлы всех проектов сразу;
+   * с `projectId` — только одного. Это и есть «вглубь, а не наружу»: сверху
+   * видно всё, выбор проекта сужает.
+   */
+  trashUrl?: (projectId: string | null) => string
+  /** Вернуть файл из корзины на место. */
+  trashRestoreUrl?: () => string
+  /**
+   * Стереть навсегда: с `fileId` — одну вещь, без него — корзину проекта
+   * целиком. Отменить нечем, поэтому вызов всегда за подтверждением.
+   */
+  trashPurgeUrl?: (projectId: string, fileId?: string) => string
+  /** Стереть навсегда сам проект из корзины. */
+  projectPurgeUrl?: () => string
   /** Показывать служебную папку options (в кабинете она скрыта). */
   showServiceFolders: boolean
   /**

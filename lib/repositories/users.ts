@@ -18,7 +18,9 @@ const PUBLIC_USER_FIELDS = `
   COALESCE(balance_cents, 0) AS "balanceCents",
   drive_folder_id AS "driveFolderId",
   COALESCE(must_change_password, FALSE) AS "mustChangePassword",
-  COALESCE(automation_enabled, FALSE) AS "automationEnabled"
+  COALESCE(automation_enabled, FALSE) AS "automationEnabled",
+  company_id AS "companyId",
+  company_role AS "companyRole"
 `
 
 const FULL_USER_FIELDS = `
@@ -35,7 +37,15 @@ const FULL_USER_FIELDS = `
   COALESCE(balance_cents, 0) AS "balanceCents",
   drive_folder_id AS "driveFolderId",
   COALESCE(must_change_password, FALSE) AS "mustChangePassword",
-  COALESCE(automation_enabled, FALSE) AS "automationEnabled"
+  COALESCE(automation_enabled, FALSE) AS "automationEnabled",
+  -- Компания здесь ОБЯЗАТЕЛЬНА, потому что её обещает тип: UserRecordWithPassword
+  -- расширяет UserRecord, а у того companyId есть. Пока этих двух строк не было,
+  -- всякий, кто читал компанию у findUserByEmail, молча получал undefined — и,
+  -- например, проверка «свой или посторонний» в приглашении считала чужими
+  -- вообще всех, включая коллег. Компилятор такое не ловит: поле в типе есть.
+  company_id AS "companyId",
+  company_role AS "companyRole",
+  kind
 `
 
 /**
@@ -92,9 +102,14 @@ export async function findUserByEmail(
   return result.rows[0] ?? null
 }
 
+/**
+ * Список людей — единственная выборка «покажи всех» (docs/COMPANY_ACCOUNTS_PLAN.md
+ * §2). Служебный кошелёк компании (kind = 'company_wallet') сюда не попадает: он
+ * не показывается ни в одном списке людей.
+ */
 export async function listUsers(): Promise<UserRecord[]> {
   const result = await query<UserRecord>(
-    `SELECT ${PUBLIC_USER_FIELDS} FROM users ORDER BY created_at DESC`,
+    `SELECT ${PUBLIC_USER_FIELDS} FROM users WHERE kind = 'person' ORDER BY created_at DESC`,
   )
   return result.rows
 }
@@ -162,6 +177,23 @@ export async function countActiveSuperAdmins(
       WHERE role = 'SUPERADMIN' AND is_active = TRUE`,
   )
   return result.rows[0]?.count ?? 0
+}
+
+/**
+ * Числится ли человек в этой компании.
+ *
+ * Отдельный запрос вместо чтения всей строки: зовётся на каждый машинный доступ
+ * к чужому проекту, и тянуть ради булева ответа полный `UserRecord` незачем.
+ */
+export async function isUserInCompany(
+  userId: string,
+  companyId: string,
+): Promise<boolean> {
+  const result = await query(
+    `SELECT 1 FROM users WHERE id = $1 AND company_id = $2 LIMIT 1`,
+    [userId, companyId],
+  )
+  return (result.rowCount ?? 0) > 0
 }
 
 export async function createUser(input: {

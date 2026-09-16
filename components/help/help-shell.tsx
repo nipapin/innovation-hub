@@ -32,7 +32,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh bg-ws-well font-sans text-ws-1">
-      <header className="sticky top-0 z-40 border-b border-white/[0.07] bg-ws-well/85 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-foreground/[0.07] bg-ws-well/85 backdrop-blur-xl">
         <div className="mx-auto flex h-[58px] w-full max-w-[860px] items-center gap-3 px-6">
           <Link
             href="/help"

@@ -1,27 +1,38 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireUserApi } from "@/lib/admin-auth"
 import { getFunds } from "@/lib/billing/funds"
+import { listDependents, personLabel, readPayer } from "@/lib/billing/payer"
 import { approximateCapacity } from "@/lib/billing/purchasing"
 
 export const runtime = "nodejs"
 
-/**
- * Кошельки и «на что ещё хватит» — для виджета баланса.
- *
- * Отдельно от `/api/account/trial`: виджет висит в боковой панели на каждой
- * странице, и тянуть ради него состояние тестового периода, шаблоны и активации
- * значило бы платить за то, что виджету не нужно.
- */
 export async function GET(request: NextRequest) {
   const auth = await requireUserApi(request)
   if (auth instanceof NextResponse) return auth
 
-  const funds = await getFunds(auth.userId)
+  // За кого платит другой, тот денег не видит вовсе
+  // (docs/COMPANY_ACCOUNTS_PLAN.md §7.7): личный кошелёк не используется, а
+  // чужой ему не показываем. Нули здесь — не остаток, а «не ваше»; интерфейс по
+  // `paidBy` вместо сумм пишет, кто платит.
+  const payer = await readPayer(auth.userId)
+  if (payer) {
+    return NextResponse.json({
+      balances: { own: 0, gift: 0 },
+      reserved: { own: 0, gift: 0 },
+      availableOwnCents: 0,
+      availableGiftCents: 0,
+      overdraftLimitCents: 0,
+      capacity: [],
+      paidBy: { name: personLabel(payer) },
+      payingFor: [],
+    })
+  }
 
-  // Считаем по проектам, покрытым подарками, если они есть: обещание «столько-то
-  // минут» относится к нашим шаблонам, стоимость единицы в которых мы знаем.
-  // Иначе — по всем проектам владельца, и тогда основой станет его собственная
-  // история списаний.
+  const [funds, dependents] = await Promise.all([
+    getFunds(auth.userId),
+    listDependents(auth.userId),
+  ])
+
   const grantProjects = funds.grants.flatMap((g) => g.projectIds)
   const available = funds.availableGiftCents || funds.availableOwnCents
 
@@ -34,13 +45,12 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     balances: funds.balances,
-    // Резерв отдаётся отдельно от остатка, а не вычтенным из него: «остаток
-    // 900, из них 400 держат запущенные задачи» — это ответ, а «доступно 500»
-    // без второй половины выглядит как пропавшие деньги.
     reserved: funds.reserved,
     availableOwnCents: funds.availableOwnCents,
     availableGiftCents: funds.availableGiftCents,
     overdraftLimitCents: funds.overdraftLimitCents,
     capacity,
+    paidBy: null,
+    payingFor: dependents.map(personLabel),
   })
 }

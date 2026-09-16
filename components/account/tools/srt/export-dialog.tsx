@@ -100,7 +100,7 @@ export function SrtExportDialog({
         aria-describedby={undefined}
         className="flex max-h-[82vh] w-[640px] max-w-[92vw] flex-col gap-0 overflow-hidden p-0"
       >
-        <DialogHeader className="flex-none border-b border-white/[0.07] px-5 py-4">
+        <DialogHeader className="flex-none border-b border-foreground/[0.07] px-5 py-4">
           <DialogTitle className="text-[16px] font-semibold">{t.srtExportTitle}</DialogTitle>
         </DialogHeader>
 
@@ -135,7 +135,7 @@ export function SrtExportDialog({
             <select
               value={format}
               onChange={(e) => setFormat(e.target.value as ExportFormat)}
-              className="h-[32px] w-full max-w-[280px] rounded border border-white/[0.10] bg-ws-well px-2 text-[13px] text-ws-2 outline-none focus:border-ws-action"
+              className="h-[32px] w-full max-w-[280px] rounded border border-foreground/[0.10] bg-ws-well px-2 text-[13px] text-ws-2 outline-none focus:border-ws-action"
             >
               <option value="srt" className="bg-ws-panel">
                 {t.srtFmtSrt}
@@ -187,13 +187,13 @@ export function SrtExportDialog({
               </button>
             </div>
 
-            <div className="overflow-hidden rounded-[6px] border border-white/[0.07]">
+            <div className="overflow-hidden rounded-[6px] border border-foreground/[0.07]">
               {srt.doc.tracks.map((track) => {
                 const own = countExportedCues(srt.doc, [track.id])
                 return (
                   <label
                     key={track.id}
-                    className="flex cursor-pointer items-center gap-2.5 border-b border-white/[0.06] px-3 py-2 last:border-b-0 hover:bg-white/[0.03]"
+                    className="flex cursor-pointer items-center gap-2.5 border-b border-foreground/[0.06] px-3 py-2 last:border-b-0 hover:bg-foreground/[0.03]"
                   >
                     <input
                       type="checkbox"
@@ -221,7 +221,7 @@ export function SrtExportDialog({
           </section>
         </div>
 
-        <div className="flex flex-none items-center gap-3 border-t border-white/[0.07] px-5 py-3.5">
+        <div className="flex flex-none items-center gap-3 border-t border-foreground/[0.07] px-5 py-3.5">
           <p className="min-w-0 flex-1 text-[12px] leading-snug text-ws-3">
             {!result
               ? t.srtExportNothing
@@ -272,7 +272,7 @@ function LangToggle({
         "flex h-8 items-center gap-2 rounded border px-3 text-[13px]",
         on
           ? "border-ws-action bg-ws-action/[0.18] text-ws-1"
-          : "border-white/[0.10] text-ws-4 hover:border-white/25 hover:text-ws-2",
+          : "border-foreground/[0.10] text-ws-4 hover:border-foreground/25 hover:text-ws-2",
       )}
     >
       {label}
@@ -300,13 +300,13 @@ function LayoutOption({
         "flex items-center gap-2.5 rounded border px-3 py-2 text-left text-[13px]",
         active
           ? "border-ws-action bg-ws-action/[0.12] text-ws-1"
-          : "border-white/[0.07] text-ws-2 hover:bg-ws-hover",
+          : "border-foreground/[0.07] text-ws-2 hover:bg-ws-hover",
       )}
     >
       <span
         className={cn(
           "flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full border",
-          active ? "border-ws-action" : "border-white/25",
+          active ? "border-ws-action" : "border-foreground/25",
         )}
       >
         {active ? <span className="h-2 w-2 rounded-full bg-ws-action" /> : null}

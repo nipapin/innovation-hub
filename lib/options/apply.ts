@@ -1,6 +1,12 @@
+import { ASSETS_FOLDER_NAME } from "@/lib/storage/keys"
 import { ProjectStorageError } from "./errors"
 import { readExposedOption } from "./extract"
 import { normalizeNumeric } from "./numeric-format"
+import { mergeOverlayValue, parseOverlayValue } from "./overlay"
+import {
+  mergeVideoAdjustValue,
+  parseVideoAdjustValue,
+} from "./video-adjust"
 import type { ExposedOption, ExposedOptionValue } from "./types"
 
 /**
@@ -84,6 +90,46 @@ function coerce(
       if (typeof value !== "string") fail(change.path, "expects a string.")
       return value
 
+    case "videoAdjustment": {
+      if (typeof value !== "string") {
+        fail(change.path, "expects video adjust settings as a JSON string.")
+      }
+      if (!value.trim()) fail(change.path, "expects a non-empty value.")
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(value)
+      } catch {
+        fail(change.path, "expects valid JSON.")
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        fail(change.path, "expects a JSON object.")
+      }
+      // Как и у наложения: сливаем в текущее значение из файла, а не пишем
+      // присланное. Разбор — lib/options/video-adjust.ts.
+      return mergeVideoAdjustValue(option.value, parseVideoAdjustValue(value))
+    }
+
+    case "overlaySettings": {
+      // Клиент присылает строку с JSON — ту же по форме, что лежит в файле.
+      if (typeof value !== "string") {
+        fail(change.path, "expects overlay settings as a JSON string.")
+      }
+      if (!value.trim()) fail(change.path, "expects a non-empty value.")
+      let incoming: unknown
+      try {
+        incoming = JSON.parse(value)
+      } catch {
+        fail(change.path, "expects valid JSON.")
+      }
+      if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
+        fail(change.path, "expects a JSON object with three format blocks.")
+      }
+      // Сливаем в ТЕКУЩЕЕ значение из файла, а не пишем присланное: сайт правит
+      // три блока геометрии, а `encode`, `fgFilePath` и всё остальное внутри
+      // значения принадлежит программе. Разбор — lib/options/overlay.ts.
+      return mergeOverlayValue(option.value, parseOverlayValue(value))
+    }
+
     case "vendorAccount":
       // Метка, а не секрет. Существование учётки здесь НЕ проверяем: она могла
       // быть отозвана между открытием вкладки и сохранением, и ронять из-за
@@ -91,6 +137,34 @@ function coerce(
       // соберёт гейт, и человек увидит причину на карточке проекта.
       if (typeof value !== "string") fail(change.path, "expects an account label.")
       return value
+
+    case "pathNavigator": {
+      // Единственное значение среди контролов, которое является ПУТЁМ, а не
+      // данными, — поэтому проверяем его здесь, а не полагаемся на браузер:
+      // строку клиент присылает сам, и без проверки через неё адресуется любой
+      // файл проекта, включая сайдкары в `options/`.
+      if (typeof value !== "string") fail(change.path, "expects a file path.")
+      const filePath = value.trim()
+      // Пусто — «файл не выбран»: таким свойство и приходит из графа
+      // (`"value": ""` в ui.json), и право вернуться в это состояние остаётся.
+      if (filePath === "") return ""
+      const segments = filePath.split("/")
+      const name = segments[1]
+      if (
+        segments.length !== 2 ||
+        segments[0] !== ASSETS_FOLDER_NAME ||
+        !name ||
+        name === "." ||
+        name === ".." ||
+        name.includes("\\")
+      ) {
+        fail(
+          change.path,
+          `accepts only files uploaded to "${ASSETS_FOLDER_NAME}/".`,
+        )
+      }
+      return filePath
+    }
 
     case "ddm": {
       if (typeof value !== "string") fail(change.path, "expects a string.")

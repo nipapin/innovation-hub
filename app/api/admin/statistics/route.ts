@@ -16,7 +16,14 @@ export async function GET(request: NextRequest) {
   }
 
   const data = await getStatistics({
-    scope: { ownerId: null, userId: q.userId, projectId: q.projectId },
+    scope: {
+      ownerId: null,
+      userId: q.userId,
+      projectId: q.projectId,
+      // Админка видит всё: рамка компании ей ничего не добавила бы, а разрез по
+      // компании делается фильтром по человеку.
+      companyId: null,
+    },
     breakdown: q.breakdown,
     period: q.period,
   })

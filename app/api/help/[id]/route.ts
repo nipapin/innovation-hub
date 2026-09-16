@@ -1,3 +1,4 @@
+import { getCompanyContext } from "@/lib/company-auth"
 import { NextResponse, type NextRequest } from "next/server"
 import { requireUserApi } from "@/lib/admin-auth"
 import { loadArticle, type HelpLang } from "@/lib/help/articles"
@@ -33,7 +34,8 @@ export async function GET(
 
   // Темы, до которых человеку не открыт интерфейс, для него не существуют:
   // 404, а не 403 — иначе перебором id можно вычитать карту чужих разделов.
-  if (!canSeeTopic(auth, topic)) {
+  const viewer = { ...auth, companyAdmin: (await getCompanyContext()) !== null }
+  if (!canSeeTopic(viewer, topic)) {
     return NextResponse.json({ message: "Unknown help topic." }, { status: 404 })
   }
 
@@ -60,7 +62,7 @@ export async function GET(
   // выполнит. Та же логика, что на странице статьи.
   const seeAlso = seeAlsoOf(topic).flatMap((relatedId) => {
     const related = findTopic(relatedId)
-    if (!related || !canSeeTopic(auth, related)) return []
+    if (!related || !canSeeTopic(viewer, related)) return []
 
     const relatedArticle = loadArticle(related.id, lang)
     return relatedArticle

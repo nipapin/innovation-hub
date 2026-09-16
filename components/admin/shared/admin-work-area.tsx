@@ -35,7 +35,7 @@ export function AdminWorkArea({
 
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-white/[0.07] px-3 md:px-5">
+      <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-foreground/[0.07] px-3 md:px-5">
         {/* Чей проект открыт. В «Чатах» это единственное место, где видно
             владельца. */}
         <div className="flex min-w-0 items-center gap-2 text-[13px]">

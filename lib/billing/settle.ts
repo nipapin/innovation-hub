@@ -48,6 +48,12 @@ type UnbilledRow = {
   taskId: string
   projectId: string
   ownerId: string
+  /**
+   * Чей кошелёк платит: плательщик владельца или сам владелец
+   * (docs/COMPANY_ACCOUNTS_PLAN.md §7). Списание и остаток подарка — отсюда,
+   * а освобождение от оплаты — по-прежнему у владельца (§7.6).
+   */
+  payerId: string
   billingExempt: boolean
   payWallet: Wallet | null
   payGrantId: string | null
@@ -77,6 +83,7 @@ async function listUnbilled(limit: number): Promise<UnbilledRow[]> {
     `SELECT t.id                     AS "taskId",
             t.project_id             AS "projectId",
             p.user_id                AS "ownerId",
+            COALESCE(u.payer_user_id, u.id) AS "payerId",
             COALESCE(u.billing_exempt, FALSE) AS "billingExempt",
             t.pay_wallet             AS "payWallet",
             t.pay_grant_id           AS "payGrantId",
@@ -266,7 +273,7 @@ export async function settleUnbilled(limit = SETTLE_LIMIT): Promise<SettleResult
       // расход ровно на нашу собственную работу.
       if (row.billingExempt) {
         await recordTransaction({
-          userId: row.ownerId,
+          userId: row.payerId,
           projectId: row.projectId,
           taskId: row.taskId,
           wallet: row.payWallet ?? "own",
@@ -288,7 +295,7 @@ export async function settleUnbilled(limit = SETTLE_LIMIT): Promise<SettleResult
       // и закроется первым пополнением.
       let covered = total
       if (wallet === "gift") {
-        const funds = await getFunds(row.ownerId)
+        const funds = await getFunds(row.payerId)
         const grant = funds.grants.find((g) => g.grantId === row.payGrantId)
         const remaining = grant?.remainingCents ?? funds.balances.gift
         covered = Math.max(0, Math.min(total, remaining))
@@ -299,7 +306,7 @@ export async function settleUnbilled(limit = SETTLE_LIMIT): Promise<SettleResult
       await withTransaction(async (client) => {
         await recordTransaction(
           {
-            userId: row.ownerId,
+            userId: row.payerId,
             projectId: row.projectId,
             taskId: row.taskId,
             wallet,
@@ -315,7 +322,7 @@ export async function settleUnbilled(limit = SETTLE_LIMIT): Promise<SettleResult
         if (breakdownTotal(absorbed) > 0) {
           await recordTransaction(
             {
-              userId: row.ownerId,
+              userId: row.payerId,
               projectId: row.projectId,
               // task_id здесь есть: уникальный индекс ограничивает только
               // charge и exempt, а writeoff — вторая строка по той же работе, и
@@ -342,7 +349,7 @@ export async function settleUnbilled(limit = SETTLE_LIMIT): Promise<SettleResult
       // ставка и мера уже в руках: в другом месте их пришлось бы добывать
       // заново, а без них порог «10 секунд» не перевести в деньги.
       if (wallet === "gift" && row.payGrantId) {
-        const after = await getFunds(row.ownerId)
+        const after = await getFunds(row.payerId)
         const grant = after.grants.find((g) => g.grantId === row.payGrantId)
         if (grant) {
           const threshold = minAdmitCents({

@@ -4,15 +4,17 @@ import {
   listAllClients,
   listClientsByIds,
   listClientsByUserId,
+  listClientsByUserIds,
 } from "@/lib/repositories/clients"
 import {
   findProjectById,
   listAllProjects,
+  listProjectsByCompanyId,
   listProjectsByUserId,
 } from "@/lib/repositories/projects"
 import { findUserById, listUsersByIds } from "@/lib/repositories/users"
 import type { StorageApiAuth } from "@/lib/storage/auth"
-import { canReachAnyProject } from "@/lib/storage/auth"
+import { ownerInScope, reachScope } from "@/lib/storage/auth"
 
 export type StorageProjectJson = {
   id: string
@@ -104,7 +106,7 @@ export async function loadStorageProjectCatalog(
     if (!project) {
       return { error: "Project not found.", status: 404 as const }
     }
-    if (!canReachAnyProject(auth) && project.userId !== auth.userId) {
+    if (!(await ownerInScope(auth, project.userId))) {
       return { error: "Project not found.", status: 404 as const }
     }
     const [clients, owners] = await Promise.all([
@@ -119,16 +121,23 @@ export async function loadStorageProjectCatalog(
     }
   }
 
+  const scope = reachScope(auth)
   const projects =
-    canReachAnyProject(auth)
+    scope.kind === "all"
       ? await listAllProjects()
-      : await listProjectsByUserId(auth.userId)
+      : scope.kind === "company"
+        ? await listProjectsByCompanyId(scope.companyId)
+        : await listProjectsByUserId(scope.userId)
 
   const ownerIds = [...new Set(projects.map((p) => p.userId))]
   const [clients, owners] = await Promise.all([
-    canReachAnyProject(auth)
+    scope.kind === "all"
       ? listAllClients()
-      : listClientsByUserId(auth.userId),
+      // Клиенты компании — клиенты её людей. Отдельной выборки нет: их
+      // владельцы уже посчитаны в `ownerIds` выше, по ним и берём.
+      : scope.kind === "company"
+        ? listClientsByUserIds(ownerIds)
+        : listClientsByUserId(scope.userId),
     listUsersByIds(ownerIds),
   ])
   const ownerById = new Map(owners.map((u) => [u.id, u]))

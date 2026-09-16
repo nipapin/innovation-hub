@@ -11,6 +11,7 @@ import {
   type NumericConfig,
 } from "./numeric-format"
 import { socialTokenInfo } from "@/lib/social/types"
+import { nodeIdForPath, nodeOrderMap } from "./graph-order"
 
 /**
  * `options.json` → список настроек для вкладки клиента.
@@ -144,6 +145,14 @@ function readValue(
       const hi = normalizeNumeric(num(raw[1], cfg.max), cfg)
       return [Math.min(lo, hi), Math.max(lo, hi)]
     }
+    case "videoAdjustment":
+    case "overlaySettings":
+      // Строка с JSON — отдаём как есть: разбирает её модалка тем же кодом,
+      // каким сервер потом сливает правку (lib/options/overlay.ts и
+      // video-adjust.ts). Держать в DTO разобранный объект значило бы завести
+      // второй формат значения, которого нет ни в графе, ни в записи.
+      return typeof cp.value === "string" ? cp.value : ""
+
     case "autocomplete":
       return stringList(cp.value)
     case "ddm":
@@ -153,6 +162,10 @@ function readValue(
     case "vendorAccount":
       // Метка учётки. Пусто — «не выбрана»; такой параметр покажем, но задача
       // по нему не соберётся: гейт увидит, что учётки нет.
+      return typeof cp.value === "string" ? cp.value : ""
+    case "pathNavigator":
+      // Путь относительно папки проекта. Пусто — файл ещё не выбран; в графе
+      // такое свойство и создаётся пустым (`"value": ""` в ui.json).
       return typeof cp.value === "string" ? cp.value : ""
     default:
       // textedit — просто текст.
@@ -219,6 +232,8 @@ export function readExposedOption(
     path: [...path, "controlProps"],
     // Соседи по ноде — те, у кого совпадает путь до списка `properties`.
     siblingKey: path.slice(0, -1).join("."),
+    // Ссылку подставит слой хранилища: здесь нет ни ключей, ни файлов.
+    referenceUrl: null,
     key,
     label: str(cp.label) ?? str(property.label) ?? key,
     tooltip: tooltipToText(cp.tooltip),
@@ -247,12 +262,37 @@ export function readExposedOption(
   }
 }
 
-function collect(node: unknown, path: string[], out: ExposedOption[]): void {
+/**
+ * Свойство, которое автор графа клиенту открыл, а сайт нарисовать не смог.
+ *
+ * Нужно ровно затем, чтобы об этом можно было СКАЗАТЬ. Раньше такие свойства
+ * отбрасывались без следа: автор ставит галочку, на сайте пусто, и единственный
+ * способ понять причину — прочитать этот файл. Разбор —
+ * docs/OVERLAY_CONTROL_PLAN.md §7.
+ *
+ * Типов свойств в программе больше, чем контролов здесь, и так будет всегда:
+ * тяжёлые контролы с превью на сайт не переезжают
+ * (docs/PROJECT_OPTIONS_PANEL.md §1). Это не ошибка, о которой надо кричать, —
+ * это факт, о котором надо сообщить.
+ */
+export type SkippedOption = {
+  /** `controlType` из графа. Может быть каким угодно — он оттуда как есть. */
+  controlType: string
+  /** Подпись автора, если она есть: по ней свойство узнают в ноде. */
+  label: string | null
+}
+
+function collect(
+  node: unknown,
+  path: string[],
+  out: ExposedOption[],
+  skipped: SkippedOption[],
+): void {
   if (!node || typeof node !== "object") return
 
   if (Array.isArray(node)) {
     node.forEach((child, index) =>
-      collect(child, [...path, String(index)], out),
+      collect(child, [...path, String(index)], out, skipped),
     )
     return
   }
@@ -260,17 +300,74 @@ function collect(node: unknown, path: string[], out: ExposedOption[]): void {
   const obj = node as Record<string, unknown>
   if (obj.exposedToSite === true) {
     const option = readExposedOption(obj, path)
-    if (option) out.push(option)
+    if (option) {
+      out.push(option)
+    } else {
+      // Название берём тем же путём, что и сам контрол, — из controlProps.
+      // Без него скажем хотя бы тип: «сайт не умеет overlaySettings» уже
+      // отвечает на вопрос «почему галочка ничего не дала».
+      const cp =
+        obj.controlProps &&
+        typeof obj.controlProps === "object" &&
+        !Array.isArray(obj.controlProps)
+          ? (obj.controlProps as Record<string, unknown>)
+          : null
+      skipped.push({
+        controlType:
+          typeof obj.controlType === "string" && obj.controlType.trim()
+            ? obj.controlType
+            : "?",
+        label: cp ? str(cp.label) : null,
+      })
+    }
     return
   }
 
   for (const [key, child] of Object.entries(obj)) {
-    collect(child, [...path, key], out)
+    collect(child, [...path, key], out, skipped)
   }
 }
 
+/**
+ * Разбор с отчётом о непоказанном. Основная форма — ею пользуются и чтение
+ * проекта, и запись.
+ */
+export function readExposedOptions(root: unknown): {
+  options: ExposedOption[]
+  skipped: SkippedOption[]
+} {
+  const options: ExposedOption[] = []
+  const skipped: SkippedOption[] = []
+  collect(root, [], options, skipped)
+  return { options: orderByGraph(root, options), skipped }
+}
+
+/**
+ * Список идёт по конвейеру, а не по порядку массива `nodes`
+ * (docs/OVERLAY_CONTROL_PLAN.md §8.3): сначала свойства ранних нод, потом
+ * поздних. Внутри ноды порядок свойств сохраняется — его задал автор графа.
+ *
+ * Сортировка устойчивая: при равном месте ноды (и всегда, когда порядок нод
+ * разобрать не вышло) список остаётся ровно таким, каким пришёл.
+ */
+function orderByGraph(
+  root: unknown,
+  options: ExposedOption[],
+): ExposedOption[] {
+  const order = nodeOrderMap(root)
+  if (!order) return options
+  return options
+    .map((option, index) => {
+      const id = nodeIdForPath(root, option.path)
+      // Свойство вне массива нод (такого в графе не бывает, но файл чужой) —
+      // в конец, не перемешивая остальные.
+      const place = id !== null ? (order.get(id) ?? order.size) : order.size
+      return { option, place, index }
+    })
+    .sort((a, b) => a.place - b.place || a.index - b.index)
+    .map((item) => item.option)
+}
+
 export function extractExposedOptions(root: unknown): ExposedOption[] {
-  const out: ExposedOption[] = []
-  collect(root, [], out)
-  return out
+  return readExposedOptions(root).options
 }

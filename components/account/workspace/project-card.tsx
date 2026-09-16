@@ -15,7 +15,7 @@ import {
 
 import { tf } from "@/components/account/i18n"
 import { cn } from "@/lib/utils"
-import { fmtDate, trashDaysLeft } from "./format"
+import { fmtDateTime, trashDaysLeft } from "./format"
 import { GiftBadge } from "./gift-badge"
 import type { Project } from "./types"
 import { useWorkspace } from "./workspace-context"
@@ -29,8 +29,17 @@ import { useWorkspace } from "./workspace-context"
  * чат нельзя — роль зажата до читателя. Вместо них срок и «Восстановить».
  */
 function TrashProjectCard({ project }: { project: Project }) {
-  const { t, lang, selectedId, selectProject, restoreProject, openMenu, menu } =
-    useWorkspace()
+  const {
+    t,
+    lang,
+    source,
+    selectedId,
+    selectProject,
+    restoreProject,
+    purgeProjectForever,
+    openMenu,
+    menu,
+  } = useWorkspace()
 
   const deletedAt = project.deletedAt as string
   const daysLeft = trashDaysLeft(deletedAt)
@@ -56,7 +65,7 @@ function TrashProjectCard({ project }: { project: Project }) {
           ? "border-ws-accent/75"
           : selected
             ? "border-ws-select/55 bg-gradient-to-b from-ws-select/[0.22] to-ws-select/[0.06] shadow-ws-inset"
-            : "border-white/10 hover:border-white/20",
+            : "border-foreground/10 hover:border-foreground/20",
       )}
     >
       {selected ? (
@@ -75,24 +84,44 @@ function TrashProjectCard({ project }: { project: Project }) {
         </span>
       </div>
       <div className="mt-2 flex items-center justify-between gap-2">
+        {/* Время, а не только дата. Копии одного проекта уходят в корзину по
+            нескольку раз за день и лежат тут с одинаковым именем: переименовывать
+            их нельзя — они и в жизни так называются, — а различить надо. Минута
+            удаления и есть та самая пометка. */}
         <span className="min-w-0 truncate text-[11.5px] text-ws-5">
-          {tf(t.trashDeletedOn, { date: fmtDate(deletedAt, lang) })}
+          {tf(t.trashDeletedOn, { date: fmtDateTime(deletedAt, lang) })}
           {" · "}
           {daysLeft === 0
             ? t.trashLastDay
             : tf(t.trashDaysLeft, { days: daysLeft })}
         </span>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            restoreProject(project)
-          }}
-          className="flex shrink-0 items-center gap-1 rounded-full border border-white/[0.12] px-2.5 py-[3px] text-[11px] text-ws-2 hover:brightness-125"
-        >
-          <RotateCcw className="h-3 w-3" />
-          {t.mRestore}
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              restoreProject(project)
+            }}
+            className="flex shrink-0 items-center gap-1 rounded-full border border-foreground/[0.12] px-2.5 py-[3px] text-[11px] text-ws-2 hover:brightness-125"
+          >
+            <RotateCcw className="h-3 w-3" />
+            {t.mRestore}
+          </button>
+          {source.projectPurgeUrl ? (
+            <button
+              type="button"
+              title={t.mPurge}
+              aria-label={t.mPurge}
+              onClick={(e) => {
+                e.stopPropagation()
+                purgeProjectForever(project)
+              }}
+              className="flex h-[21px] w-[21px] shrink-0 items-center justify-center rounded-full border border-foreground/[0.12] text-ws-4 hover:border-destructive/40 hover:text-destructive"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   )
@@ -154,7 +183,7 @@ export function ProjectCard({
         "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-[3px] text-[11px] hover:brightness-125",
         unread
           ? "border-ws-select/50 bg-ws-select/[0.12] text-primary"
-          : "border-white/[0.12] text-ws-3",
+          : "border-foreground/[0.12] text-ws-3",
       )}
     >
       <MessageCircle className="h-3 w-3" />
@@ -184,7 +213,7 @@ export function ProjectCard({
           ? "border-ws-accent/75"
           : selected
             ? "border-ws-select/55 bg-gradient-to-b from-ws-select/[0.22] to-ws-select/[0.06] shadow-ws-inset"
-            : "border-white/10 hover:border-white/20",
+            : "border-foreground/10 hover:border-foreground/20",
         paused && !selected && "opacity-55",
       )}
     >
@@ -242,7 +271,7 @@ export function ProjectCard({
               className={cn(
                 "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-[3px] text-[11px] hover:brightness-125",
                 paused
-                  ? "border-white/[0.12] text-ws-3"
+                  ? "border-foreground/[0.12] text-ws-3"
                   : "border-ws-out/40 bg-ws-out/10 text-ws-out",
               )}
             >
@@ -262,13 +291,15 @@ export function ProjectCard({
                   ? t.projectPausedTrialOver
                   : billingStop === "no-vendor-key"
                     ? t.projectPausedNoVendorKey
-                    : t.projectPausedNoFunds}
+                    : billingStop === "payer-no-funds"
+                      ? t.projectPausedPayerNoFunds
+                      : t.projectPausedNoFunds}
               </span>
             ) : null}
             {showArchivedBadge ? (
               <span
                 title={t.archiveProject}
-                className="flex shrink-0 items-center gap-1 rounded-full border border-white/[0.12] px-2 py-[3px] text-[11px] text-ws-4"
+                className="flex shrink-0 items-center gap-1 rounded-full border border-foreground/[0.12] px-2 py-[3px] text-[11px] text-ws-4"
               >
                 <Archive className="h-3 w-3" />
                 {t.archiveTab}

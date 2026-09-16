@@ -283,7 +283,7 @@ export function TimelineFrame({
       <div className="flex min-h-0 flex-1">
         <div
           onWheel={forwardWheel}
-          className="flex w-[288px] flex-none flex-col border-r border-white/[0.07] bg-ws-well"
+          className="flex w-[288px] flex-none flex-col border-r border-foreground/[0.07] bg-ws-well"
         >
           {columnHeader}
           <div className="min-h-0 flex-1 overflow-hidden">

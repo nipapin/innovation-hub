@@ -25,7 +25,7 @@ export function TrashBanner() {
   return (
     <div
       role="status"
-      className="flex items-center gap-3 border-b border-white/[0.12] bg-white/[0.05] px-4 py-2.5 text-[13px] text-ws-2"
+      className="flex items-center gap-3 border-b border-foreground/[0.12] bg-foreground/[0.05] px-4 py-2.5 text-[13px] text-ws-2"
     >
       <Trash2 className="h-4 w-4 shrink-0 text-ws-4" />
       <span className="min-w-0 flex-1 truncate">
@@ -38,7 +38,7 @@ export function TrashBanner() {
       <button
         type="button"
         onClick={() => restoreProject(selected)}
-        className="flex shrink-0 items-center gap-1.5 rounded-[7px] border border-white/[0.14] px-2.5 py-1 text-[12.5px] hover:bg-white/[0.06]"
+        className="flex shrink-0 items-center gap-1.5 rounded-[7px] border border-foreground/[0.14] px-2.5 py-1 text-[12.5px] hover:bg-foreground/[0.06]"
       >
         <RotateCcw className="h-[15px] w-[15px]" />
         {t.mRestore}

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { CircleHelp, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
-import { useI18n } from "@/components/account/i18n"
+import { tf, useI18n } from "@/components/account/i18n"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import type { ExposedOptionChange } from "@/lib/options/apply"
+import type { SkippedOption } from "@/lib/options/extract"
 import type { ExposedOption, ExposedOptionValue } from "@/lib/options/types"
 import { cn } from "@/lib/utils"
 import { formatOptionValue, OPTION_CONTROLS } from "./option-controls"
@@ -29,13 +30,27 @@ import { socialControlFor } from "./social-controls"
  */
 
 type Props = {
+  /** Нужен контролу выбора файла: он грузит файл в этот проект. */
+  projectId: string
   options: ExposedOption[]
+  /** Словарь расширений конвейера: проверка файла до заливки. */
+  fileTypes: Record<string, string[]>
   /**
    * Отправка правок. Возвращает свежий список (сервер мог зажать число в
    * границы) либо кидает ошибку с текстом для тоста. `null` — правки отсюда
    * не предусмотрены вовсе: показываем только значения.
    */
   onSave: ((changes: ExposedOptionChange[]) => Promise<ExposedOption[]>) | null
+  /**
+   * Свойства, которые автор графа клиенту открыл, а сайт нарисовать не смог.
+   *
+   * Показываются строкой под списком, а не прячутся: типов свойств в программе
+   * больше, чем контролов здесь, и так будет всегда (тяжёлые контролы с превью
+   * не переезжают, docs/PROJECT_OPTIONS_PANEL.md §1). Молчание же означает, что
+   * автор ставит галочку, на сайте пусто, и причину можно узнать только из кода
+   * — разбор в docs/OVERLAY_CONTROL_PLAN.md §7.
+   */
+  skipped?: SkippedOption[]
   className?: string
 }
 
@@ -57,7 +72,14 @@ function isDirty(option: ExposedOption, draft: ExposedOptionValue | undefined) {
   return JSON.stringify(draft) !== JSON.stringify(option.value)
 }
 
-export function ExposedOptionsList({ options, onSave, className }: Props) {
+export function ExposedOptionsList({
+  projectId,
+  options,
+  fileTypes,
+  onSave,
+  skipped,
+  className,
+}: Props) {
   const { t } = useI18n()
   const [draft, setDraft] = useState<Record<string, ExposedOptionValue>>(() =>
     buildDraft(options),
@@ -92,7 +114,9 @@ export function ExposedOptionsList({ options, onSave, className }: Props) {
     return map
   }, [options, draft])
 
-  if (options.length === 0) return null
+  // Пусто и сказать нечего — раздела нет. Но если ВСЕ открытые свойства сайту
+  // незнакомы, список пуст, а сообщить есть о чём: молчать здесь хуже всего.
+  if (options.length === 0 && (skipped?.length ?? 0) === 0) return null
 
   const save = async () => {
     if (!onSave || dirty.length === 0) return
@@ -117,6 +141,35 @@ export function ExposedOptionsList({ options, onSave, className }: Props) {
     }
   }
 
+  /**
+   * Записать одно значение немедленно, минуя кнопку «Сохранить».
+   *
+   * Нужно выбору файла: он уже положил файл в проект, и оставить путь только в
+   * черновике значило бы разойтись с хранилищем — файл лежит, а граф про него
+   * не знает. У остальных контролов правка обратима до сохранения, и общий
+   * порядок им подходит.
+   */
+  const commitOne = async (
+    option: ExposedOption,
+    value: ExposedOptionValue,
+  ): Promise<void> => {
+    if (!onSave) return
+    setSaving(true)
+    try {
+      const next = await onSave([{ path: option.path, value }])
+      setDraft(buildDraft(next))
+      toast.success(t.optionsSaved)
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message
+          ? error.message
+          : t.optionsSaveFailed,
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <TooltipProvider delayDuration={200}>
       <section className={cn("space-y-3", className)}>
@@ -124,7 +177,7 @@ export function ExposedOptionsList({ options, onSave, className }: Props) {
           {t.optionsHeading}
         </p>
 
-        <ul className="divide-y divide-white/[0.07]">
+        <ul className="divide-y divide-foreground/[0.07]">
           {options.map((option) => {
             const key = optionKey(option)
             // Аккаунт площадки и цель публикации рисуются своим контролом,
@@ -165,6 +218,9 @@ export function ExposedOptionsList({ options, onSave, className }: Props) {
                 value={draft[key] ?? option.value}
                 disabled={saving || !onSave}
                 onChange={change}
+                projectId={projectId}
+                fileTypes={fileTypes}
+                commit={(next) => commitOne(option, next)}
               />
             )
 
@@ -202,6 +258,20 @@ export function ExposedOptionsList({ options, onSave, className }: Props) {
             )
           })}
         </ul>
+
+        {skipped && skipped.length > 0 ? (
+          <p className="text-[12px] text-ws-4">
+            {/* Называем свойства ПОДПИСЬЮ автора, а не типом контрола: «Overlay
+                Settings» человек узнаёт в ноде, `overlaySettings` — нет. Тип
+                остаётся запасным вариантом, когда подписи нет: он всё равно
+                отвечает на вопрос «почему галочка ничего не дала». */}
+            {tf(t.optionsSkipped, {
+              names: [
+                ...new Set(skipped.map((s) => s.label ?? s.controlType)),
+              ].join(", "),
+            })}
+          </p>
+        ) : null}
 
         {onSave ? (
           <div className="flex justify-end">

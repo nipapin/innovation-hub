@@ -70,6 +70,11 @@ export function isAllowedMediaObjectKey(key: string): boolean {
   return (
     key.startsWith("admin/") ||
     key.startsWith("feature-suggestions/") ||
+    // Логотипы компаний (docs/THEMING_PLAN.md §6.1). Открыты без сессии
+    // осознанно: логотип рисуется на СТРАНИЦЕ ВХОДА, когда компания определена
+    // по домену, — то есть его обязан увидеть тот, кто ещё не вошёл. Это тот же
+    // класс, что `admin/`: публичное оформление, а не чужие файлы.
+    key.startsWith("companies/") ||
     key.startsWith("innohub/") ||
     key.startsWith("ffworks/")
   )
@@ -209,9 +214,50 @@ export function normalizeMediaDisplayUrl(rawUrl: string): string {
 /**
  * Public URL for an object when you serve or proxy the bucket at a fixed HTTPS base.
  * Set `NEXT_PUBLIC_S3_PUBLIC_BASE_URL` (no trailing slash), e.g. CDN or static website endpoint.
+ *
+ * ВТОРАЯ ПЕРЕМЕННАЯ — ЗАСЛОН, А НЕ БЮРОКРАТИЯ.
+ *
+ * «Базовый адрес задан» и «по этому адресу что-то отдаётся» — разные вещи, а
+ * проверить второе неоткуда: код узнаёт об этом не при настройке, а недели
+ * спустя, битой картинкой у первого, кто откроет страницу. Записанный в базу
+ * мёртвый адрес переживает починку CDN — чинить придётся и данные.
+ *
+ * Так и случилось: `NEXT_PUBLIC_S3_PUBLIC_BASE_URL` стоял, CDN отвечал 403 на
+ * всё, и первая же новая загрузка записала недоступный адрес. До этого никто не
+ * замечал, потому что весь прежний контент заливался раньше, чем переменную
+ * добавили.
+ *
+ * Поэтому адрес отдаётся только когда раздачу ПОДТВЕРДИЛИ явно:
+ *
+ *     NEXT_PUBLIC_S3_PUBLIC_BASE_URL=https://cdn.example.com
+ *     S3_PUBLIC_BASE_CONFIRMED=1     # проверено: объект по этому адресу открывается
+ *
+ * Без подтверждения все вызывающие уходят на `/api/media/…` — он работает по
+ * построению, потому что ходит в тот же бакет, куда мы пишем.
+ *
+ * ПЕРЕД ТЕМ КАК ПОДТВЕРЖДАТЬ — ПРОВЕРЬТЕ, ЧЕЙ ЭТО БАКЕТ.
+ *
+ * Публичный домен на бакете открывает его ЦЕЛИКОМ, а не те папки, ссылки на
+ * которые строит этот код. В одном бакете с `admin/` и `companies/` лежит
+ * `projects/` — рабочие материалы клиентов, которые сегодня отдаются только
+ * через `/api/media/…`, и тот на каждый запрос проверяет сессию и
+ * `projects.access`. Подтверждение раздачи снимет эту проверку со всего бакета
+ * разом: кто узнал ключ, тот качает, бессрочно и без входа.
+ *
+ * Поэтому CDN включается не подтверждением, а сначала РАЗДЕЛЕНИЕМ бакетов:
+ * публичное оформление — в отдельный, материалы проектов — в закрытый.
+ *
+ * Состояние на 2026-09-14: `cdn.ffworks.pro` указывает на прежнее хранилище
+ * (Timeweb), зона домена обслуживается не Cloudflare, а привязка своего домена
+ * к бакету R2 требует и того, и другого. То есть подтверждать сейчас нечего —
+ * по этому адресу не отдаётся ничего.
  */
 export function publicObjectUrlForKey(key: string): string | null {
   const base = process.env.NEXT_PUBLIC_S3_PUBLIC_BASE_URL?.trim()
   if (!base) return null
+
+  const confirmed = process.env.S3_PUBLIC_BASE_CONFIRMED?.trim()
+  if (confirmed !== "1" && confirmed !== "true") return null
+
   return joinUrlBase(base, key)
 }

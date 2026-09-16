@@ -104,3 +104,21 @@ export const userUpdateSchema = z.object({
   role: z.enum(USER_ROLES).optional(),
   isActive: z.boolean().optional(),
 })
+
+/**
+ * Slug уходит в email служебного кошелька, в адреса и в будущем в префикс
+ * хранилища (docs/COMPANY_ACCOUNTS_PLAN.md §9) — только латиница, цифры и дефис.
+ */
+export const companyCreateSchema = z.object({
+  slug: z
+    .string()
+    .min(2, "Slug must be at least 2 characters.")
+    .max(60)
+    .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "Use lowercase letters, digits and hyphens."),
+  title: z.string().min(2, "Title must be at least 2 characters.").max(120),
+})
+
+export const companyTransferSchema = z.object({
+  userId: z.string().min(1),
+  companyRole: z.enum(["member", "admin", "owner"]),
+})

@@ -68,7 +68,7 @@ export function AdminTopbar({
     ]
 
   return (
-    <header className="relative flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/[0.07] px-3 md:px-6">
+    <header className="relative flex h-14 shrink-0 items-center justify-between gap-3 border-b border-foreground/[0.07] px-3 md:px-6">
       <span className="absolute inset-x-0 top-0 h-px bg-primary/40" />
 
       <div className="flex min-w-0 items-center gap-2">
@@ -81,7 +81,7 @@ export function AdminTopbar({
           <Link
             href={upHref ?? area.href}
             aria-label={t[area.labelKey] as string}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-white/10 bg-ws-control text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-foreground/10 bg-ws-control text-ws-3 hover:bg-ws-hover hover:text-ws-1"
           >
             <ArrowLeft className="h-[19px] w-[19px]" />
           </Link>
@@ -98,7 +98,7 @@ export function AdminTopbar({
           {area && !atAreaHome ? (
             <Link
               href={area.href}
-              className="hidden truncate rounded-lg px-2 py-1 text-[15px] font-medium text-ws-3 hover:bg-white/5 hover:text-ws-1 sm:block md:text-[16px]"
+              className="hidden truncate rounded-lg px-2 py-1 text-[15px] font-medium text-ws-3 hover:bg-foreground/5 hover:text-ws-1 sm:block md:text-[16px]"
             >
               {t[area.labelKey] as string}
             </Link>
@@ -120,7 +120,7 @@ export function AdminTopbar({
 
       <div className="flex shrink-0 items-center gap-3 md:gap-4">
         {hasColumn ? (
-          <div className="hidden shrink-0 gap-[3px] rounded-[9px] border border-white/10 bg-ws-control p-[3px] lg:flex">
+          <div className="hidden shrink-0 gap-[3px] rounded-[9px] border border-foreground/10 bg-ws-control p-[3px] lg:flex">
             {densityOptions.map((option) => {
               const Icon = option.icon
               const active = density === option.id

@@ -31,7 +31,7 @@ export function detailsOf(
   if (event.action === "user.password_reset" && meta.isSelf === true) {
     return t.auditSelfNote
   }
-  if (event.action === "project.deleted") {
+  if (event.action === "project.deleted" || event.action === "project.purged") {
     if (meta.via === "computer") return t.auditViaComputer
     if (meta.via === "machine") return t.auditViaMachine
     return t.auditViaSession

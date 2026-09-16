@@ -113,13 +113,13 @@ export function StepList({ steps }: { steps: TaskStep[] }) {
                 ? "border-[#3fb950]/30"
                 : step.status === "error"
                   ? "border-[#f85149]/40"
-                  : "border-white/[0.08]",
+                  : "border-foreground/[0.08]",
           )}
         >
           <StepSquare status={step.status} />
           <span className="font-mono text-[12px] text-ws-2">{step.label}</span>
           {step.nodeType && step.nodeType !== "default" ? (
-            <span className="rounded-full border border-white/[0.1] px-1.5 text-[10.5px] text-ws-5">
+            <span className="rounded-full border border-foreground/[0.1] px-1.5 text-[10.5px] text-ws-5">
               {step.nodeType}
             </span>
           ) : null}

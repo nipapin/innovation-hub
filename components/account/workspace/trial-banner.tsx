@@ -79,7 +79,9 @@ export function TrialBanner() {
       ? t.trialBannerOver
       : pausedReason === "no-vendor-key"
         ? t.trialBannerNoVendorKey
-        : t.trialBannerNoFunds
+        : pausedReason === "payer-no-funds"
+          ? t.trialBannerPayerNoFunds
+          : t.trialBannerNoFunds
     : tf(t.trialBannerRemaining, { runtime: formatRuntime(runtime) })
 
   return (

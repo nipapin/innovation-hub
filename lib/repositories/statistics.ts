@@ -86,6 +86,18 @@ function scopeConditions(
   const where: string[] = []
   if (!options?.includeDeleted) where.push("p.deleted_at IS NULL")
   if (scope.ownerId) where.push(`p.user_id = ${p.add(scope.ownerId)}`)
+  // Рамка компании — подзапросом по владельцу проекта, а не join'ом: у всех
+  // вызывающих `p` уже в FROM, а лишний JOIN здесь размножил бы строки там, где
+  // рядом уже джойнятся файлы и задачи.
+  if (scope.companyId) {
+    where.push(
+      `p.user_id IN (SELECT id FROM users WHERE company_id = ${p.add(scope.companyId)})`,
+    )
+  }
+  // Провал в человека внутри компании: рамка компании остаётся, сверху — он.
+  if (scope.companyId && scope.userId) {
+    where.push(`p.user_id = ${p.add(scope.userId)}`)
+  }
   if (scope.projectId) where.push(`p.id = ${p.add(scope.projectId)}`)
   return where
 }
@@ -325,10 +337,34 @@ async function rowsFromArchive(
  */
 function ledgerConditions(scope: StatsScope, p: Params): string[] {
   const where = ["b.kind = 'charge'"]
-  // В кабинете плательщик — сам владелец скоупа; в админке им становится тот,
-  // в кого провалились. Обоих сразу не бывает: `sanitizeScope` это исключает.
-  const payer = scope.ownerId ?? scope.userId
-  if (payer) where.push(`b.user_id = ${p.add(payer)}`)
+
+  if (scope.companyId) {
+    // Расход компании — это строки, чей плательщик её кошелёк ИЛИ кто-то из её
+    // людей. Второе слагаемое не перестраховка: плательщик проставляется при
+    // переводе (план §7.4), но человек мог попасть в компанию иначе или платить
+    // сам по настройке, и тогда его списания просто не попали бы в счёт —
+    // молча, без единого признака недостачи.
+    const company = p.add(scope.companyId)
+    where.push(
+      `b.user_id IN (
+         SELECT wallet_user_id FROM companies WHERE id = ${company}
+         UNION
+         SELECT id FROM users WHERE company_id = ${company}
+       )`,
+    )
+    // Провал в человека: его проекты, а не его кошелёк — платит-то компания.
+    if (scope.userId) {
+      where.push(
+        `b.project_id IN (SELECT id FROM projects WHERE user_id = ${p.add(scope.userId)})`,
+      )
+    }
+  } else {
+    // В кабинете плательщик — сам владелец скоупа; в админке им становится тот,
+    // в кого провалились. Обоих сразу не бывает: `sanitizeScope` это исключает.
+    const payer = scope.ownerId ?? scope.userId
+    if (payer) where.push(`b.user_id = ${p.add(payer)}`)
+  }
+
   if (scope.projectId) where.push(`b.project_id = ${p.add(scope.projectId)}`)
   return where
 }
@@ -341,13 +377,30 @@ function ledgerConditions(scope: StatsScope, p: Params): string[] {
  * (BILLING_AND_TRIAL_PLAN.md §П2). Поэтому джойн нужен ровно этим двум
  * разрезам: в остальных `processing_stats` могло и не быть в базе.
  */
-function ledgerBreakdownExpr(breakdown: StatBreakdown): {
+function ledgerBreakdownExpr(
+  breakdown: StatBreakdown,
+  /**
+   * В компании плательщик у ВСЕХ строк один — её кошелёк, поэтому разрез по
+   * `b.user_id` дал бы одну строку «кошелёк компании» вместо ответа на вопрос
+   * «кто сколько потратил». Ключом становится владелец проекта: он и есть тот,
+   * чья работа списалась (план §7.9).
+   */
+  byProjectOwner = false,
+): {
   key: string
   label: string
   needsArchive: boolean
 } {
   switch (breakdown) {
     case "user":
+      if (byProjectOwner) {
+        return {
+          key: "COALESCE(p.user_id, '')",
+          label:
+            "COALESCE(NULLIF(ow.contact_name, ''), NULLIF(ow.full_name, ''), ow.email, '')",
+          needsArchive: false,
+        }
+      }
       return {
         key: "b.user_id",
         label:
@@ -385,7 +438,7 @@ async function rowsFromLedger(
   period: StatPeriod,
 ): Promise<LedgerRow[]> {
   const p = new Params()
-  const expr = ledgerBreakdownExpr(breakdown)
+  const expr = ledgerBreakdownExpr(breakdown, Boolean(scope.companyId))
   const where = ledgerConditions(scope, p)
   const interval = periodToInterval(period)
   if (interval) {
@@ -399,6 +452,7 @@ async function rowsFromLedger(
        FROM billing_transactions b
        LEFT JOIN projects p ON p.id = b.project_id
        LEFT JOIN users u ON u.id = b.user_id
+       LEFT JOIN users ow ON ow.id = p.user_id
        ${expr.needsArchive ? "LEFT JOIN processing_stats ps ON ps.item_id = b.task_id" : ""}
       WHERE ${where.join(" AND ")}
       GROUP BY 1, 2`,
@@ -1004,6 +1058,43 @@ async function loadElementCard(
  * «нет доступа» и «не существует» сама по себе утечка.
  */
 async function sanitizeScope(scope: StatsScope): Promise<StatsScope> {
+  /**
+   * Рамка компании (план §6.5). Фильтры провала приходят от клиента, поэтому
+   * проверяются здесь, а не в интерфейсе: запрет, живущий только в кнопках, —
+   * не запрет.
+   *
+   * `companyId` при этом НЕ проверяется и не может: он приходит не от клиента, а
+   * из гейта консоли (lib/company-auth.ts). Проверять надо ровно то, что клиент
+   * волен прислать, — человека и проект.
+   */
+  if (scope.companyId) {
+    let userId = scope.userId
+    if (userId) {
+      const inCompany = await query(
+        `SELECT 1 FROM users WHERE id = $1 AND company_id = $2 LIMIT 1`,
+        [userId, scope.companyId],
+      )
+      if (inCompany.rowCount === 0) userId = null
+    }
+
+    let projectId = scope.projectId
+    if (projectId) {
+      // Проект должен принадлежать человеку ИЗ ЭТОЙ компании — иначе провал по
+      // чужому идентификатору показал бы компании чужую работу.
+      const allowed = await query(
+        `SELECT 1
+           FROM projects p
+           JOIN users u ON u.id = p.user_id
+          WHERE p.id = $1 AND u.company_id = $2
+          LIMIT 1`,
+        [projectId, scope.companyId],
+      )
+      if (allowed.rowCount === 0) projectId = null
+    }
+
+    return { ...scope, ownerId: null, userId, projectId }
+  }
+
   if (!scope.ownerId) return scope
 
   let projectId = scope.projectId
@@ -1029,7 +1120,11 @@ export async function getStatistics({
 }): Promise<StatsResponse> {
   // Фильтры провала приходят от клиента, поэтому проверяются до всего остального.
   const scope = await sanitizeScope(requestedScope)
-  const variant: StatVariant = scope.ownerId ? "account" : "admin"
+  const variant: StatVariant = scope.companyId
+    ? "company"
+    : scope.ownerId
+      ? "account"
+      : "admin"
   // Разрез сводится к допустимому здесь, а не в UI: клиент волен прислать
   // `breakdown=machine` мимо интерфейса, и запрет, живущий только в кнопках, —
   // не запрет. Недопустимый молча становится разрезом по проектам, как и любой

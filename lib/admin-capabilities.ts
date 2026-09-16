@@ -59,6 +59,11 @@ export const ADMIN_CAPABILITIES = [
   // распоряжение самим набором разделов, и гасится он сразу для всех
   // пользователей установки.
   "features.manage",
+  // Заводить компании и назначать им владельцев (docs/COMPANY_ACCOUNTS_PLAN.md
+  // §4, §6.6). Отдельный тег, а не довесок к `users.manage`: перевод человека в
+  // компанию отдаёт ему видимость поперёк нескольких людей и общий кошелёк —
+  // это ближе по весу к раздаче прав, чем к обычному управлению аккаунтом.
+  "companies.manage",
 ] as const
 
 export type AdminCapability = (typeof ADMIN_CAPABILITIES)[number]
@@ -121,7 +126,9 @@ export const CAPABILITY_PRESETS = {
   // удобства, её нажимают не глядя; выключатель же гасит раздел или инструмент
   // сразу всем пользователям установки. Такое право выдают поштучно и осознанно.
   // Суперадмина это не ограничивает: ему теги не проверяются вовсе.
-  full: ADMIN_CAPABILITIES.filter((capability) => capability !== "features.manage"),
+  full: ADMIN_CAPABILITIES.filter(
+    (capability) => capability !== "features.manage" && capability !== "companies.manage",
+  ),
 } as const satisfies Record<string, readonly AdminCapability[]>
 
 export type CapabilityPreset = keyof typeof CAPABILITY_PRESETS

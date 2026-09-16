@@ -4,8 +4,6 @@ import type { ProjectTab } from "./workspace-context"
 /** Заголовок раздела списка проектов. */
 export function sectionHeading(tab: ProjectTab, t: Dictionary): string {
   switch (tab) {
-    case "shared":
-      return t.sharedTab
     case "tools":
       return t.toolsTab
     case "archive":
@@ -20,8 +18,6 @@ export function sectionHeading(tab: ProjectTab, t: Dictionary): string {
 /** Что писать, когда в разделе ничего нет. */
 export function sectionEmptyText(tab: ProjectTab, t: Dictionary): string {
   switch (tab) {
-    case "shared":
-      return t.emptyShared
     case "tools":
       return t.emptyTools
     case "archive":

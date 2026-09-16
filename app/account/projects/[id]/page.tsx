@@ -101,6 +101,7 @@ export default async function AccountProjectDetailPage({ params }: PageProps) {
               files: storage.files,
               folderState: storage.folderState,
               options: storage.options,
+              fileTypes: storage.fileTypes,
             }
           : null
       }

@@ -33,7 +33,7 @@ function KindChip({
         "rounded-full border px-3.5 py-[6px] text-[13px] transition-colors",
         active
           ? "border-ws-select/60 bg-ws-select/[0.16] text-ws-1"
-          : "border-white/10 text-ws-3 hover:border-white/20 hover:text-ws-1",
+          : "border-foreground/10 text-ws-3 hover:border-foreground/20 hover:text-ws-1",
       )}
     >
       {label}
@@ -61,7 +61,7 @@ function CatalogCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full items-start gap-4 rounded-[14px] border border-white/10 bg-ws-panel p-[18px] text-left transition-colors hover:border-white/[0.18] hover:bg-ws-hover",
+        "flex w-full items-start gap-4 rounded-[14px] border border-foreground/10 bg-ws-panel p-[18px] text-left transition-colors hover:border-foreground/[0.18] hover:bg-ws-hover",
         soon && "opacity-70",
       )}
     >
@@ -78,7 +78,7 @@ function CatalogCard({
             </span>
           ) : null}
           {soon ? (
-            <span className="rounded-full border border-white/[0.12] px-2 py-[2px] text-[11.5px] text-ws-4">
+            <span className="rounded-full border border-foreground/[0.12] px-2 py-[2px] text-[11.5px] text-ws-4">
               {t.toolSoon}
             </span>
           ) : null}
@@ -90,7 +90,7 @@ function CatalogCard({
           {tool.kinds.map((k) => (
             <span
               key={k}
-              className="rounded-md border border-white/[0.10] px-2 py-[2px] text-[11.5px] text-ws-4"
+              className="rounded-md border border-foreground/[0.10] px-2 py-[2px] text-[11.5px] text-ws-4"
             >
               {t[KIND_LABEL[k]]}
             </span>
@@ -161,7 +161,7 @@ export function CatalogDialog() {
         aria-describedby={undefined}
         className="max-h-[86vh] gap-0 overflow-hidden border-border/60 bg-ws-raised p-0 sm:max-w-[720px]"
       >
-        <DialogHeader className="border-b border-white/[0.07] px-6 pb-4 pt-6">
+        <DialogHeader className="border-b border-foreground/[0.07] px-6 pb-4 pt-6">
           <DialogTitle className="pr-8 text-[18px] font-semibold tracking-tight text-ws-1">
             {opened ? t[toolText(opened.key).name] : t.catalogTitle}
           </DialogTitle>
@@ -177,7 +177,7 @@ export function CatalogDialog() {
                 {opened.kinds.map((k) => (
                   <span
                     key={k}
-                    className="rounded-md border border-white/[0.10] px-2 py-[2px] text-[11.5px] text-ws-4"
+                    className="rounded-md border border-foreground/[0.10] px-2 py-[2px] text-[11.5px] text-ws-4"
                   >
                     {t[KIND_LABEL[k]]}
                   </span>
@@ -187,13 +187,13 @@ export function CatalogDialog() {
                 {t[toolText(opened.key).long]}
               </p>
               {opened.status !== "ready" ? (
-                <p className="mt-4 rounded-[10px] border border-white/[0.10] bg-white/[0.03] px-4 py-3 text-[13px] text-ws-3">
+                <p className="mt-4 rounded-[10px] border border-foreground/[0.10] bg-foreground/[0.03] px-4 py-3 text-[13px] text-ws-3">
                   {t.toolSoonNote}
                 </p>
               ) : null}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] px-6 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-foreground/[0.07] px-6 py-4">
               <button
                 type="button"
                 onClick={() => setOpenKey(null)}
@@ -208,7 +208,7 @@ export function CatalogDialog() {
                     <button
                       type="button"
                       onClick={() => void removeTool(openedInstance.id)}
-                      className="flex h-[42px] items-center gap-2 rounded-[10px] border border-white/10 px-4 text-[14px] text-ws-2 hover:border-destructive/50 hover:text-ws-1"
+                      className="flex h-[42px] items-center gap-2 rounded-[10px] border border-foreground/10 px-4 text-[14px] text-ws-2 hover:border-destructive/50 hover:text-ws-1"
                     >
                       <Trash2 className="h-[17px] w-[17px]" />
                       {t.toolRemove}
@@ -251,7 +251,7 @@ export function CatalogDialog() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={t.catalogSearch}
-                  className="h-[42px] w-full rounded-[10px] border border-white/10 bg-ws-control pl-10 pr-3 text-[14px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
+                  className="h-[42px] w-full rounded-[10px] border border-foreground/10 bg-ws-control pl-10 pr-3 text-[14px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
                 />
               </div>
             </div>

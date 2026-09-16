@@ -2,6 +2,8 @@
 
 import {
   ArrowLeftRight,
+  Building2,
+  Palette,
   FolderTree,
   Gift,
   TriangleAlert,
@@ -117,6 +119,13 @@ export const ACTION_META: Record<
     icon: Trash2,
     tone: "danger",
   },
+  // Тяжелее удаления: у того есть корзина и срок, у этого — ничего. Файлы
+  // стёрты и в базе, и в хранилище, вернуть их неоткуда.
+  "project.purged": {
+    labelKey: "auditProjectPurged",
+    icon: Trash2,
+    tone: "danger",
+  },
   // Тяжёлая строка: сменился владелец, а вместе с ним — кошелёк, с которого
   // идут списания за обработку.
   "project.transferred": {
@@ -187,6 +196,94 @@ export const ACTION_META: Record<
   // Дожим — «neutral»: он не двигает чужие деньги, а доводит до конца то, что
   // человек уже запросил сам.
   "trial.resumed": { labelKey: "auditTrialResumed", icon: Gift, tone: "neutral" },
+  // «access»: смена плательщика даёт одному человеку право тратить чужой
+  // кошелёк — по весу это выдача доступа, а не правка профиля.
+  "billing.payer_changed": {
+    labelKey: "auditPayerChanged",
+    icon: ArrowLeftRight,
+    tone: "access",
+  },
+  "company.created": {
+    labelKey: "auditCompanyCreated",
+    icon: Building2,
+    tone: "access",
+  },
+  // «danger»: перевод меняет и принадлежность человека, и кошелёк, с которого
+  // идут списания за его работу, — по весу это ближе к смене владельца проекта.
+  "company.member_transferred": {
+    labelKey: "auditCompanyMemberTransferred",
+    icon: ArrowLeftRight,
+    tone: "danger",
+  },
+  "company.enabled": {
+    labelKey: "auditCompanyEnabled",
+    icon: Building2,
+    tone: "neutral",
+  },
+  "company.disabled": {
+    labelKey: "auditCompanyDisabled",
+    icon: Building2,
+    tone: "access",
+  },
+  "company.deleted": {
+    labelKey: "auditCompanyDeleted",
+    icon: Trash2,
+    tone: "danger",
+  },
+  // Вторая ось прав (план §4). «access» — как у сайтовых собратьев: это раздача
+  // полномочий, а не правка профиля.
+  "company.role_changed": {
+    labelKey: "auditCompanyRoleChanged",
+    icon: ShieldCheck,
+    tone: "access",
+  },
+  "company.capability_granted": {
+    labelKey: "auditCompanyCapabilityGranted",
+    icon: ShieldCheck,
+    tone: "access",
+  },
+  "company.capability_revoked": {
+    labelKey: "auditCompanyCapabilityRevoked",
+    icon: ShieldCheck,
+    tone: "access",
+  },
+  // «neutral»: оформление не раздаёт доступ. Домен — исключение по весу, но
+  // отдельным действием он не пишется: экран у них один.
+  "company.branding_changed": {
+    labelKey: "auditCompanyBrandingChanged",
+    icon: Palette,
+    tone: "neutral",
+  },
+  "company.machine_created": {
+    labelKey: "auditCompanyMachineCreated",
+    icon: Monitor,
+    tone: "access",
+  },
+  "company.machine_revoked": {
+    labelKey: "auditCompanyMachineRevoked",
+    icon: Monitor,
+    tone: "neutral",
+  },
+  "company.machine_token_rotated": {
+    labelKey: "auditCompanyMachineRotated",
+    icon: KeyRound,
+    tone: "access",
+  },
+  "company.machines_policy_changed": {
+    labelKey: "auditCompanyMachinesPolicy",
+    icon: Monitor,
+    tone: "neutral",
+  },
+  "company.automation_enabled": {
+    labelKey: "auditCompanyAutomationEnabled",
+    icon: Workflow,
+    tone: "neutral",
+  },
+  "company.automation_disabled": {
+    labelKey: "auditCompanyAutomationDisabled",
+    icon: Workflow,
+    tone: "neutral",
+  },
 }
 
 export const TONE_CLASS = {

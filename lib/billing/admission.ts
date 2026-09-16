@@ -25,10 +25,15 @@ import type { PayMeter, PayPair, Wallet } from "@/lib/billing/types"
 /**
  * Почему проект остановлен. Причины разные, потому что разное действие человека:
  * при `no-funds` он пополняет баланс, при `no-vendor-key` — подключает ключ на
- * «Моих ключах». Свести их в одну значило бы показать кнопку «пополнить» там,
- * где деньги ни при чём.
+ * «Моих ключах», при `payer-no-funds` — идёт к тому, кто платит за его работу:
+ * пополнить чужой кошелёк он не может. Свести их в одну значило бы показать
+ * кнопку «пополнить» там, где деньги ни при чём или не его.
  */
-export type PauseReason = "no-funds" | "trial-over" | "no-vendor-key"
+export type PauseReason =
+  | "no-funds"
+  | "trial-over"
+  | "no-vendor-key"
+  | "payer-no-funds"
 
 export type Admission =
   | {
@@ -56,6 +61,11 @@ export type AdmissionInput = {
   estimateCents: number
   funds: Funds
   ownerBillingExempt: boolean
+  /**
+   * За владельца платит другой (`users.payer_user_id`). Нужен только для
+   * причины остановки: деньги кончились не у него.
+   */
+  ownerHasPayer: boolean
 }
 
 export function admitItem(input: AdmissionInput): Admission {
@@ -117,8 +127,13 @@ export function admitItem(input: AdmissionInput): Admission {
     ok: false,
     reason: "insufficient-funds",
     // «Тестовый период завершён» и «нет средств» — разные надписи для человека,
-    // хотя механика одна. Первая уместна, только если подарок у него был.
-    pauseReason: coveredByGrant ? "trial-over" : "no-funds",
+    // хотя механика одна. Первая уместна, только если подарок у него был. У
+    // того, за кого платят, — третья: кошелёк не его, и пополнять не ему.
+    pauseReason: input.ownerHasPayer
+      ? "payer-no-funds"
+      : coveredByGrant
+        ? "trial-over"
+        : "no-funds",
   }
 }
 
@@ -152,9 +167,14 @@ export async function canResume(input: {
   projectId: string
   ownerId: string
 }): Promise<{ allowed: boolean; reason: PauseReason | null }> {
-  const result = await query<{ pausedReason: PauseReason | null; exempt: boolean }>(
+  const result = await query<{
+    pausedReason: PauseReason | null
+    exempt: boolean
+    payerId: string
+  }>(
     `SELECT p.paused_reason AS "pausedReason",
-            COALESCE(u.billing_exempt, FALSE) AS exempt
+            COALESCE(u.billing_exempt, FALSE) AS exempt,
+            COALESCE(u.payer_user_id, u.id) AS "payerId"
        FROM projects p
        JOIN users u ON u.id = p.user_id
       WHERE p.id = $1`,
@@ -164,7 +184,9 @@ export async function canResume(input: {
   if (!row?.pausedReason) return { allowed: true, reason: null }
   if (row.exempt) return { allowed: true, reason: row.pausedReason }
 
-  const funds = await getFunds(input.ownerId)
+  // Деньги — у кошелька, который платит за владельца, а не у самого владельца:
+  // иначе сотрудника с пустым личным кошельком не пустило бы никогда.
+  const funds = await getFunds(row.payerId)
   const giftAvailable = funds.grants.some(
     (g) => grantCoversProject(g, input.projectId) && g.availableCents > 0,
   )

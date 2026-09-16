@@ -1,5 +1,4 @@
 "use client"
-import { SITE_NAME } from "@/lib/site"
 import { isElevated } from "@/lib/admin-roles"
 import { useDisabledAdminTools } from "@/components/admin/shell/features-context"
 
@@ -8,13 +7,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
   Archive,
+  Building2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   FolderOpen,
   KeyRound,
   Trash2,
-  Users,
   Wrench,
   type LucideIcon,
   LayoutDashboard,
@@ -29,6 +28,8 @@ import type { UserRole } from "@/lib/domain-types"
 import { BalanceWidget } from "@/components/account/balance-widget"
 import { isKeysPath } from "@/components/account/keys/keys-shell"
 import { ResizeGrip } from "@/components/account/resize-grip"
+import { useBranding } from "@/components/branding/branding-context"
+import { ThemeSwitch } from "@/components/account/theme-switch"
 import { useDragSize } from "@/components/account/use-drag-size"
 import { useProjectCounts } from "@/components/account/use-project-counts"
 import { useAdminChatUnread } from "@/components/admin/use-admin-chat-unread"
@@ -59,11 +60,11 @@ const SIDEBAR_SNAP = 150
  */
 const PROJECT_SECTIONS: {
   tab: ProjectTab
-  labelKey: "projects" | "sharedTab" | "toolsTab" | "archiveTab" | "trashTab"
+  labelKey: "projects" | "toolsTab" | "archiveTab" | "trashTab"
   icon: LucideIcon
 }[] = [
+  // Расшаренные своего пункта не имеют: они группой внутри «Проектов».
   { tab: "projects", labelKey: "projects", icon: FolderOpen },
-  { tab: "shared", labelKey: "sharedTab", icon: Users },
   { tab: "tools", labelKey: "toolsTab", icon: Wrench },
   { tab: "archive", labelKey: "archiveTab", icon: Archive },
   { tab: "trash", labelKey: "trashTab", icon: Trash2 },
@@ -76,6 +77,27 @@ export type WorkspaceUser = {
   /** Теги админа: по ним фильтруется свёртка «Админка» в боковом меню. */
   capabilities: AdminCapability[]
   balanceCents: number
+  /**
+   * Пускать ли в консоль компании (/company). Готовый ответ, а не роль с
+   * тегами: «видит ли он консоль» решает гейт на сервере
+   * (lib/company-auth.ts), и повторять это правило в меню значило бы завести
+   * второй источник правды — он однажды разойдётся с первым.
+   */
+  hasCompanyConsole?: boolean
+  /**
+   * Суперадмин зашёл в ЧУЖУЮ компанию через переключатель.
+   *
+   * Тогда рабочее место в меню не показывается: дашборд, папки, архив и ключи
+   * — это ЕГО собственные вещи, к компании, которую он сейчас настраивает, они
+   * отношения не имеют, и висят рядом с её консолью как чужие. Сотруднику
+   * компании, наоборот, показываются: у него своя компания и свои проекты в ней
+   * — одно рабочее место, а не два.
+   *
+   * Признак приходит с сервера готовым (сравнение компании из области с
+   * компанией самого человека в app/company/layout.tsx), а не считается здесь:
+   * то же сравнение уже решает, красить ли оболочку в цвета клиента.
+   */
+  companyGuest?: boolean
 }
 
 type ShellProps = WorkspaceUser & {
@@ -120,18 +142,18 @@ function NavItem({
         collapsed && "justify-center px-2",
         nested && !collapsed && "py-2 text-[13px]",
         active
-          ? "bg-[rgba(45,131,206,0.16)] text-[#eef1f6]"
-          : "text-[#c3c8d2] hover:bg-white/5 hover:text-[#eef1f6]",
+          ? "bg-primary/15 text-foreground"
+          : "text-secondary-foreground hover:bg-foreground/5 hover:text-foreground",
         dimmed && "opacity-45",
       )}
     >
       {active && (
-        <span className="absolute bottom-[9px] left-0 top-[9px] w-[3px] rounded-[3px] bg-[#2f80ed]" />
+        <span className="absolute bottom-[9px] left-0 top-[9px] w-[3px] rounded-[3px] bg-primary" />
       )}
       <span
         className={cn(
           "relative",
-          active ? "text-[#6aa5e8]" : "text-[#8b909c]",
+          active ? "text-primary" : "text-muted-foreground/90",
         )}
       >
         {icon}
@@ -147,7 +169,7 @@ function NavItem({
               {unread > 99 ? "99+" : unread}
             </span>
           ) : typeof count === "number" && count > 0 ? (
-            <span className="shrink-0 text-[12.5px] tabular-nums text-[#7c8290]">
+            <span className="shrink-0 text-[12.5px] tabular-nums text-muted-foreground/80">
               {count}
             </span>
           ) : null}
@@ -173,6 +195,7 @@ function SidebarContent({
   const router = useRouter()
   const { t, lang, setLang } = useI18n()
   const disabledAdminTools = useDisabledAdminTools()
+  const branding = useBranding()
   const initials = avatarInitials(user.fullName, user.email)
 
   const counts = useProjectCounts()
@@ -214,9 +237,20 @@ function SidebarContent({
           onClick={onToggle}
           title={collapsed ? t.sidebarExpand : t.sidebarCollapse}
           aria-label={collapsed ? t.sidebarExpand : t.sidebarCollapse}
-          className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] border border-[rgba(91,155,224,0.4)] bg-gradient-to-br from-[#1f3a63] to-[#16273f] text-[12px] font-bold tracking-wide text-[#7fb0f0]"
+          className="flex h-[34px] w-[34px] shrink-0 items-center justify-center overflow-hidden rounded-[9px] border border-primary/40 bg-gradient-to-br from-primary/25 to-primary/10 text-[12px] font-bold tracking-wide text-primary/90"
         >
-          FF
+          {/* Монограмма, а не литерал «FF»: у компании она своя. Логотип, если
+              задан, вытесняет буквы целиком. */}
+          {branding.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={branding.logoUrl}
+              alt={branding.name}
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            branding.monogram
+          )}
         </button>
         {collapsed ? (
           onToggle ? (
@@ -225,15 +259,15 @@ function SidebarContent({
               onClick={onToggle}
               title={t.sidebarExpand}
               aria-label={t.sidebarExpand}
-              className="flex h-[22px] w-[34px] shrink-0 items-center justify-center rounded-md text-[#9aa0ac] hover:bg-white/5 hover:text-[#eef1f6]"
+              className="flex h-[22px] w-[34px] shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
           ) : null
         ) : (
           <>
-            <span className="flex-1 whitespace-nowrap text-[16px] font-semibold text-[#eef1f6]">
-              {SITE_NAME}
+            <span className="flex-1 whitespace-nowrap text-[16px] font-semibold text-foreground">
+              {branding.name}
             </span>
             {onToggle && (
               <button
@@ -241,7 +275,7 @@ function SidebarContent({
                 onClick={onToggle}
                 title={t.sidebarCollapse}
                 aria-label={t.sidebarCollapse}
-                className="flex h-[30px] w-[30px] items-center justify-center rounded-md text-[#9aa0ac] hover:bg-white/5 hover:text-[#eef1f6]"
+                className="flex h-[30px] w-[30px] items-center justify-center rounded-md text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
@@ -257,7 +291,7 @@ function SidebarContent({
         <div className="shrink-0 px-3 pb-1 pt-1.5">
           <div
             className={cn(
-              "rounded-xl border border-[rgba(91,155,224,0.28)] bg-gradient-to-br from-[rgba(45,131,206,0.16)] to-[rgba(45,131,206,0.03)]",
+              "rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 to-primary/[0.03]",
               collapsed ? "p-2.5" : "p-3.5",
             )}
           >
@@ -267,9 +301,9 @@ function SidebarContent({
                 collapsed && "justify-center",
               )}
             >
-              <Wallet className="h-[19px] w-[19px] text-[#8fb8ea]" />
+              <Wallet className="h-[19px] w-[19px] text-primary/90" />
               {!collapsed && (
-                <span className="flex-1 text-[10.5px] font-semibold tracking-[1.4px] text-[#8fb8ea]">
+                <span className="flex-1 text-[10.5px] font-semibold tracking-[1.4px] text-primary/90">
                   {t.balance}
                 </span>
               )}
@@ -286,7 +320,7 @@ function SidebarContent({
                   action={
                     <button
                       type="button"
-                      className="shrink-0 rounded-lg bg-white/10 px-2.5 py-1 text-[12px] text-[#eef1f6] hover:bg-white/[0.18]"
+                      className="shrink-0 rounded-lg bg-foreground/10 px-2.5 py-1 text-[12px] text-foreground hover:bg-foreground/[0.18]"
                     >
                       {t.topup}
                     </button>
@@ -297,9 +331,17 @@ function SidebarContent({
           </div>
         </div>
 
-        <nav className="flex shrink-0 flex-col gap-1 px-3 py-2">
+        {/* Рабочее место прячется у гостя целиком — см. WorkspaceUser.companyGuest.
+            Не гасится и не сворачивается: это не «пока недоступно», это чужие
+            папки на экране настройки клиента. */}
+        <nav
+          className={cn(
+            "flex shrink-0 flex-col gap-1 px-3 py-2",
+            user.companyGuest && "hidden",
+          )}
+        >
           {!collapsed && (
-            <div className="px-2.5 pb-1.5 pt-3.5 text-[11px] font-semibold tracking-[1.4px] text-[#5a606e]">
+            <div className="px-2.5 pb-1.5 pt-3.5 text-[11px] font-semibold tracking-[1.4px] text-muted-foreground/60">
               {t.workspaceSection}
             </div>
           )}
@@ -355,6 +397,40 @@ function SidebarContent({
         <div className="flex-1" />
 
         <nav className="flex shrink-0 flex-col gap-1 px-3 pb-2">
+          {/* Консоль компании — над админкой и отдельно от неё: это разные оси
+              прав (COMPANY_ACCOUNTS_PLAN.md §4). Сотрудник компании обычно
+              обычный пользователь на сайте, и админского блока ниже у него нет
+              вовсе; суперадмин увидит оба.
+
+              Отбивка и подпись такие же, как у админского блока ниже, и по той
+              же причине: это распоряжение, а не работа, и от рабочего места оно
+              должно быть отделено видимой чертой. Раньше подпись была только у
+              админки, и у сотрудника компании его консоль висела просто
+              последним пунктом рабочего места — то есть выглядела его частью. */}
+          {user.hasCompanyConsole && (
+            <div className="flex flex-col gap-0.5">
+              <div
+                className={cn(
+                  "mb-1 h-px bg-foreground/10",
+                  collapsed ? "mx-1" : "mx-2.5",
+                )}
+              />
+              {!collapsed ? (
+                <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+                  {t.coConsolePanel}
+                </p>
+              ) : null}
+              <div onClick={onNavigate}>
+                <NavItem
+                  href="/company"
+                  active={pathname === "/company" || pathname.startsWith("/company/")}
+                  collapsed={collapsed}
+                  icon={<Building2 className="h-5 w-5" />}
+                  label={t.coConsole}
+                />
+              </div>
+            </div>
+          )}
           {isElevated(user.role) && (
             <div className="flex flex-col gap-0.5">
               {/* Отбивка: админская зона отделена от рабочего места.
@@ -364,12 +440,12 @@ function SidebarContent({
                   переходом и прятала половину админки от глаз. */}
               <div
                 className={cn(
-                  "mb-1 h-px bg-white/10",
+                  "mb-1 h-px bg-foreground/10",
                   collapsed ? "mx-1" : "mx-2.5",
                 )}
               />
               {!collapsed ? (
-                <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">
+                <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
                   {t.adminPanel}
                 </p>
               ) : null}
@@ -401,10 +477,16 @@ function SidebarContent({
         </nav>
       </div>
 
+      {/* Тема — рядом с языком: оба про то, как человек смотрит на сайт, а не
+          про его работу. Искать их будут в одном месте. */}
+      <div className={cn("shrink-0 px-3 pt-2.5", collapsed && "px-2")}>
+        <ThemeSwitch collapsed={collapsed} />
+      </div>
+
       <div className={cn("shrink-0 px-3 pt-2.5", collapsed && "px-2")}>
         <div
           className={cn(
-            "flex gap-1 rounded-[9px] border border-white/10 bg-[#0d121c] p-[3px]",
+            "flex gap-1 rounded-[9px] border border-foreground/10 bg-surface-1 p-[3px]",
             collapsed ? "flex-col" : "flex-row",
           )}
         >
@@ -418,8 +500,8 @@ function SidebarContent({
                 "rounded-md text-[13px] font-semibold tracking-wide",
                 collapsed ? "h-7 w-full" : "h-7 flex-1",
                 lang === l
-                  ? "bg-[rgba(45,131,206,0.35)] text-[#eef1f6]"
-                  : "bg-transparent text-[#8b909c] hover:text-[#eef1f6]",
+                  ? "bg-primary/30 text-foreground"
+                  : "bg-transparent text-muted-foreground/90 hover:text-foreground",
               )}
             >
               {l.toUpperCase()}
@@ -433,8 +515,8 @@ function SidebarContent({
           className={cn(
             "flex items-center gap-2.5 rounded-xl border p-2.5",
             isProfile
-              ? "border-[rgba(91,155,224,0.45)] bg-[rgba(45,131,206,0.12)]"
-              : "border-white/10 bg-transparent",
+              ? "border-primary/40 bg-primary/10"
+              : "border-foreground/10 bg-transparent",
             collapsed && "justify-center p-1.5",
           )}
         >
@@ -446,15 +528,15 @@ function SidebarContent({
               collapsed ? "justify-center" : "flex-1",
             )}
           >
-            <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#7fb0f0] to-[#4a7fd6] text-[13px] font-bold text-[#0d1626]">
+            <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/90 to-primary text-[13px] font-bold text-primary-foreground">
               {initials}
             </div>
             {!collapsed && (
               <div className="min-w-0 flex-1 text-left">
-                <div className="truncate text-[13.5px] text-[#eef1f6]">
+                <div className="truncate text-[13.5px] text-foreground">
                   {user.fullName || user.email}
                 </div>
-                <div className="truncate text-[11.5px] text-[#7c8290]">
+                <div className="truncate text-[11.5px] text-muted-foreground/80">
                   {user.email}
                 </div>
               </div>
@@ -465,7 +547,7 @@ function SidebarContent({
               type="button"
               title={t.logout}
               onClick={signOut}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[#8b909c] hover:bg-white/10 hover:text-[#eef1f6]"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-muted-foreground/90 hover:bg-foreground/10 hover:text-foreground"
             >
               <LogOut className="h-[18px] w-[18px]" />
             </button>
@@ -482,6 +564,8 @@ function WorkspaceShellInner({
   role,
   capabilities,
   balanceCents,
+  hasCompanyConsole,
+  companyGuest,
   children,
 }: ShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -491,8 +575,11 @@ function WorkspaceShellInner({
     role,
     capabilities,
     balanceCents,
+    hasCompanyConsole,
+    companyGuest,
   }
   const { t } = useI18n()
+  const branding = useBranding()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
@@ -530,17 +617,17 @@ function WorkspaceShellInner({
             ? t.profileTitle
             : pathname.startsWith("/admin")
               ? t.adminPanel
-              : SITE_NAME
+              : branding.name
 
   return (
     <div
-      className="flex h-dvh w-full overflow-hidden bg-[hsl(226_31%_7%)] font-[family-name:var(--font-ibm-plex)] text-[#eef1f6]"
+      className="flex h-dvh w-full overflow-hidden bg-background font-[family-name:var(--font-ibm-plex)] text-foreground"
       style={{ fontFamily: "var(--font-ibm-plex), system-ui, sans-serif" }}
     >
       {/* Desktop sidebar */}
       <aside
         style={{ width: sidebarWidth }}
-        className="relative hidden shrink-0 flex-col overflow-hidden border-r border-white/[0.08] bg-[hsl(226_28%_9%)] lg:flex"
+        className="relative hidden shrink-0 flex-col overflow-hidden border-r border-foreground/[0.08] bg-sidebar lg:flex"
       >
         <SidebarContent
           user={user}
@@ -559,18 +646,18 @@ function WorkspaceShellInner({
 
       {/* Mobile top bar */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex h-[58px] shrink-0 items-center gap-2.5 border-b border-white/[0.07] bg-[hsl(226_28%_9%)] px-3 lg:hidden">
+        <div className="flex h-[58px] shrink-0 items-center gap-2.5 border-b border-foreground/[0.07] bg-sidebar px-3 lg:hidden">
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-[11px] border border-[rgba(91,155,224,0.4)] bg-gradient-to-br from-[#1f3a63] to-[#16273f] text-[12px] font-bold text-[#7fb0f0]"
+            className="flex h-10 w-10 items-center justify-center rounded-[11px] border border-primary/40 bg-gradient-to-br from-primary/25 to-primary/10 text-[12px] font-bold text-primary/90"
           >
             <Menu className="h-5 w-5" />
           </button>
           <span className="flex-1 text-[16px] font-semibold">{title}</span>
           <Link
             href="/account/profile"
-            className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gradient-to-br from-[#7fb0f0] to-[#4a7fd6] text-[12.5px] font-bold text-[#0d1626]"
+            className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gradient-to-br from-primary/90 to-primary text-[12.5px] font-bold text-primary-foreground"
           >
             {avatarInitials(fullName, email)}
           </Link>
@@ -586,14 +673,14 @@ function WorkspaceShellInner({
           onClick={() => setDrawerOpen(false)}
         >
           <div
-            className="flex h-full w-[274px] max-w-[82%] flex-col border-r border-white/10 bg-[hsl(226_28%_9%)]"
+            className="flex h-full w-[274px] max-w-[82%] flex-col border-r border-foreground/10 bg-sidebar"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-end p-2">
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-[#9aa0ac] hover:bg-white/5"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-foreground/5"
               >
                 <X className="h-5 w-5" />
               </button>

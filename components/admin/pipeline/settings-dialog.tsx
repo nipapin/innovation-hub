@@ -209,10 +209,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       <div
         role="dialog"
         aria-label={t.settingsTitle}
-        className="flex max-h-[85vh] w-full max-w-[840px] flex-col overflow-hidden rounded-xl border border-white/10 bg-ws-panel shadow-ws-menu"
+        className="flex max-h-[85vh] w-full max-w-[840px] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-ws-panel shadow-ws-menu"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 items-center gap-3 border-b border-white/[0.07] px-5 py-3.5">
+        <div className="flex shrink-0 items-center gap-3 border-b border-foreground/[0.07] px-5 py-3.5">
           <h2 className="text-[16px] font-semibold text-ws-1">{t.settingsTitle}</h2>
           {/* Спасательный круг, а не знак «?»: это заголовок, и вопрос при нём
               «что делает этот раздел», а не «почему параметр такой». Знаки «?»
@@ -233,13 +233,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               onClose()
             }}
             aria-label={t.close}
-            className="ml-auto flex h-8 w-8 items-center justify-center rounded-[9px] text-ws-3 hover:bg-white/5 hover:text-ws-1"
+            className="ml-auto flex h-8 w-8 items-center justify-center rounded-[9px] text-ws-3 hover:bg-foreground/5 hover:text-ws-1"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex shrink-0 gap-1 border-b border-white/[0.07] px-4 pt-3">
+        <div className="flex shrink-0 gap-1 border-b border-foreground/[0.07] px-4 pt-3">
           {SETTINGS_DOMAINS.map((domain) => (
             <button
               key={domain}
@@ -248,7 +248,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               className={cn(
                 "rounded-t-[9px] px-3.5 py-2 text-[13px]",
                 domain === tab
-                  ? "bg-white/[0.06] text-ws-1"
+                  ? "bg-foreground/[0.06] text-ws-1"
                   : "text-ws-4 hover:text-ws-2",
               )}
             >
@@ -262,7 +262,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             className={cn(
               "ml-2 rounded-t-[9px] px-3.5 py-2 text-[13px]",
               sweepTab
-                ? "bg-white/[0.06] text-ws-1"
+                ? "bg-foreground/[0.06] text-ws-1"
                 : "text-ws-4 hover:text-ws-2",
             )}
           >
@@ -334,7 +334,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                     { name: "", path: [], color: "#888888", isDefault: false },
                   ])
                 }
-                className="flex items-center justify-center gap-2 rounded-[10px] border border-dashed border-white/[0.14] py-2.5 text-[13px] text-ws-4 hover:border-white/25 hover:text-ws-2"
+                className="flex items-center justify-center gap-2 rounded-[10px] border border-dashed border-foreground/[0.14] py-2.5 text-[13px] text-ws-4 hover:border-foreground/25 hover:text-ws-2"
               >
                 <Plus className="h-4 w-4" />
                 {t.settingsAdd}
@@ -346,7 +346,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         {/* На закладке обхода футера нет: там своё хранилище и своя кнопка
             сохранения, а примечание про локальные пути к словарям не относится. */}
         {sweepTab ? null : (
-          <div className="flex shrink-0 items-center gap-3 border-t border-white/[0.07] px-5 py-3">
+          <div className="flex shrink-0 items-center gap-3 border-t border-foreground/[0.07] px-5 py-3">
             {/* Не синхронизируемое лучше назвать здесь: иначе непонятно, почему
                 одни настройки едут на сервер, а пути к ffmpeg — нет. */}
             <p className="text-[11.5px] leading-relaxed text-ws-5">
@@ -502,7 +502,7 @@ function SweepPanel({ t, lang }: { t: AdminDict; lang: Lang }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3 rounded-[10px] border border-white/[0.08] bg-white/[0.02] px-3 py-3">
+      <div className="flex items-center gap-3 rounded-[10px] border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-3">
         <span className="text-[13.5px] text-ws-1">
           {t.settingsSweepInterval}
         </span>
@@ -521,7 +521,7 @@ function SweepPanel({ t, lang }: { t: AdminDict; lang: Lang }) {
             "h-8 w-[70px] rounded-[8px] border bg-black/20 px-2.5 text-right text-[13px] text-ws-1",
             "focus:outline-none",
             intervalValid
-              ? "border-white/[0.1] focus:border-white/25"
+              ? "border-foreground/[0.1] focus:border-foreground/25"
               : "border-destructive/60",
           )}
         />
@@ -559,7 +559,7 @@ function SweepPanel({ t, lang }: { t: AdminDict; lang: Lang }) {
         {t.settingsSweepIntervalHint}
       </p>
 
-      <div className="mt-1 flex items-center gap-3 rounded-[10px] border border-white/[0.08] bg-white/[0.02] px-3 py-3">
+      <div className="mt-1 flex items-center gap-3 rounded-[10px] border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-3">
         <span className="text-[12.5px] text-ws-4">
           {state.sweptAt
             ? tf(t.settingsSweepLast, {
@@ -581,7 +581,7 @@ function SweepPanel({ t, lang }: { t: AdminDict; lang: Lang }) {
           type="button"
           onClick={() => void runNow()}
           disabled={sweeping}
-          className="ml-auto flex h-8 shrink-0 items-center gap-2 rounded-[8px] border border-white/[0.14] px-3 text-[13px] text-ws-2 hover:bg-white/5 disabled:opacity-50"
+          className="ml-auto flex h-8 shrink-0 items-center gap-2 rounded-[8px] border border-foreground/[0.14] px-3 text-[13px] text-ws-2 hover:bg-foreground/5 disabled:opacity-50"
         >
           {sweeping ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -593,7 +593,7 @@ function SweepPanel({ t, lang }: { t: AdminDict; lang: Lang }) {
       </div>
 
       {skipped && skipped.length > 0 ? (
-        <div className="mt-1 rounded-[10px] border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
+        <div className="mt-1 rounded-[10px] border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5">
           <p className="text-[12.5px] text-ws-3">{t.settingsSweepSkipped}</p>
           <ul className="mt-1.5 flex flex-col gap-1">
             {skipped.map((item) => (
@@ -653,14 +653,14 @@ function EntryRow({
   }
 
   return (
-    <div className="rounded-[10px] border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
+    <div className="rounded-[10px] border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5">
       <div className="flex items-center gap-2.5">
         <input
           type="color"
           value={rgb}
           onChange={(e) => onChange({ ...entry, color: `${e.target.value}${alpha}` })}
           title={t.settingsColor}
-          className="h-7 w-7 shrink-0 cursor-pointer rounded-[7px] border border-white/10 bg-transparent p-0"
+          className="h-7 w-7 shrink-0 cursor-pointer rounded-[7px] border border-foreground/10 bg-transparent p-0"
         />
 
         <input
@@ -671,14 +671,14 @@ function EntryRow({
           disabled={entry.isDefault}
           placeholder={t.settingsNamePlaceholder}
           className={cn(
-            "h-8 w-[180px] shrink-0 rounded-[8px] border border-white/[0.1] bg-black/20 px-2.5 text-[13px] text-ws-1",
-            "placeholder:text-ws-5 focus:border-white/25 focus:outline-none",
+            "h-8 w-[180px] shrink-0 rounded-[8px] border border-foreground/[0.1] bg-black/20 px-2.5 text-[13px] text-ws-1",
+            "placeholder:text-ws-5 focus:border-foreground/25 focus:outline-none",
             entry.isDefault && "cursor-not-allowed opacity-70",
           )}
         />
 
         {entry.isDefault ? (
-          <span className="shrink-0 rounded-full border border-white/[0.12] px-2 py-[2px] text-[11px] text-ws-5">
+          <span className="shrink-0 rounded-full border border-foreground/[0.12] px-2 py-[2px] text-[11px] text-ws-5">
             {t.settingsDefaultBadge}
           </span>
         ) : null}
@@ -689,7 +689,7 @@ function EntryRow({
             onClick={() => onMove(-1)}
             disabled={index === 0}
             title={t.moveUp}
-            className="flex h-7 w-7 items-center justify-center rounded-[7px] text-ws-4 hover:bg-white/5 hover:text-ws-1 disabled:opacity-30"
+            className="flex h-7 w-7 items-center justify-center rounded-[7px] text-ws-4 hover:bg-foreground/5 hover:text-ws-1 disabled:opacity-30"
           >
             <ChevronUp className="h-4 w-4" />
           </button>
@@ -698,7 +698,7 @@ function EntryRow({
             onClick={() => onMove(1)}
             disabled={index === total - 1}
             title={t.moveDown}
-            className="flex h-7 w-7 items-center justify-center rounded-[7px] text-ws-4 hover:bg-white/5 hover:text-ws-1 disabled:opacity-30"
+            className="flex h-7 w-7 items-center justify-center rounded-[7px] text-ws-4 hover:bg-foreground/5 hover:text-ws-1 disabled:opacity-30"
           >
             <ChevronDown className="h-4 w-4" />
           </button>
@@ -723,7 +723,7 @@ function EntryRow({
                 "flex items-center gap-1 rounded-full border px-2 py-[2px] text-[12px]",
                 looksAbsolute(item)
                   ? "border-ws-out/40 bg-ws-out/10 text-ws-out"
-                  : "border-white/[0.12] text-ws-2",
+                  : "border-foreground/[0.12] text-ws-2",
               )}
               // Абсолютный путь синхронизируется как есть, но на другой машине
               // его может не существовать — помечаем, а не запрещаем.
@@ -761,7 +761,7 @@ function EntryRow({
             }}
             onBlur={addPathItem}
             placeholder={`+ ${pathLabel.toLowerCase()}`}
-            className="h-6 w-[130px] rounded-full border border-dashed border-white/[0.14] bg-transparent px-2.5 text-[12px] text-ws-1 placeholder:text-ws-5 focus:border-white/25 focus:outline-none"
+            className="h-6 w-[130px] rounded-full border border-dashed border-foreground/[0.14] bg-transparent px-2.5 text-[12px] text-ws-1 placeholder:text-ws-5 focus:border-foreground/25 focus:outline-none"
           />
         </div>
       ) : null}

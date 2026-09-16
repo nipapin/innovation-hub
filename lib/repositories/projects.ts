@@ -153,6 +153,49 @@ export async function findOwnedProject(
   return result.rows[0] ?? null
 }
 
+/**
+ * Проект, владелец которого числится в этой компании.
+ *
+ * Рамка машины компании (docs/COMPANY_PIPELINE_PLAN.md §2). Как и вся остальная
+ * изоляция компании, ложится на ВЛАДЕЛЬЦА проекта, а не на новую колонку в
+ * `projects`: колонка стала бы вторым источником правды и однажды разошлась бы
+ * с первым при переводе человека между компаниями.
+ */
+export async function findCompanyProject(
+  id: string,
+  companyId: string,
+  options?: { includeDeleted?: boolean },
+): Promise<ProjectRecord | null> {
+  const deletedSql = options?.includeDeleted ? "" : " AND deleted_at IS NULL"
+  // Подзапросом, а не JOIN: тогда `PROJECT_FIELDS` остаётся без префикса таблицы
+  // и годится как есть. С джойном `id`, `created_at` и `updated_at` стали бы
+  // неоднозначными, и список полей пришлось бы держать во второй редакции.
+  const result = await query<ProjectRecord>(
+    `SELECT ${PROJECT_FIELDS}
+       FROM projects
+      WHERE id = $1
+        AND user_id IN (SELECT id FROM users WHERE company_id = $2)${deletedSql}`,
+    [id, companyId],
+  )
+  return result.rows[0] ?? null
+}
+
+/** Проекты всех людей компании. Рамка машины компании — см. findCompanyProject. */
+export async function listProjectsByCompanyId(
+  companyId: string,
+  options?: { includeDeleted?: boolean },
+): Promise<ProjectRecord[]> {
+  const deletedSql = options?.includeDeleted ? "" : " AND deleted_at IS NULL"
+  const result = await query<ProjectRecord>(
+    `SELECT ${PROJECT_FIELDS}
+       FROM projects
+      WHERE user_id IN (SELECT id FROM users WHERE company_id = $1)${deletedSql}
+      ORDER BY created_at DESC`,
+    [companyId],
+  )
+  return result.rows
+}
+
 export async function findProjectForUser(
   id: string,
   userId: string,

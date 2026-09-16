@@ -1,15 +1,48 @@
-import { SITE_NAME } from "@/lib/site"
 import { Resend } from "resend"
 import { getPublicSiteUrl } from "@/lib/public-site-url"
+import { monogramFrom, readBranding } from "@/lib/branding"
+import { findCompanyById } from "@/lib/repositories/companies"
+import { findUserById } from "@/lib/repositories/users"
 import {
+  INSTALLATION_BRAND,
   projectAccessGrantedHtml,
   projectInviteWithPasswordHtml,
   shareRoleCopy,
+  type MailBrand,
   type ShareRole,
 } from "@/lib/mail/templates"
 
 function siteBase(): string {
   return getPublicSiteUrl() ?? "https://ffworks.pro"
+}
+
+/**
+ * Чьим именем подписывать письмо о проекте — компанией его ВЛАДЕЛЬЦА.
+ *
+ * Не приглашающего: звать может админ сайта по тегу, и тогда письмо ушло бы за
+ * нашей подписью в чужое рабочее место. Не приглашаемого: он может быть из
+ * другой компании или вовсе с улицы, и подпись его собственной площадкой ничего
+ * ему не объясняет.
+ *
+ * Живёт здесь, а не в `lib/branding-server.ts`: там резолвер про ТЕКУЩИЙ запрос
+ * (кто смотрит), а тут про конкретного человека, и сессии при отправке письма
+ * может не быть вовсе — например, из фоновой задачи.
+ */
+export async function mailBrandForOwner(ownerId: string): Promise<MailBrand> {
+  try {
+    const owner = await findUserById(ownerId)
+    if (!owner?.companyId) return INSTALLATION_BRAND
+    const company = await findCompanyById(owner.companyId)
+    if (!company) return INSTALLATION_BRAND
+    const branding = readBranding(company.branding)
+    return {
+      name: company.title,
+      monogram: branding.monogram ?? monogramFrom(company.title),
+    }
+  } catch {
+    // Оформление письма — не повод не отправить письмо.
+    return INSTALLATION_BRAND
+  }
 }
 
 function getResend(): Resend | null {
@@ -67,7 +100,10 @@ export async function sendProjectAccessGrantedEmail(input: {
   projectId: string
   role: ShareRole
   inviterName: string
+  /** Чьим именем подписано письмо. Пусто — установка. */
+  brand?: MailBrand
 }): Promise<MailResult> {
+  const brand = input.brand ?? INSTALLATION_BRAND
   const site = siteBase()
   const openUrl = `${site}/account/projects/${input.projectId}`
   const role = shareRoleCopy(input.role)
@@ -86,6 +122,7 @@ export async function sendProjectAccessGrantedEmail(input: {
     role: input.role,
     inviterName: input.inviterName,
     openUrl,
+    brand,
   })
   return sendMail({ to: input.to, subject, html, text })
 }
@@ -97,7 +134,10 @@ export async function sendProjectInviteWithPasswordEmail(input: {
   role: ShareRole
   inviterName: string
   temporaryPassword: string
+  /** Чьим именем подписано письмо. Пусто — установка. */
+  brand?: MailBrand
 }): Promise<MailResult> {
+  const brand = input.brand ?? INSTALLATION_BRAND
   const site = siteBase()
   const loginUrl = `${site}/login`
   const role = shareRoleCopy(input.role)
@@ -105,7 +145,7 @@ export async function sendProjectInviteWithPasswordEmail(input: {
   const text = [
     `Hi ${input.inviteeName},`,
     ``,
-    `${input.inviterName} invited you to ${SITE_NAME} and shared “${input.projectName}” as ${role.label}.`,
+    `${input.inviterName} invited you to ${brand.name} and shared “${input.projectName}” as ${role.label}.`,
     role.hint,
     ``,
     `Sign in: ${loginUrl}`,
@@ -122,6 +162,7 @@ export async function sendProjectInviteWithPasswordEmail(input: {
     email: input.to,
     temporaryPassword: input.temporaryPassword,
     loginUrl,
+    brand,
   })
   return sendMail({ to: input.to, subject, html, text })
 }

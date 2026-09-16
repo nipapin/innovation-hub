@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { isSyntheticFolder } from "./trash-model"
 import { useWorkspace } from "./workspace-context"
 
 type MenuEntry =
@@ -79,7 +80,38 @@ export function WorkspaceContextMenu() {
 
   let entries: MenuEntry[] = []
 
-  if (menu.kind === "file" && menu.file) {
+  /**
+   * Правая область корзины: файлы в ней удалённые, и обычное меню им не годится.
+   * Переименовать, перенести или залить рядом нечего — вещь лежит вне проекта,
+   * и единственные два осмысленных действия это вернуть её или стереть совсем.
+   */
+  const inTrashPane = ws.projectTab === "trash" && !ws.selected
+
+  if (menu.kind === "file" && menu.file && inTrashPane) {
+    const file = menu.file
+    // Пустышка-папка дорисована ради структуры, своей строки в каталоге у неё
+    // нет: возвращать и стирать в ней нечего, поэтому меню пустое. Файл из
+    // удалённого проекта показан по той же причине, по которой человек ждёт его
+    // увидеть, — он его удалил, — но судьба у него общая с проектом: поодиночке
+    // такой файл не вернуть и не стереть, это делается карточкой проекта.
+    entries =
+      isSyntheticFolder(file) || ws.trashItemOf(file.id)?.projectDeleted
+        ? []
+      : [
+          {
+            icon: RotateCcw,
+            label: t.mRestore,
+            onClick: () => ws.restoreTrashFile(file),
+          },
+          { sep: true },
+          {
+            icon: Trash2,
+            label: t.mPurge,
+            danger: true,
+            onClick: () => ws.purgeTrashFile(file),
+          },
+        ]
+  } else if (menu.kind === "file" && menu.file) {
     const file = menu.file
     // Меню применяется ко всему выделению, если правый клик пришёлся по нему.
     const targets = ws.isSelected(file.id) ? ws.selection : [file]
@@ -251,6 +283,23 @@ export function WorkspaceContextMenu() {
             } as MenuEntry,
           ]
         : []),
+      /**
+       * «Удалить навсегда» — по признаку корзины и наличия адреса, а не по
+       * правам: роль удалённого проекта зажата до читателя, и `can.deleteProject`
+       * здесь всегда false. Права зоны при этом уже проверены — адрес есть
+       * только у источника, которому такое вообще позволено.
+       */
+      ...(project.deletedAt && source.projectPurgeUrl
+        ? [
+            {
+              icon: Trash2,
+              label: t.mPurge,
+              danger: true,
+              onClick: () => ws.purgeProjectForever(project),
+            } as MenuEntry,
+            { sep: true } as MenuEntry,
+          ]
+        : []),
       ...(can.renameProject
         ? [
             {
@@ -336,13 +385,13 @@ export function WorkspaceContextMenu() {
     >
       <div
         role="menu"
-        className="fixed flex min-w-[216px] flex-col gap-px rounded-[11px] border border-white/10 bg-ws-raised p-1.5 shadow-ws-menu"
+        className="fixed flex min-w-[216px] flex-col gap-px rounded-[11px] border border-foreground/10 bg-ws-raised p-1.5 shadow-ws-menu"
         style={{ left: menu.x, top: menu.y }}
         onClick={(e) => e.stopPropagation()}
       >
         {entries.map((entry, i) =>
           entry.sep ? (
-            <div key={`sep-${i}`} className="mx-1 my-[5px] h-px bg-white/[0.08]" />
+            <div key={`sep-${i}`} className="mx-1 my-[5px] h-px bg-foreground/[0.08]" />
           ) : (
             <button
               key={entry.label}
@@ -353,14 +402,14 @@ export function WorkspaceContextMenu() {
                 entry.onClick()
               }}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-2 text-left text-[13px] hover:bg-white/[0.07]",
+                "flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-2 text-left text-[13px] hover:bg-foreground/[0.07]",
                 entry.danger ? "text-destructive" : "text-ws-2",
               )}
             >
               <entry.icon className="h-[18px] w-[18px] shrink-0 opacity-85" />
               <span className="flex-1">{entry.label}</span>
               {entry.hint ? (
-                <kbd className="shrink-0 rounded border border-white/10 px-1.5 py-px text-[11px] font-normal text-ws-4">
+                <kbd className="shrink-0 rounded border border-foreground/10 px-1.5 py-px text-[11px] font-normal text-ws-4">
                   {entry.hint}
                 </kbd>
               ) : null}

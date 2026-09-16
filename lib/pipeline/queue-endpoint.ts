@@ -96,6 +96,9 @@ export async function resolveQueueCaller(
       computerId: auth.computerId,
       userId: auth.userId,
       role: auth.role,
+      // Компания машины приходит из её же токена (`rc_`), а не из запроса:
+      // подменить её, назвавшись чужой, нечем.
+      companyId: auth.machineCompanyId,
     }
   }
 
@@ -126,7 +129,14 @@ export async function resolveQueueCaller(
     registeredTokenId: auth.machineTokenId,
   })
 
-  return { computerId: computer.id, userId: auth.userId, role: auth.role }
+  // Машина под `mch_`-токеном человека: компании у неё нет и быть не может —
+  // токен уже скоуплен своим владельцем.
+  return {
+    computerId: computer.id,
+    userId: auth.userId,
+    role: auth.role,
+    companyId: null,
+  }
 }
 
 /**

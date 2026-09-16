@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Loader2, Search, UserX } from "lucide-react"
+import { ChevronRight, Loader2, Search, UserX } from "lucide-react"
 import { toast } from "sonner"
 
 import { tf, useAdminI18n } from "@/components/admin/admin-dict"
@@ -20,10 +20,20 @@ export type PipelineUserDto = {
   watchedCount: number
   archivedCount: number
   lastActivityAt: string | null
+  /** NULL — общий раздел. По нему список разбивается на области. */
+  companyId: string | null
+  companyTitle: string | null
 }
+
+export type CompanyPickDto = { id: string; title: string }
+
+/** Где браузер помнит свёрнутые области. Рядом с шириной колонки. */
+const COLLAPSED_KEY = "ffworks-workspaces-collapsed-areas"
 
 type Props = {
   users: PipelineUserDto[]
+  /** Все компании установки, включая безлюдные — см. `groups`. */
+  companies: CompanyPickDto[]
   loading: boolean
   selectedUserId: string | null
   onSelectUser: (userId: string) => void
@@ -40,6 +50,7 @@ type Props = {
  */
 export function UsersColumn({
   users,
+  companies,
   loading,
   selectedUserId,
   onSelectUser,
@@ -48,6 +59,37 @@ export function UsersColumn({
   const t = useAdminI18n()
   const [query, setQuery] = useState("")
   const [pending, setPending] = useState<string | null>(null)
+
+  /**
+   * Свёрнутые области. Хранятся между заходами: свернул общий раздел, чтобы не
+   * мешал, — он и останется свёрнутым, а не развернётся при каждом открытии.
+   *
+   * Читается один раз при первом рендере, а не в эффекте: иначе список успел бы
+   * моргнуть развёрнутым.
+   */
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set()
+    try {
+      const raw = window.localStorage.getItem(COLLAPSED_KEY)
+      return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+    } catch {
+      return new Set()
+    }
+  })
+
+  const toggleGroup = (key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      try {
+        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]))
+      } catch {
+        // Память браузера недоступна — свёртка просто не переживёт перезагрузку.
+      }
+      return next
+    })
+  }
 
   const { size, dragging, onPointerDown, onKeyDown } = useDragSize({
     initial: 300,
@@ -63,9 +105,66 @@ export function UsersColumn({
     return users.filter(
       (u) =>
         u.email.toLowerCase().includes(q) ||
-        u.fullName.toLowerCase().includes(q),
+        u.fullName.toLowerCase().includes(q) ||
+        // И по названию компании: «spot» оставляет её людей. Это заменяет
+        // отдельный фильтр — выпадающий список в колонке шириной 300 пикселей
+        // стоит дороже, чем экономит.
+        (u.companyTitle ?? "").toLowerCase().includes(q),
     )
   }, [users, query])
+
+  /**
+   * Разбивка на области: общий раздел первым, дальше компании по названию.
+   *
+   * Порядок тот же, что на пульте конвейера: две страницы про одно и то же не
+   * должны читаться по-разному.
+   *
+   * Компании берутся СПИСКОМ с сервера, а не выводятся из людей: заведённая, но
+   * пока безлюдная компания обязана быть видна строкой «пока никого». Выведи мы
+   * области из пользователей — её бы просто не было, и «завели или нет» пришлось
+   * бы выяснять в другом разделе.
+   *
+   * При поиске пустые области скрываются: список сузили намеренно, и заголовки
+   * без единой строки под ними были бы шумом ровно там, где ищут одного
+   * человека.
+   */
+  const groups = useMemo(() => {
+    const searching = query.trim().length > 0
+    const byCompany = new Map<string | null, PipelineUserDto[]>()
+    for (const user of visible) {
+      const key = user.companyId ?? null
+      const list = byCompany.get(key)
+      if (list) list.push(user)
+      else byCompany.set(key, [user])
+    }
+
+    const ordered = [
+      {
+        key: "__general__",
+        title: t.pipelineAreaGeneral,
+        rows: byCompany.get(null) ?? [],
+      },
+      ...[...companies]
+        .sort((a, b) => a.title.localeCompare(b.title))
+        .map((company) => ({
+          key: company.id,
+          title: company.title,
+          rows: byCompany.get(company.id) ?? [],
+        })),
+    ].map((group) => ({
+      ...group,
+      /**
+       * Во время поиска свёртка не действует.
+       *
+       * Иначе человек набирает фамилию, попадание есть, а на экране пусто —
+       * потому что область когда-то свернули и забыли. Поиск обязан показывать
+       * то, что нашёл.
+       */
+      collapsed: searching ? false : collapsed.has(group.key),
+    }))
+
+    return searching ? ordered.filter((g) => g.rows.length > 0) : ordered
+  }, [visible, companies, query, collapsed, t])
 
   const enabledCount = users.filter((u) => u.automationEnabled).length
 
@@ -96,7 +195,7 @@ export function UsersColumn({
   return (
     <section
       style={{ width: size }}
-      className="relative flex h-full shrink-0 flex-col overflow-hidden border-r border-white/[0.08] bg-ws-well"
+      className="relative flex h-full shrink-0 flex-col overflow-hidden border-r border-foreground/[0.08] bg-ws-well"
     >
       <div className="shrink-0 px-4 pb-3 pt-4">
         <div className="flex items-baseline justify-between gap-2">
@@ -120,7 +219,7 @@ export function UsersColumn({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t.pipelineUserSearch}
-            className="h-[38px] w-full rounded-[9px] border border-white/10 bg-ws-control pl-[34px] pr-3 text-[13px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
+            className="h-[38px] w-full rounded-[9px] border border-foreground/10 bg-ws-control pl-[34px] pr-3 text-[13px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
           />
         </div>
       </div>
@@ -135,8 +234,44 @@ export function UsersColumn({
             {t.pipelineNothingFound}
           </p>
         ) : (
+          groups.map((group) => (
+          <div key={group.key}>
+            {/* Заголовок области липкий: в длинном списке видно, чьи папки
+                сейчас на экране, без прокрутки вверх. Он же кнопка свёртки —
+                отдельная стрелка рядом с кликабельной строкой была бы второй
+                мишенью для одного и того же действия. */}
+            <div className="sticky top-0 z-10 -mx-3 bg-ws-well/95 px-3 pb-1 pt-3 backdrop-blur">
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.key)}
+                aria-expanded={!group.collapsed}
+                className="flex w-full items-baseline justify-between gap-2 rounded-[7px] px-1 py-0.5 text-left hover:bg-foreground/[0.04]"
+              >
+                <span className="flex min-w-0 items-center gap-1">
+                  <ChevronRight
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0 text-ws-5 transition-transform",
+                      group.collapsed ? null : "rotate-90",
+                    )}
+                    aria-hidden
+                  />
+                  <span className="truncate text-[11px] font-semibold uppercase tracking-[1.2px] text-ws-4">
+                    {group.title}
+                  </span>
+                </span>
+                <span className="shrink-0 text-[11px] text-ws-5">
+                  {group.rows.filter((u) => u.automationEnabled).length}/
+                  {group.rows.length}
+                </span>
+              </button>
+            </div>
+            {group.collapsed ? null : group.rows.length === 0 ? (
+              <p className="px-2.5 py-2 text-[12px] text-ws-5">
+                {t.pipelineAreaEmpty}
+              </p>
+            ) : (
           <ul className="pt-1">
-            {visible.map((user) => {
+            {group.rows.map((user) => {
               const active = user.id === selectedUserId
               const busy = pending === user.id
               return (
@@ -144,7 +279,7 @@ export function UsersColumn({
                   <div
                     className={cn(
                       "mb-1 flex items-start gap-2.5 rounded-[10px] px-2.5 py-2.5",
-                      active ? "bg-ws-hover" : "hover:bg-white/[0.04]",
+                      active ? "bg-ws-hover" : "hover:bg-foreground/[0.04]",
                       // Заблокированный аккаунт и снятый гейт приглушаем: строка
                       // остаётся читаемой, но видно, что обработки по ней нет.
                       !user.isActive || !user.automationEnabled
@@ -161,7 +296,7 @@ export function UsersColumn({
                       onClick={() => void toggle(user)}
                       className={cn(
                         "relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-40",
-                        user.automationEnabled ? "bg-ws-action" : "bg-white/10",
+                        user.automationEnabled ? "bg-ws-action" : "bg-foreground/10",
                       )}
                     >
                       <span
@@ -228,6 +363,9 @@ export function UsersColumn({
               )
             })}
           </ul>
+            )}
+          </div>
+          ))
         )}
       </div>
 

@@ -121,7 +121,7 @@ export function MobileWorkspace() {
                       "flex h-[46px] min-w-[104px] flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl border text-[14.5px] font-semibold tracking-[0.5px]",
                       active
                         ? "border-ws-accent/50 bg-ws-select/[0.22] text-ws-1"
-                        : "border-white/[0.08] text-ws-3",
+                        : "border-foreground/[0.08] text-ws-3",
                     )}
                   >
                     <Icon className="h-[19px] w-[19px]" />
@@ -171,7 +171,7 @@ export function MobileWorkspace() {
                   type="button"
                   onClick={() => createFolder(target)}
                   aria-label={t.mNewFolder}
-                  className="flex items-center justify-center rounded-xl border border-white/10 px-3.5 py-2.5 text-ws-2"
+                  className="flex items-center justify-center rounded-xl border border-foreground/10 px-3.5 py-2.5 text-ws-2"
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -193,7 +193,7 @@ export function MobileWorkspace() {
         </div>
       )}
 
-      <nav className="grid shrink-0 grid-cols-5 border-t border-white/[0.08] bg-sidebar px-1 pb-2.5 pt-1.5">
+      <nav className="grid shrink-0 grid-cols-5 border-t border-foreground/[0.08] bg-sidebar px-1 pb-2.5 pt-1.5">
         {TABS.map((item) => (
           <button
             key={item.id}

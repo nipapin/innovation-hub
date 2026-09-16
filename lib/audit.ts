@@ -25,6 +25,7 @@ export function auditFrom(
     targetType?: string | null
     targetId?: string | null
     targetLabel?: string | null
+    companyId?: string | null
     meta?: Record<string, unknown>
   }) =>
     recordAuditEvent({

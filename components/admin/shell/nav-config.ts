@@ -1,6 +1,7 @@
 import {
   Activity,
   BarChart3,
+  Building2,
   Coins,
   FileQuestion,
   FolderTree,
@@ -256,6 +257,18 @@ export const ADMIN_TOOLS: AdminTool[] = [
     icon: ScrollText,
     areas: ["access"],
     capability: "audit.view",
+  },
+  {
+    // Область «Доступ»: заведение компании — это раздача видимости поперёк
+    // нескольких людей и общего кошелька, распоряжение того же порядка, что и
+    // роли рядом (docs/COMPANY_ACCOUNTS_PLAN.md §4, §6.6).
+    key: "companies",
+    labelKey: "adminCompanies",
+    descriptionKey: "adminCompaniesDesc",
+    href: "/admin/companies",
+    icon: Building2,
+    areas: ["access"],
+    capability: "companies.manage",
   },
   {
     key: "billing-rates",

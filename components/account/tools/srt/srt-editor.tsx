@@ -699,19 +699,19 @@ export function SrtEditor({ tool }: { tool: ToolInstance }) {
 
   return (
     <section ref={rootRef} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="flex h-14 flex-none items-center gap-2.5 border-b border-white/[0.07] px-3 md:px-4">
+      <header className="flex h-14 flex-none items-center gap-2.5 border-b border-foreground/[0.07] px-3 md:px-4">
         <SourcePicker tool={tool} />
         <button
           type="button"
           title={t.srtSettings}
           onClick={() => setSettingsOpen(true)}
-          className="flex h-[34px] w-[34px] items-center justify-center rounded-md border border-white/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+          className="flex h-[34px] w-[34px] items-center justify-center rounded-md border border-foreground/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
         >
           <Settings className="h-[17px] w-[17px]" />
         </button>
 
         {doc ? (
-          <div className="flex items-center gap-1 rounded-md border border-white/[0.07] bg-ws-raised p-[3px]">
+          <div className="flex items-center gap-1 rounded-md border border-foreground/[0.07] bg-ws-raised p-[3px]">
             <LangTab active={lang === null} label={t.srtColOriginal} onClick={() => setLang(null)} />
             {doc.languages.targets.map((code) => (
               <LangTab
@@ -755,7 +755,7 @@ export function SrtEditor({ tool }: { tool: ToolInstance }) {
               type="button"
               title={t.srtRestoreTitle}
               disabled={!doc}
-              className="flex h-[34px] items-center gap-1.5 rounded border border-white/[0.07] px-2 text-ws-3 hover:bg-ws-hover hover:text-ws-1 disabled:opacity-40"
+              className="flex h-[34px] items-center gap-1.5 rounded border border-foreground/[0.07] px-2 text-ws-3 hover:bg-ws-hover hover:text-ws-1 disabled:opacity-40"
             >
               <RotateCcw className="h-[17px] w-[17px]" />
               {/*
@@ -771,7 +771,7 @@ export function SrtEditor({ tool }: { tool: ToolInstance }) {
           <DropdownMenuContent align="end" className="min-w-[280px]">
             <DropdownMenuItem
               onClick={() => void restoreEverything()}
-              className="cursor-pointer flex-col items-start gap-0.5 focus:bg-white/10"
+              className="cursor-pointer flex-col items-start gap-0.5 focus:bg-foreground/10"
             >
               <span>{t.srtRestoreAll}</span>
               <span className="text-[12px] text-ws-4">{t.srtRestoreAllNote}</span>
@@ -779,7 +779,7 @@ export function SrtEditor({ tool }: { tool: ToolInstance }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => void newVersion()}
-              className="cursor-pointer flex-col items-start gap-0.5 focus:bg-white/10"
+              className="cursor-pointer flex-col items-start gap-0.5 focus:bg-foreground/10"
             >
               <span>{t.srtVersionNew}</span>
               <span className="text-[12px] text-ws-4">{t.srtVersionNewNote}</span>
@@ -787,7 +787,7 @@ export function SrtEditor({ tool }: { tool: ToolInstance }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => setRestoreOpen(true)}
-              className="cursor-pointer focus:bg-white/10"
+              className="cursor-pointer focus:bg-foreground/10"
             >
               {t.srtRestoreAdvanced}
             </DropdownMenuItem>
@@ -798,7 +798,7 @@ export function SrtEditor({ tool }: { tool: ToolInstance }) {
           type="button"
           title={t.srtHotkeys}
           onClick={() => setHelpOpen(true)}
-          className="flex h-[34px] w-[34px] items-center justify-center rounded border border-white/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+          className="flex h-[34px] w-[34px] items-center justify-center rounded border border-foreground/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
         >
           <HelpCircle className="h-[18px] w-[18px]" />
         </button>
@@ -807,7 +807,7 @@ export function SrtEditor({ tool }: { tool: ToolInstance }) {
             <button
               type="button"
               disabled={!doc}
-              className="flex h-[34px] items-center gap-2 rounded border border-white/[0.07] px-3 text-[13px] text-ws-2 hover:bg-ws-hover disabled:opacity-40"
+              className="flex h-[34px] items-center gap-2 rounded border border-foreground/[0.07] px-3 text-[13px] text-ws-2 hover:bg-ws-hover disabled:opacity-40"
             >
               <Download className="h-[17px] w-[17px]" />
               {t.srtExport}
@@ -838,7 +838,7 @@ export function SrtEditor({ tool }: { tool: ToolInstance }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => setExportOpen(true)}
-              className="cursor-pointer focus:bg-white/10"
+              className="cursor-pointer focus:bg-foreground/10"
             >
               {t.srtExportAdvanced}
             </DropdownMenuItem>
@@ -848,7 +848,7 @@ export function SrtEditor({ tool }: { tool: ToolInstance }) {
           type="button"
           title={t.toolClose}
           onClick={closeTool}
-          className="flex h-[34px] w-[34px] items-center justify-center rounded border border-white/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+          className="flex h-[34px] w-[34px] items-center justify-center rounded border border-foreground/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
         >
           <X className="h-[18px] w-[18px]" />
         </button>
@@ -949,7 +949,7 @@ function ExportMenuItem({
     <DropdownMenuItem
       onClick={onClick}
       disabled={disabled}
-      className="cursor-pointer gap-3 focus:bg-white/10"
+      className="cursor-pointer gap-3 focus:bg-foreground/10"
     >
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate">{title}</span>

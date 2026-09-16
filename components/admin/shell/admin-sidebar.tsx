@@ -1,6 +1,6 @@
 "use client"
 
-import { SITE_MONOGRAM, SITE_NAME } from "@/lib/site"
+import { useBranding } from "@/components/branding/branding-context"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { useI18n } from "@/components/account/i18n"
@@ -17,6 +17,7 @@ type Props = {
 }
 
 export function AdminSidebar({ email, fullName, onNavigate }: Props) {
+  const branding = useBranding()
   const { t } = useI18n()
   const {
     videos,
@@ -58,11 +59,11 @@ export function AdminSidebar({ email, fullName, onNavigate }: Props) {
         >
           <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/30 bg-primary/15">
             <span className="font-display text-sm font-bold text-primary">
-              {SITE_MONOGRAM}
+              {branding.monogram}
             </span>
           </span>
           <span className="font-display text-sm tracking-[0.08em] text-foreground/90">
-            {SITE_NAME}
+            {branding.name}
           </span>
         </Link>
       </div>
@@ -93,7 +94,7 @@ export function AdminSidebar({ email, fullName, onNavigate }: Props) {
         <Link
           href="/account"
           onClick={onNavigate}
-          className="flex items-center gap-2.5 rounded-xl border border-border/70 bg-white/[0.03] px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-foreground"
+          className="flex items-center gap-2.5 rounded-xl border border-border/70 bg-foreground/[0.03] px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4 shrink-0" />
           {t.dashboard}

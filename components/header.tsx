@@ -1,5 +1,5 @@
 ﻿"use client"
-import { SITE_MONOGRAM, SITE_NAME } from "@/lib/site"
+import { useBranding } from "@/components/branding/branding-context"
 import { isElevated } from "@/lib/admin-roles"
 
 import Link from "next/link"
@@ -175,6 +175,7 @@ function UserMenu({ user, onSignOut }: { user: SessionUser; onSignOut: () => voi
 }
 
 export function Header() {
+  const branding = useBranding()
   const router = useRouter()
   const pathname = usePathname()
   const [user, setUser] = useState<SessionUser | null | undefined>(undefined)
@@ -221,9 +222,9 @@ export function Header() {
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/30 bg-primary/15">
-              <span className="font-display text-sm font-bold text-primary">{SITE_MONOGRAM}</span>
+              <span className="font-display text-sm font-bold text-primary">{branding.monogram}</span>
             </div>
-            <span className="font-display text-sm tracking-[0.08em] text-foreground/90">{SITE_NAME}</span>
+            <span className="font-display text-sm tracking-[0.08em] text-foreground/90">{branding.name}</span>
           </Link>
 
           <nav className="hidden items-center gap-1 md:flex">

@@ -9,7 +9,7 @@
  * и потратил я», админка — «что происходит в системе». Поэтому набор осей у них
  * разный, и решает его сервер, а не клиент (см. `getStatistics`).
  */
-export const STAT_VARIANTS = ["account", "admin"] as const
+export const STAT_VARIANTS = ["account", "admin", "company"] as const
 export type StatVariant = (typeof STAT_VARIANTS)[number]
 
 /**
@@ -61,12 +61,29 @@ export const ACCOUNT_BREAKDOWNS = STAT_BREAKDOWNS.filter(
   (breakdown) => breakdown !== "user" && breakdown !== "machine",
 )
 
+/**
+ * Разрезы компании: как в кабинете, плюс люди — и только они.
+ *
+ * Разрез по людям здесь и есть смысл витрины: компания платит за всех и хочет
+ * знать, кто сколько потратил (план §7.9). А машины остаются нашей кухней:
+ * «на какой из них считалось» — вопрос эксплуатации парка, к компании отношения
+ * не имеющий.
+ */
+export const COMPANY_BREAKDOWNS = STAT_BREAKDOWNS.filter(
+  (breakdown) => breakdown !== "machine",
+)
+
 export function metricsFor(variant: StatVariant): readonly StatMetric[] {
+  // `cost` — наша себестоимость в долларах, и она не про клиента: компании она
+  // ответила бы на вопрос, которого та не задавала, зато в чужой валюте. Тот же
+  // довод, по которому её нет в кабинете.
   return variant === "admin" ? STAT_METRICS : ACCOUNT_METRICS
 }
 
 export function breakdownsFor(variant: StatVariant): readonly StatBreakdown[] {
-  return variant === "admin" ? STAT_BREAKDOWNS : ACCOUNT_BREAKDOWNS
+  if (variant === "admin") return STAT_BREAKDOWNS
+  if (variant === "company") return COMPANY_BREAKDOWNS
+  return ACCOUNT_BREAKDOWNS
 }
 
 /** Период события. Состояния («сейчас в хранилище») от него не зависят. */
@@ -85,6 +102,15 @@ export type StatsScope = {
   ownerId: string | null
   userId: string | null
   projectId: string | null
+  /**
+   * Рамка компании: проекты ВСЕХ её людей (COMPANY_ACCOUNTS_PLAN.md §6.5).
+   *
+   * Третий режим, а не разновидность `ownerId`: у кабинета рамка — один
+   * человек, здесь — множество, и провал в человека внутри компании разрешён,
+   * а в кабинете его нет вовсе. Ставится сервером из гейта консоли и клиентом
+   * не переопределяется — как и `ownerId`.
+   */
+  companyId: string | null
 }
 
 /** Состояние на сейчас: период на него не влияет. */

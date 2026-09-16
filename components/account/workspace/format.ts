@@ -61,6 +61,50 @@ export function fmtTime(iso: string) {
   }
 }
 
+/**
+ * Дата с точностью до минуты: «14 сент. 2026, 18:42».
+ *
+ * Для корзины, где одной даты не хватает. Пробный период проверяют, копируя
+ * один и тот же проект по нескольку раз за день, и в корзине они ложатся
+ * подряд с одинаковым именем и одинаковой датой — различить, какой из них
+ * какой, было нечем. Время и есть та пометка, которой не хватало: имена мы
+ * при удалении не трогаем.
+ */
+export function fmtDateTime(iso: string | null, lang: string) {
+  if (!iso) return "—"
+  const date = fmtDate(iso, lang)
+  const time = fmtTime(iso)
+  return time ? `${date}, ${time}` : date
+}
+
+/**
+ * Все файлы поддерева одним списком, без папок, с путём до каждого.
+ *
+ * Режим «без папок»: когда в папке два десятка подпапок, нужное ищут по всему
+ * дереву, а не обходят его руками. Папки из списка выпадают целиком — показывать
+ * их рядом с их же содержимым значило бы показать одно и то же дважды.
+ *
+ * `relPath` отсчитывается от той папки, с которой режим включили, а не от корня
+ * проекта: человек включает его, стоя в определённом месте, и путь имеет смысл
+ * именно оттуда. Пустая строка — файл лежит прямо здесь.
+ */
+export type FlatEntry = { file: DriveFile; relPath: string }
+
+export function flattenTree(items: DriveFile[]): FlatEntry[] {
+  const out: FlatEntry[] = []
+  const walk = (list: DriveFile[], prefix: string[]) => {
+    for (const item of list) {
+      if (item.isFolder) {
+        walk(item.children ?? [], [...prefix, item.name])
+      } else {
+        out.push({ file: item, relPath: prefix.join("/") })
+      }
+    }
+  }
+  walk(items, [])
+  return out
+}
+
 export function fileIcon(f: DriveFile): LucideIcon {
   if (f.isFolder) return Folder
   const ct = f.mimeType
@@ -330,7 +374,8 @@ export function mapProject(raw: Record<string, unknown>): Project {
     pausedReason:
       raw.pausedReason === "no-funds" ||
       raw.pausedReason === "trial-over" ||
-      raw.pausedReason === "no-vendor-key"
+      raw.pausedReason === "no-vendor-key" ||
+      raw.pausedReason === "payer-no-funds"
         ? raw.pausedReason
         : null,
     gift: mapGift(raw.gift),

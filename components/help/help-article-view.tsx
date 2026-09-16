@@ -71,14 +71,14 @@ export function HelpArticleView({
           <span>{tf(t.helpUpdated, { date: article.updated })}</span>
         ) : null}
         {article.tags.map((tag) => (
-          <span key={tag} className="rounded-full bg-white/[0.05] px-2 py-0.5">
+          <span key={tag} className="rounded-full bg-foreground/[0.05] px-2 py-0.5">
             {tag}
           </span>
         ))}
       </div>
 
       {untranslated ? (
-        <p className="mt-5 flex items-start gap-2 rounded-[11px] border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-[12.5px] text-ws-4">
+        <p className="mt-5 flex items-start gap-2 rounded-[11px] border border-foreground/[0.08] bg-foreground/[0.03] px-3.5 py-2.5 text-[12.5px] text-ws-4">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
           {t.helpFallbackNote}
         </p>
@@ -89,7 +89,7 @@ export function HelpArticleView({
       </MarkdownView>
 
       {seeAlso.length > 0 ? (
-        <section className="mt-10 border-t border-white/[0.07] pt-5">
+        <section className="mt-10 border-t border-foreground/[0.07] pt-5">
           <h2 className="mb-2.5 text-[11.5px] font-semibold uppercase tracking-[0.14em] text-ws-5">
             {t.helpSeeAlso}
           </h2>

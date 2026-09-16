@@ -134,13 +134,13 @@ function TimelineToolbar({ minimap }: { minimap: React.ReactNode }) {
   ]
 
   return (
-    <div className="flex h-10 flex-none items-center gap-2.5 border-b border-white/[0.07] px-3">
+    <div className="flex h-10 flex-none items-center gap-2.5 border-b border-foreground/[0.07] px-3">
       <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.4px] text-ws-accent">
         <span className="text-ws-action">—</span>
         {t.srtTimeline}
       </div>
 
-      <label className="flex h-7 w-[200px] items-center gap-2 rounded-full border border-white/[0.07] bg-ws-raised px-2.5">
+      <label className="flex h-7 w-[200px] items-center gap-2 rounded-full border border-foreground/[0.07] bg-ws-raised px-2.5">
         <Search className="h-[15px] w-[15px] shrink-0 text-ws-4" />
         <input
           value={srt.trackQuery}
@@ -154,7 +154,7 @@ function TimelineToolbar({ minimap }: { minimap: React.ReactNode }) {
         type="button"
         onClick={() => srt.setHideShy(!srt.hideShy)}
         className={cn(
-          "flex h-7 items-center gap-1.5 rounded border border-white/[0.07] px-2.5 text-[12px]",
+          "flex h-7 items-center gap-1.5 rounded border border-foreground/[0.07] px-2.5 text-[12px]",
           srt.hideShy ? "bg-[#8b6fd6] text-ws-well" : "text-ws-3 hover:bg-ws-hover",
         )}
       >
@@ -162,9 +162,9 @@ function TimelineToolbar({ minimap }: { minimap: React.ReactNode }) {
         {t.srtShy}
       </button>
 
-      <span className="h-5 w-px bg-white/[0.07]" />
+      <span className="h-5 w-px bg-foreground/[0.07]" />
 
-      <div className="flex items-center gap-[3px] rounded-md border border-white/[0.07] bg-ws-raised p-[3px]">
+      <div className="flex items-center gap-[3px] rounded-md border border-foreground/[0.07] bg-ws-raised p-[3px]">
         {tools.map((item) => {
           const Icon = item.icon
           const active = srt.tool === item.id
@@ -194,7 +194,7 @@ function TimelineToolbar({ minimap }: { minimap: React.ReactNode }) {
         title={tf(t.srtMainWave, { key: keyLabel(srt.prefs.keymap.mainWave) })}
         onClick={() => srt.setPref("mainWave", !srt.prefs.mainWave)}
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded border border-white/[0.07]",
+          "flex h-7 w-7 items-center justify-center rounded border border-foreground/[0.07]",
           srt.prefs.mainWave ? "bg-ws-action/25 text-ws-accent" : "text-ws-3 hover:bg-ws-hover",
         )}
       >
@@ -205,7 +205,7 @@ function TimelineToolbar({ minimap }: { minimap: React.ReactNode }) {
 
       <div
         title={t.srtZoomWheel}
-        className="flex h-7 items-center gap-2 rounded border border-white/[0.07] bg-ws-raised px-2.5"
+        className="flex h-7 items-center gap-2 rounded border border-foreground/[0.07] bg-ws-raised px-2.5"
       >
         <button
           type="button"
@@ -251,7 +251,7 @@ function TrackColumnHeader() {
   const srt = useSrt()
 
   return (
-    <div className="flex h-10 flex-none items-center gap-1 border-b border-white/[0.07] px-3">
+    <div className="flex h-10 flex-none items-center gap-1 border-b border-foreground/[0.07] px-3">
       <span className="text-[11px] font-semibold uppercase tracking-[0.32px] text-ws-4">
         {t.srtTracks}
       </span>
@@ -260,7 +260,7 @@ function TrackColumnHeader() {
         type="button"
         title={t.srtAddTrackHint}
         onClick={srt.ops.addTrack}
-        className="flex h-6 w-6 items-center justify-center rounded border border-white/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+        className="flex h-6 w-6 items-center justify-center rounded border border-foreground/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
       >
         <Plus className="h-[15px] w-[15px]" />
       </button>
@@ -311,7 +311,7 @@ function TrackHeader({ track }: { track: Track }) {
       onClick={() => srt.selectTrack(track.id)}
       style={{ height: srt.prefs.trackH }}
       className={cn(
-        "flex items-center gap-1.5 border-b border-white/[0.06] px-2.5",
+        "flex items-center gap-1.5 border-b border-foreground/[0.06] px-2.5",
         selected && "bg-ws-select/[0.10]",
       )}
     >
@@ -323,7 +323,7 @@ function TrackHeader({ track }: { track: Track }) {
       {!wave.own && wave.peaks ? (
         <span
           title={t.srtSharedWave}
-          className="flex-none rounded-full border border-white/[0.10] px-1.5 text-[10px] text-ws-5"
+          className="flex-none rounded-full border border-foreground/[0.10] px-1.5 text-[10px] text-ws-5"
         >
           {t.srtSharedWaveShort}
         </span>
@@ -479,7 +479,7 @@ function TrackFlagButton({
         onClick()
       }}
       className={cn(
-        "flex h-6 w-6 flex-none items-center justify-center rounded border border-white/[0.07]",
+        "flex h-6 w-6 flex-none items-center justify-center rounded border border-foreground/[0.07]",
         active ? activeClass : "text-ws-3 hover:bg-ws-hover",
         className,
         disabled && "cursor-default text-ws-5 opacity-50 hover:bg-transparent",
@@ -512,7 +512,7 @@ function ModeButton({
       onClick={onClick}
       className={cn(
         "flex h-6 w-6 items-center justify-center rounded border",
-        on ? activeClass : "border-white/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1",
+        on ? activeClass : "border-foreground/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1",
       )}
     >
       {children}
@@ -565,13 +565,13 @@ function Lane({
       onPointerDown={onLaneDown}
       style={{ height, cursor: cursorFor(srt.tool, false) }}
       className={cn(
-        "relative border-b border-white/[0.06]",
+        "relative border-b border-foreground/[0.06]",
         selected && "bg-ws-select/[0.05]",
       )}
     >
       <div
         aria-hidden
-        className="pointer-events-none absolute bottom-0 right-0 top-0 border-l border-white/[0.10] bg-ws-well/60"
+        className="pointer-events-none absolute bottom-0 right-0 top-0 border-l border-foreground/[0.10] bg-ws-well/60"
         style={{ left: msToX(srt.mediaEndMs, srt.pps) }}
       />
       {srt.doc.cues

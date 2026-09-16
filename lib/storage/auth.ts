@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto"
 import { NextResponse, type NextRequest } from "next/server"
-import { findUserById } from "@/lib/repositories/users"
+import { findUserById, isUserInCompany } from "@/lib/repositories/users"
 import {
   findActiveRemoteComputerByTokenHash,
 } from "@/lib/repositories/remote-computers"
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth"
 import { query } from "@/lib/db"
 import {
+  findCompanyProject,
   findOwnedProject,
   findProjectById,
 } from "@/lib/repositories/projects"
@@ -30,6 +31,12 @@ export type StorageApiAuth = {
   role: UserRole
   machineTokenId: string | null
   computerId: string | null
+  /**
+   * Компания машины парка (`remote_computers.company_id`). NULL — наша машина.
+   * Заполнено — она стоит у клиента и видит только проекты его людей
+   * (docs/COMPANY_PIPELINE_PLAN.md §1).
+   */
+  machineCompanyId: string | null
   scopedProjectId: string | null
   /**
    * Теги актора. У машин всегда пусто и не спрашивается: программа авторизуется
@@ -44,21 +51,47 @@ export function isMachineAuth(auth: StorageApiAuth): boolean {
 }
 
 /**
- * Может ли актор дотянуться до ЛЮБОГО проекта, а не только до своих.
+ * ДОКУДА ДОТЯГИВАЕТСЯ АКТОР. Одно место на все проверки доступа к чужому.
  *
- * Одна функция на все места, где раньше стояло `auth.role === "ADMIN"`, и
- * порядок в ней значим: **сначала машина, потом тег**. Программу мы в правах не
- * ограничиваем — доступ к чужим проектам и есть её работа; спроси мы у неё тег,
- * которого у неё нет и быть не может, встал бы весь парк. Человеку же одной
- * админской роли мало: нужен `projects.access`.
+ * Размеченное объединение, а не булев «может ли всё»: ступеней стало три, и
+ * булев ответ на трёхзначный вопрос — это молчаливое «нет» там, где верный
+ * ответ «только своей компании». Тип заставляет каждое место разобрать все
+ * варианты: пропущенный `company` не соберётся, а не отработает тихо.
+ *
+ * Порядок внутри значим и не менялся: **сначала машина, потом тег**. Программу
+ * мы в правах не ограничиваем — доступ к чужим проектам и есть её работа;
+ * спроси мы у неё тег, которого у неё нет и быть не может, встал бы весь парк.
+ * Человеку же одной админской роли мало: нужен `projects.access`.
  *
  * Особенно это важно там, где ветки человека и машины НЕ разделены —
- * requireOwnedProjectAccess, project-catalog.ts, project-mutations.ts: туда
- * нельзя поставить голую проверку тега.
+ * requireOwnedProjectAccess, project-catalog.ts, project-mutations.ts.
  */
-export function canReachAnyProject(auth: StorageApiAuth): boolean {
-  if (isMachineAuth(auth)) return isElevated(auth.role)
+export type ReachScope =
+  /** Вся площадка: наша машина парка или человек с тегом `projects.access`. */
+  | { kind: "all" }
+  /**
+   * Проекты людей ОДНОЙ компании — машина, стоящая у клиента
+   * (docs/COMPANY_PIPELINE_PLAN.md §2). Рамка ложится на владельца проекта, как
+   * и вся остальная изоляция компании.
+   */
+  | { kind: "company"; companyId: string }
+  /** Только свои: обычный человек и машина под токеном обычного пользователя. */
+  | { kind: "own"; userId: string }
+
+export function reachScope(auth: StorageApiAuth): ReachScope {
+  if (isMachineAuth(auth)) {
+    // Компания важнее роли: токен машины компании выдаёт её админ, и роль
+    // регистрировавшего человека к её полномочиям отношения не имеет.
+    if (auth.machineCompanyId) {
+      return { kind: "company", companyId: auth.machineCompanyId }
+    }
+    return isElevated(auth.role)
+      ? { kind: "all" }
+      : { kind: "own", userId: auth.userId }
+  }
   return hasCapability(auth.role, auth.capabilities, "projects.access")
+    ? { kind: "all" }
+    : { kind: "own", userId: auth.userId }
 }
 
 /**
@@ -86,6 +119,50 @@ export type StorageProjectAccess = {
    */
   storageOwnerId: string
   accessRole: ProjectAccessRole
+}
+
+/**
+ * Проект в рамке актора — или null, если она его не покрывает.
+ *
+ * Одно место на все три входа (`requireProjectAccess`,
+ * `requireOwnedProjectAccess` и машинная ветка первого): рамка считается один
+ * раз и одинаково, а не переписывается в каждом по памяти.
+ */
+async function findProjectInScope(
+  auth: StorageApiAuth,
+  projectId: string,
+): Promise<Awaited<ReturnType<typeof findProjectById>>> {
+  const scope = reachScope(auth)
+  switch (scope.kind) {
+    case "all":
+      return findProjectById(projectId)
+    case "company":
+      return findCompanyProject(projectId, scope.companyId)
+    case "own":
+      return findOwnedProject(projectId, scope.userId)
+  }
+}
+
+/**
+ * Достаёт ли актор до вещей ЭТОГО владельца.
+ *
+ * Для мест, где проверяется не проект, а что-то при человеке: клиент, работа
+ * копирования, задание. Там нет объекта, который можно было бы поискать в рамке,
+ * — есть только владелец, и вопрос ровно про него.
+ */
+export async function ownerInScope(
+  auth: StorageApiAuth,
+  ownerId: string,
+): Promise<boolean> {
+  const scope = reachScope(auth)
+  switch (scope.kind) {
+    case "all":
+      return true
+    case "company":
+      return isUserInCompany(ownerId, scope.companyId)
+    case "own":
+      return ownerId === scope.userId
+  }
 }
 
 function unauthorized(message = "Unauthorized.") {
@@ -125,9 +202,15 @@ async function authFromRemoteComputerToken(
   return {
     userId: row.createdBy,
     email: row.email,
+    /**
+     * Роль остаётся ADMIN — у НАШЕЙ машины. Для машины компании она ничего не
+     * решает: `reachScope` смотрит на `machineCompanyId` раньше роли, и вся
+     * площадка ей не открывается (COMPANY_PIPELINE_PLAN.md §1).
+     */
     role: "ADMIN",
     machineTokenId: null,
     computerId: row.id,
+    machineCompanyId: row.companyId,
     scopedProjectId: null,
     capabilities: [],
     computerName: row.name,
@@ -171,6 +254,9 @@ async function authFromMachineToken(
     role: row.role,
     machineTokenId: row.id,
     computerId: null,
+    // Токен пользователя (`mch_`) компанию не несёт: он и так скоуплен
+    // владельцем, а машины компании выдаются как `rc_` в её консоли.
+    machineCompanyId: null,
     scopedProjectId: row.projectId,
     capabilities: [],
   }
@@ -191,6 +277,9 @@ async function authFromSession(
     role: user.role,
     machineTokenId: null,
     computerId: null,
+    // Браузерная сессия — это человек, а не машина: поле про принадлежность
+    // ЖЕЛЕЗА, и к человеку из компании отношения не имеет.
+    machineCompanyId: null,
     scopedProjectId: null,
     // Суперадмину теги не проверяются (hasCapability отвечает по роли), поэтому
     // и запрашивать их незачем — иначе каждый его запрос к хранилищу платил бы
@@ -258,10 +347,7 @@ export async function requireProjectAccess(
 
   // Machine / computer tokens: ownership only (no sharing).
   if (auth.machineTokenId || auth.computerId) {
-    const project =
-      canReachAnyProject(auth)
-        ? await findProjectById(projectId)
-        : await findOwnedProject(projectId, auth.userId)
+    const project = await findProjectInScope(auth, projectId)
     if (!project) {
       return NextResponse.json({ message: "Project not found." }, { status: 404 })
     }
@@ -273,7 +359,7 @@ export async function requireProjectAccess(
     }
   }
 
-  if (canReachAnyProject(auth)) {
+  if (reachScope(auth).kind === "all") {
     // Без `includeDeleted`, как и у машин: тег `projects.access` открывает
     // чужие папки, но не корзину — распоряжаться удалённым проектом нечего.
     // Не найден — не отвечаем 404 сразу, а падаем в общий разбор ниже: свой
@@ -323,10 +409,7 @@ export async function requireOwnedProjectAccess(
       { status: 403 },
     )
   }
-  const project =
-    canReachAnyProject(auth)
-      ? await findProjectById(projectId)
-      : await findOwnedProject(projectId, auth.userId)
+  const project = await findProjectInScope(auth, projectId)
   if (!project) {
     return NextResponse.json({ message: "Project not found." }, { status: 404 })
   }

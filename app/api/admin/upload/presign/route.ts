@@ -88,8 +88,9 @@ export async function POST(request: NextRequest) {
   try {
     const uploadUrl = await getSignedUrl(client, command, { expiresIn: 900 })
 
-    // Prefer CDN when configured; otherwise a same-origin relative path so
-    // local uploads never bake localhost into the DB.
+    // CDN — только подтверждённый (`S3_PUBLIC_BASE_CONFIRMED`, разбор там же, в
+    // publicObjectUrlForKey). Иначе относительный путь прокси, чтобы локальные
+    // загрузки не зашивали в базу localhost.
     const publicUrl = publicObjectUrlForKey(key) ?? appMediaProxyPathForKey(key)
 
     return NextResponse.json({

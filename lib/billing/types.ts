@@ -168,6 +168,21 @@ export type TrialSettings = {
   amountCents: number
   /** null — подарок бессрочный. */
   lifetimeDays: number | null
+  /**
+   * Когда набор пробных проектов обновлялся в последний раз. ISO-дата или null,
+   * если его не меняли ни разу.
+   *
+   * Это точка отсчёта «разрешить заново», и она заменяет собой массовый обход
+   * пользователей. Правило одно: ЗАВЕРШЁННЫЙ период, выданный раньше этой даты,
+   * сбрасывается сам при первом же чтении состояния. Действующий не трогается
+   * вовсе — он попадёт под то же правило, когда закончится, и человеку не
+   * оборвут period на середине ради нового набора.
+   *
+   * Эта же дата служит ключом закрытой кнопки на сайте: человек прячет
+   * предложение, но с обновлением набора ключ меняется и кнопка возвращается —
+   * новый набор стоит показать даже тому, кто отказался от прошлого.
+   */
+  resetFrom: string | null
 }
 
 export type BillingSettings = {
@@ -213,7 +228,12 @@ export const DEFAULT_BILLING_SETTINGS: BillingSettings = {
   // Ноль, а не «немного»: овердрафт — это кредит, и выдаваться он должен
   // осознанным решением, а не значением по умолчанию.
   overdraftLimitCents: 0,
-  trial: { enabled: false, amountCents: 600_000, lifetimeDays: null },
+  trial: {
+    enabled: false,
+    amountCents: 600_000,
+    lifetimeDays: null,
+    resetFrom: null,
+  },
   enforceForOwnProjects: false,
   vendorCurrency: "USD",
   fxAdjustPct: 0,

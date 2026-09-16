@@ -61,6 +61,8 @@ export function SettingsTab() {
     setArchived,
     deleteProject,
     exposedOptions,
+    skippedOptions,
+    fileTypes,
     saveExposedOptions,
   } = useWorkspace()
   if (!selected) return null
@@ -85,7 +87,7 @@ export function SettingsTab() {
           }
           className={cn(
             "relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-            selected.isPaused ? "bg-ws-action" : "bg-white/10",
+            selected.isPaused ? "bg-ws-action" : "bg-foreground/10",
           )}
         >
           <span
@@ -99,21 +101,24 @@ export function SettingsTab() {
       {/* Параметры обработки: их открыл клиенту автор графа в программе.
           Ниже — действия над самим проектом, они к обработке не относятся. */}
       <ExposedOptionsList
+        projectId={selected.id}
         options={exposedOptions}
+        skipped={skippedOptions}
+        fileTypes={fileTypes}
         onSave={canEditSettings ? saveExposedOptions : null}
-        className="mt-4 border-t border-white/[0.07] pt-4"
+        className="mt-4 border-t border-foreground/[0.07] pt-4"
       />
       {canEditSettings ? null : (
         <p className="mt-3 text-[12px] text-ws-4">{t.shareReadOnlyNote}</p>
       )}
 
       {can.archiveProject || can.deleteProject ? (
-        <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-white/[0.07] pt-4">
+        <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-foreground/[0.07] pt-4">
           {can.archiveProject ? (
             <button
               type="button"
               onClick={() => setArchived(selected, !selected.isArchived)}
-              className="flex items-center gap-2 rounded-[9px] border border-white/10 px-4 py-2 text-[13px] text-ws-2 hover:bg-white/5"
+              className="flex items-center gap-2 rounded-[9px] border border-foreground/10 px-4 py-2 text-[13px] text-ws-2 hover:bg-foreground/5"
             >
               {selected.isArchived ? (
                 <ArchiveRestore className="h-4 w-4" />
@@ -211,7 +216,7 @@ export function ChatTab() {
                     mine
                       ? "rounded-[12px_12px_4px_12px] bg-ws-action text-white"
                       : system
-                        ? "rounded-[12px] bg-white/[0.04] text-ws-3"
+                        ? "rounded-[12px] bg-foreground/[0.04] text-ws-3"
                         : "rounded-[12px_12px_12px_4px] bg-ws-hover text-ws-1",
                   )}
                 >
@@ -219,7 +224,7 @@ export function ChatTab() {
                   <div
                     className={cn(
                       "mt-1 text-right text-[10.5px]",
-                      mine ? "text-white/60" : "text-ws-4",
+                      mine ? "text-foreground/60" : "text-ws-4",
                     )}
                   >
                     {fmtTime(m.createdAt)}
@@ -242,7 +247,7 @@ export function ChatTab() {
               }
             }}
             placeholder={t.chatPlaceholder}
-            className="h-[42px] flex-1 rounded-[9px] border border-white/10 bg-ws-control px-3.5 text-[14px] text-ws-1 outline-none focus:border-ws-select"
+            className="h-[42px] flex-1 rounded-[9px] border border-foreground/10 bg-ws-control px-3.5 text-[14px] text-ws-1 outline-none focus:border-ws-select"
           />
           <button
             type="button"
@@ -268,7 +273,7 @@ export function BottomPanel({ onResize }: { onResize?: React.ReactNode }) {
   if (!selected) return null
 
   return (
-    <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/[0.07] bg-ws-panel">
+    <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-foreground/[0.07] bg-ws-panel">
       {onResize}
       <div className="flex shrink-0 flex-wrap gap-1.5 px-6 pt-3">
         {TABS.map((tab) => {
@@ -284,7 +289,7 @@ export function BottomPanel({ onResize }: { onResize?: React.ReactNode }) {
                 "flex items-center gap-2 rounded-t-[9px] px-4 py-[9px] text-[13.5px]",
                 active
                   ? "bg-ws-control text-ws-1"
-                  : "bg-white/[0.03] text-ws-3 hover:text-ws-1",
+                  : "bg-foreground/[0.03] text-ws-3 hover:text-ws-1",
               )}
             >
               <tab.icon className="h-[18px] w-[18px]" />
@@ -293,7 +298,7 @@ export function BottomPanel({ onResize }: { onResize?: React.ReactNode }) {
           )
         })}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto border-t border-white/[0.07] px-6 py-5">
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-foreground/[0.07] px-6 py-5">
         {bottomTab === "preview" ? (
           <PreviewTab />
         ) : bottomTab === "desc" ? (

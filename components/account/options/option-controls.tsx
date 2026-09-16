@@ -1,9 +1,15 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Check, ChevronsUpDown, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Check, ChevronsUpDown, Upload, X } from "lucide-react"
+import { toast } from "sonner"
 
 import { useI18n } from "@/components/account/i18n"
+import {
+  isUploadCancelled,
+  uploadProjectFileDirect,
+} from "@/lib/project-direct-upload"
+import { ASSETS_FOLDER_NAME } from "@/lib/storage/keys"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -38,6 +44,8 @@ import {
 } from "@/lib/options/numeric-format"
 import type { ExposedOption, ExposedOptionValue } from "@/lib/options/types"
 import { cn } from "@/lib/utils"
+import { OverlayControl } from "./overlay-control"
+import { VideoAdjustControl } from "./video-adjust-control"
 
 /**
  * Семь контролов вкладки настроек — по одному на `controlType`, которому автор
@@ -55,6 +63,19 @@ type ControlProps = {
   value: ExposedOptionValue
   disabled: boolean
   onChange: (value: ExposedOptionValue) => void
+  /**
+   * Нужен ровно одному контролу — выбору файла: он единственный не правит
+   * значение, а грузит файл в проект, и без проекта грузить некуда.
+   */
+  projectId: string
+  /** Словарь расширений конвейера: проверка файла до заливки. */
+  fileTypes: Record<string, string[]>
+  /**
+   * Записать значение сразу, не дожидаясь кнопки «Сохранить». Пользуется только
+   * выбор файла: файл уже в проекте, и путь обязан попасть в граф тем же
+   * действием.
+   */
+  commit: (value: ExposedOptionValue) => Promise<void>
 }
 
 /** Моноширинное поле: цифры не должны прыгать при наборе. */
@@ -518,6 +539,197 @@ function VendorAccountControl({ option, value, disabled, onChange }: ControlProp
   )
 }
 
+/** Расширение имени файла: без точки, в нижнем регистре. */
+function extensionOf(name: string): string {
+  const dot = name.lastIndexOf(".")
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : ""
+}
+
+/**
+ * Знает ли конвейер файл с таким расширением.
+ *
+ * Словарь — общий список расширений из настроек конвейера. Пустой означает
+ * «проверить нечем» (настройки не прочитались), и тогда запрещать нечего:
+ * отказ выглядел бы поломкой выбора файла.
+ *
+ * Расширения нормализуем на сравнении, а не доверяем источнику: словарь правят
+ * руками в админке, и туда легко попадает `.PNG`.
+ */
+function isKnownFileType(
+  name: string,
+  dictionary: Record<string, string[]>,
+): boolean {
+  const lists = Object.values(dictionary)
+  if (lists.length === 0) return true
+
+  const ext = extensionOf(name)
+  // Файл без расширения тип определить не даёт: в программе он резолвится по
+  // расширению и попадает в «files».
+  if (!ext) return false
+
+  return lists.some((list) =>
+    list.some((item) => item.replace(/^\.+/, "").toLowerCase() === ext),
+  )
+}
+
+/**
+ * Выбор файла (`pathNavigator` в программе).
+ *
+ * Единственный контрол, который значение не правит, а СОЗДАЁТ: файл лежит на
+ * компьютере клиента, и путь появляется только после загрузки его в проект. В
+ * ноде это выбор файла на машине; здесь машины нет, поэтому «выбрать» значит
+ * «залить».
+ *
+ * Выбрал файл — и он сразу залит и сразу записан в граф, без кнопки
+ * «Сохранить». Иначе состояния разъезжаются: файл уже лежит в `Assets/`, а
+ * путь к нему остался бы в черновике, и уход со страницы оставлял бы в проекте
+ * файл, о котором граф не знает.
+ *
+ * Тип проверяется ДО заливки, по словарю типов проекта: неподдерживаемый файл
+ * иначе доехал бы до хранилища и молча ничего не дал — обработка его просто не
+ * подхватит, и причину человек не узнает.
+ */
+function PathNavigatorControl({
+  value,
+  disabled,
+  projectId,
+  fileTypes,
+  commit,
+}: ControlProps) {
+  const { t } = useI18n()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [percent, setPercent] = useState<number | null>(null)
+
+  const current = typeof value === "string" ? value : ""
+  const fileName = current.slice(current.lastIndexOf("/") + 1)
+  const busy = percent !== null
+
+  /**
+   * Фильтр системного диалога — из того же словаря конвейера: неподходящий файл
+   * лучше не дать выбрать, чем отказать после выбора.
+   *
+   * Это подсказка, а не запрет (в диалоге можно переключиться на «все файлы»),
+   * поэтому проверка при заливке остаётся. Пустой словарь — фильтра нет, иначе
+   * диалог не дал бы выбрать ничего.
+   */
+  const accept = [
+    ...new Set(
+      Object.values(fileTypes)
+        .flat()
+        .map((item) => `.${item.replace(/^\.+/, "").toLowerCase()}`),
+    ),
+  ].join(",")
+
+  const upload = async (file: File) => {
+    if (!isKnownFileType(file.name, fileTypes)) {
+      toast.error(t.optionsFileUnsupported)
+      return
+    }
+    setPercent(0)
+    try {
+      const uploaded = await uploadProjectFileDirect({
+        projectId,
+        file,
+        folderPath: ASSETS_FOLDER_NAME,
+        // Перезаписываем ТОЛЬКО файл этого свойства. Одноимённый файл другого
+        // слота — чужой, затирать его нельзя: там сработает обычное правило
+        // хранилища с « (2)», а под каким именем файл лёг, скажет ответ.
+        overwrite:
+          `${ASSETS_FOLDER_NAME}/${file.name}`.toLowerCase() ===
+          current.toLowerCase(),
+        onProgress: setPercent,
+      })
+      await commit(`${ASSETS_FOLDER_NAME}/${uploaded.name}`)
+    } catch (error) {
+      // Отмену не показываем: человек сам нажал, и тост сообщил бы ему то, что
+      // он только что сделал.
+      if (!isUploadCancelled(error)) {
+        toast.error(
+          error instanceof Error && error.message
+            ? error.message
+            : t.optionsFileFailed,
+        )
+      }
+    } finally {
+      setPercent(null)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate font-mono text-[13px]",
+          fileName ? "text-ws-2" : "text-ws-4",
+        )}
+      >
+        {busy
+          ? `${t.optionsFileUploading} ${percent}%`
+          : fileName || t.optionsFileEmpty}
+      </span>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept || undefined}
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          // Сбрасываем поле сразу: выбрав тот же файл второй раз, человек ждёт
+          // повторной заливки, а события на одинаковом значении не будет.
+          e.target.value = ""
+          if (file) void upload(file)
+        }}
+      />
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={disabled || busy}
+        onClick={() => inputRef.current?.click()}
+        className="h-8 shrink-0 gap-1.5 text-[13px] font-normal"
+      >
+        <Upload className="h-3.5 w-3.5" />
+        {fileName ? t.optionsFileReplace : t.optionsFileUpload}
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * Наложение объекта на кадр. Обёртка над модалкой: сюда приходит строка с JSON,
+ * обратно уходит она же — разбор и слияние живут в lib/options/overlay.ts.
+ *
+ * Референс в рамке — файл из ноды-источника: путь даёт обход ребра графа
+ * (lib/options/overlay-reference.ts), ссылку — слой хранилища. Пусто, когда
+ * источник не файл или не найден; рамка тогда остаётся пустой.
+ */
+function OverlaySettingsControl({ option, value, disabled, onChange }: ControlProps) {
+  return (
+    <OverlayControl
+      value={typeof value === "string" ? value : ""}
+      disabled={disabled}
+      onChange={onChange}
+      referenceUrl={option.referenceUrl}
+    />
+  )
+}
+
+/**
+ * Смена формата кадра. Обёртка над модалкой: строка с JSON туда и обратно,
+ * разбор и слияние — lib/options/video-adjust.ts.
+ */
+function VideoAdjustSettingsControl({ value, disabled, onChange }: ControlProps) {
+  return (
+    <VideoAdjustControl
+      value={typeof value === "string" ? value : ""}
+      disabled={disabled}
+      onChange={onChange}
+    />
+  )
+}
+
 export const OPTION_CONTROLS: Record<
   ExposedOption["control"],
   (props: ControlProps) => React.ReactNode
@@ -530,6 +742,9 @@ export const OPTION_CONTROLS: Record<
   autocomplete: AutocompleteControl,
   textedit: TextEditControl,
   vendorAccount: VendorAccountControl,
+  pathNavigator: PathNavigatorControl,
+  overlaySettings: OverlaySettingsControl,
+  videoAdjustment: VideoAdjustSettingsControl,
 }
 
 /** Значение строкой — для заблокированных полей и подписей. */

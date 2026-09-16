@@ -321,6 +321,27 @@ Cross-project copy is allowed when the actor can read the source and write the d
 
 ---
 
+## `POST /api/storage/v1/move`
+
+Move into **another** project: server-side `CopyObject` into the destination owner's prefix, then the originals go to the source project's trash. Within one project use [`/rename`](#post-apistoragev1rename) — it only changes the logical path.
+
+**Body**
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `projectId` | string | yes | Source project |
+| `fileIds` | string[] | yes | Roots to move (files and/or folders) |
+| `destProjectId` | string | yes | Must differ from `projectId` (`400` otherwise) |
+| `destFolderPath` | string | no | Logical destination folder |
+| `eventId` | string | no | Idempotency key for the job |
+
+**Response `200`** (single file): `{ "files": […], "fileIds": ["…"] }`  
+**Response `202`** (folder / batch): `{ "jobId": "uuid" }` — poll `GET /jobs/:id` (`kind: "move"`); completed payload includes `fileIds` of the new copies.
+
+The actor needs write access to **both** projects: the source loses its files. Everything is copied before anything is deleted, so a failure leaves at worst an extra copy, never a lost original. Copies get new `fileId`s, colliding names get ` (2)`, ` (3)`, …, and `uploaded_by` stays the original uploader. The `options` folder and canonical sidecars cannot be moved (`403`).
+
+---
+
 ## `GET /api/storage/v1/jobs/:id`
 
 Progress for long-running storage jobs (`copy`, `move`, `purge`, `recatalog`).

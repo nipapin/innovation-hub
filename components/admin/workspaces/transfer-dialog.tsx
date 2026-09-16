@@ -93,8 +93,8 @@ export function TransferDialog({
         if (event.target === event.currentTarget) closeTransferDialog()
       }}
     >
-      <div className="flex max-h-[80vh] w-full max-w-[520px] flex-col overflow-hidden rounded-[14px] border border-white/10 bg-ws-panel">
-        <div className="shrink-0 border-b border-white/[0.08] px-5 py-4">
+      <div className="flex max-h-[80vh] w-full max-w-[520px] flex-col overflow-hidden rounded-[14px] border border-foreground/10 bg-ws-panel">
+        <div className="shrink-0 border-b border-foreground/[0.08] px-5 py-4">
           <p className="flex items-center gap-2 text-[15px] font-semibold text-ws-1">
             <ArrowLeftRight className="h-4 w-4 text-ws-accent" aria-hidden />
             {t.transferTitle}
@@ -124,7 +124,7 @@ export function TransferDialog({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t.transferSearch}
-              className="h-[38px] w-full rounded-[9px] border border-white/10 bg-ws-control pl-[34px] pr-3 text-[13px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
+              className="h-[38px] w-full rounded-[9px] border border-foreground/10 bg-ws-control pl-[34px] pr-3 text-[13px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
             />
           </div>
         </div>
@@ -147,7 +147,7 @@ export function TransferDialog({
                       onClick={() => void submit(user.id)}
                       className={cn(
                         "mb-1 flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-left",
-                        "hover:bg-white/[0.05] disabled:opacity-45",
+                        "hover:bg-foreground/[0.05] disabled:opacity-45",
                       )}
                     >
                       <span className="min-w-0 flex-1">
@@ -176,11 +176,11 @@ export function TransferDialog({
           )}
         </div>
 
-        <div className="flex shrink-0 justify-end gap-2 border-t border-white/[0.08] px-5 py-3">
+        <div className="flex shrink-0 justify-end gap-2 border-t border-foreground/[0.08] px-5 py-3">
           <button
             type="button"
             onClick={closeTransferDialog}
-            className="h-9 rounded-[9px] border border-white/[0.14] px-4 text-[13px] text-ws-2 hover:bg-white/5"
+            className="h-9 rounded-[9px] border border-foreground/[0.14] px-4 text-[13px] text-ws-2 hover:bg-foreground/5"
           >
             {t.cancel}
           </button>

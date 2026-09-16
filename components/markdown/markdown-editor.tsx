@@ -414,7 +414,7 @@ export function MarkdownEditor({
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-white/[0.07]",
+        "flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-foreground/[0.07]",
         className,
       )}
     >
@@ -499,7 +499,7 @@ export function MarkdownEditor({
           <div
             className={cn(
               "scrollbar-elegant min-w-0 flex-1 overflow-y-auto bg-ws-control p-3",
-              view === "split" && "border-l border-white/[0.07]",
+              view === "split" && "border-l border-foreground/[0.07]",
               narrow && "flex justify-center",
             )}
           >
@@ -542,7 +542,7 @@ export function MarkdownEditor({
               <Input
                 value={linkText}
                 onChange={(e) => setLinkText(e.target.value)}
-                className="mt-1 border-white/10 bg-ws-control text-ws-1"
+                className="mt-1 border-foreground/10 bg-ws-control text-ws-1"
               />
             </label>
             <label className="text-[12px] text-ws-3">
@@ -551,7 +551,7 @@ export function MarkdownEditor({
                 value={linkUrl}
                 onChange={(e) => setLinkUrl(e.target.value)}
                 placeholder="https://"
-                className="mt-1 border-white/10 bg-ws-control text-ws-1"
+                className="mt-1 border-foreground/10 bg-ws-control text-ws-1"
               />
             </label>
           </div>
@@ -591,7 +591,7 @@ export function MarkdownEditor({
                 max={12}
                 value={cols}
                 onChange={(e) => setCols(Number(e.target.value))}
-                className="mt-1 w-[92px] border-white/10 bg-ws-control text-ws-1"
+                className="mt-1 w-[92px] border-foreground/10 bg-ws-control text-ws-1"
               />
             </label>
             <label className="text-[12px] text-ws-3">
@@ -602,7 +602,7 @@ export function MarkdownEditor({
                 max={50}
                 value={rows}
                 onChange={(e) => setRows(Number(e.target.value))}
-                className="mt-1 w-[92px] border-white/10 bg-ws-control text-ws-1"
+                className="mt-1 w-[92px] border-foreground/10 bg-ws-control text-ws-1"
               />
             </label>
             <label className="flex items-center gap-2 pb-2 text-[13px] text-ws-2">
@@ -647,7 +647,7 @@ export function MarkdownEditor({
               value={codeLang}
               onChange={(e) => setCodeLang(e.target.value)}
               placeholder="ts, json, bash…"
-              className="mt-1 border-white/10 bg-ws-control text-ws-1"
+              className="mt-1 border-foreground/10 bg-ws-control text-ws-1"
             />
           </label>
           <DialogFooter>

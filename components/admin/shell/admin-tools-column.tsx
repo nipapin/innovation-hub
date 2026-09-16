@@ -46,7 +46,7 @@ export function AdminToolsColumn({ area }: { area: AdminArea }) {
   return (
     <section
       style={{ width: size }}
-      className="relative hidden h-full shrink-0 flex-col overflow-hidden border-r border-white/[0.08] bg-ws-well lg:flex"
+      className="relative hidden h-full shrink-0 flex-col overflow-hidden border-r border-foreground/[0.08] bg-ws-well lg:flex"
     >
       <header className="flex items-center gap-2 px-4 pb-2 pt-5">
         <span className="h-3 w-[3px] shrink-0 rounded-full bg-primary/60" />
@@ -67,7 +67,7 @@ export function AdminToolsColumn({ area }: { area: AdminArea }) {
                 "flex items-start gap-2.5 rounded-[10px] px-2.5 py-2 transition-colors",
                 active
                   ? "bg-ws-select/35 text-ws-1"
-                  : "text-ws-3 hover:bg-white/5 hover:text-ws-1",
+                  : "text-ws-3 hover:bg-foreground/5 hover:text-ws-1",
               )}
             >
               <Icon className="mt-0.5 h-4 w-4 shrink-0" />

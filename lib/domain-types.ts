@@ -29,6 +29,13 @@ export type UserRecord = {
    * не меняются. Расшаренные проекты гейтятся флагом владельца.
    */
   automationEnabled: boolean
+  /**
+   * Компания человека. NULL — общий раздел, то есть сайт ровно такой, каким
+   * работал до компаний (docs/COMPANY_ACCOUNTS_PLAN.md §3). Пара с
+   * `companyRole` держится CHECK'ом в базе: либо оба NULL, либо оба заполнены.
+   */
+  companyId: string | null
+  companyRole: CompanyRole | null
 }
 
 export type ProjectGroupName = "personal" | "shared" | "tools" | "archive"
@@ -63,7 +70,7 @@ export type ProjectRecord = {
    * Почему проект стоит. NULL — остановил человек; иначе биллинг, и тумблер
    * обратно не включится, пока платить нечем (lib/billing/admission.ts).
    */
-  pausedReason: "no-funds" | "trial-over" | "no-vendor-key" | null
+  pausedReason: "no-funds" | "trial-over" | "no-vendor-key" | "payer-no-funds" | null
   /** Soft-deleted into project trash; purged after retention. */
   deletedAt: Date | null
   /** Optional client grouping (UI hierarchy; not part of R2 keys). */
@@ -149,6 +156,38 @@ export type UserRecordWithPassword = UserRecord & {
   passwordHash: string | null
   authProvider: AuthProvider
   providerAccountId: string | null
+  /**
+   * person — обычный человек. company_wallet — служебный аккаунт кошелька
+   * компании (docs/COMPANY_ACCOUNTS_PLAN.md §7.3): без пароля, вход отклоняется
+   * явной проверкой в app/api/auth/signin, а не только отсутствием пароля —
+   * иначе сообщение об ошибке путало бы это с OAuth-аккаунтом.
+   */
+  kind: UserKind
+}
+
+/** См. UserRecordWithPassword.kind. */
+export type UserKind = "person" | "company_wallet"
+
+/**
+ * Роль внутри компании — вторая, независимая от users.role ось (план §4).
+ * `owner` — корень раздачи прав в своей компании, аналог SUPERADMIN на сайте;
+ * `admin` действует по тегам company_capabilities; `member` работает в своих
+ * проектах и консоли компании не видит.
+ */
+export type CompanyRole = "member" | "admin" | "owner"
+
+export type CompanyRecord = {
+  id: string
+  slug: string
+  title: string
+  walletUserId: string
+  domain: string | null
+  branding: Record<string, unknown>
+  features: Record<string, unknown>
+  isActive: boolean
+  createdBy: string | null
+  createdAt: Date
+  updatedAt: Date
 }
 
 export type VideoRecord = {

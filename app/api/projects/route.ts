@@ -70,7 +70,7 @@ function serializeProject(
     groupName: string
     isActive: boolean
     isArchived: boolean
-    pausedReason?: "no-funds" | "trial-over" | "no-vendor-key" | null
+    pausedReason?: "no-funds" | "trial-over" | "no-vendor-key" | "payer-no-funds" | null
     archivedAt: Date | string | null
     deletedAt?: Date | string | null
     clientId: string | null

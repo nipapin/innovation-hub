@@ -260,16 +260,23 @@ export function ShareDialog() {
    *
    * Фильтр — по всей набранной строке, а не по последнему слову: имя пишется с
    * пробелом, и «Иван Пет» должно находить «Иван Петров».
+   *
+   * ПУСТОЕ ПОЛЕ — ПУСТОЙ СПИСОК, а не «показать всех».
+   *
+   * Раньше диалог открывался с готовым списком тех, кого этот человек уже
+   * приглашал. В компании это почти весь её состав: кто с кем работал, кто чей
+   * подрядчик — выложено на экран тому, кто просто нажал «Поделиться». Список
+   * своей переписки человек и так помнит; тому, кто его открыл, он не нужен, а
+   * случайному зрителю за плечом — тем более. Подсказка обязана быть ответом на
+   * вопрос, а не описью.
    */
   const suggestions = useMemo(() => {
     const q = draft.trim().toLowerCase()
+    if (!q) return []
     return contacts
       .filter((c) => !taken.has(c.email))
       .filter(
-        (c) =>
-          !q ||
-          c.email.includes(q) ||
-          c.fullName.toLowerCase().includes(q),
+        (c) => c.email.includes(q) || c.fullName.toLowerCase().includes(q),
       )
       .slice(0, 8)
   }, [contacts, draft, taken])
@@ -481,6 +488,13 @@ export function ShareDialog() {
         body: JSON.stringify({ emails: unique, role: inviteRole }),
       })
       const data = await res.json().catch(() => ({}))
+      // Отказ по рамке компании приходит ОДИН на весь запрос, без `results`:
+      // сервер не зовёт никого, если в списке есть посторонний. Иначе часть
+      // адресов уехала бы, часть нет, и человек не понял бы, что произошло.
+      if (res.status === 403 && data.code === "company-outsider") {
+        toast.error(t.coShareOutsider)
+        return
+      }
       const results = Array.isArray(data.results) ? data.results : []
       const ok = results.filter((r: { ok?: boolean }) => r.ok)
       const fail = results.filter((r: { ok?: boolean }) => !r.ok)
@@ -608,7 +622,7 @@ export function ShareDialog() {
         <div className="px-6 pb-2 pt-4">
           <div className="relative">
             <div
-              className="flex min-h-[48px] items-start gap-2 rounded-xl border border-white/10 bg-ws-control px-2 py-1.5 focus-within:border-ws-select"
+              className="flex min-h-[48px] items-start gap-2 rounded-xl border border-foreground/10 bg-ws-control px-2 py-1.5 focus-within:border-ws-select"
               onClick={() => inputRef.current?.focus()}
             >
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 py-0.5">
@@ -616,12 +630,12 @@ export function ShareDialog() {
                   <span
                     key={chip.email}
                     title={chip.email}
-                    className="inline-flex max-w-full items-center gap-1 rounded-full bg-white/10 py-0.5 pl-2 pr-1 text-[13px] text-ws-1"
+                    className="inline-flex max-w-full items-center gap-1 rounded-full bg-foreground/10 py-0.5 pl-2 pr-1 text-[13px] text-ws-1"
                   >
                     <span className="truncate">{chip.name || chip.email}</span>
                     <button
                       type="button"
-                      className="flex h-5 w-5 items-center justify-center rounded-full text-ws-3 hover:bg-white/10 hover:text-ws-1"
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-ws-3 hover:bg-foreground/10 hover:text-ws-1"
                       onClick={(e) => {
                         e.stopPropagation()
                         setChips((prev) =>
@@ -672,7 +686,7 @@ export function ShareDialog() {
               разбирает набранное и закрывает список — по строке не попасть.
             */}
             {suggestOpen && suggestions.length > 0 ? (
-              <div className="absolute inset-x-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-xl border border-white/10 bg-ws-raised shadow-lg">
+              <div className="absolute inset-x-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-xl border border-foreground/10 bg-ws-raised shadow-lg">
                 <p className="px-3 pb-1 pt-2 text-[11px] uppercase tracking-wide text-ws-4">
                   {t.shareRecent}
                 </p>
@@ -682,7 +696,7 @@ export function ShareDialog() {
                       key={contact.email}
                       className={cn(
                         "flex items-center gap-2 px-1.5",
-                        index === active && "bg-white/10",
+                        index === active && "bg-foreground/10",
                       )}
                       onMouseEnter={() => setActive(index)}
                     >
@@ -707,7 +721,7 @@ export function ShareDialog() {
                       </button>
                       <button
                         type="button"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ws-4 hover:bg-white/10 hover:text-destructive"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ws-4 hover:bg-foreground/10 hover:text-destructive"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => void forget(contact)}
                         aria-label={t.shareForget}
@@ -819,7 +833,7 @@ export function ShareDialog() {
           )}
         </div>
 
-        <DialogFooter className="border-t border-white/10 px-6 py-4">
+        <DialogFooter className="border-t border-foreground/10 px-6 py-4">
           {hasPending ? (
             <Button
               type="button"
@@ -868,7 +882,7 @@ function RoleMenu({
         <button
           type="button"
           disabled={disabled}
-          className="mt-0.5 inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[13px] text-ws-2 hover:bg-white/10 hover:text-ws-1 disabled:opacity-50"
+          className="mt-0.5 inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[13px] text-ws-2 hover:bg-foreground/10 hover:text-ws-1 disabled:opacity-50"
           onClick={(e) => e.stopPropagation()}
         >
           {roleLabel(value, t)}
@@ -877,7 +891,7 @@ function RoleMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="min-w-[220px] border-white/10 bg-ws-raised text-ws-1"
+        className="min-w-[220px] border-foreground/10 bg-ws-raised text-ws-1"
       >
         {ROLES.map((role) => (
           <RoleItem
@@ -909,7 +923,7 @@ function MemberRoleMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[13px] text-ws-2 hover:bg-white/10 hover:text-ws-1"
+          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[13px] text-ws-2 hover:bg-foreground/10 hover:text-ws-1"
         >
           {roleLabel(value, t)}
           <ChevronDown className="h-3.5 w-3.5 opacity-70" />
@@ -917,7 +931,7 @@ function MemberRoleMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="min-w-[220px] border-white/10 bg-ws-raised text-ws-1"
+        className="min-w-[220px] border-foreground/10 bg-ws-raised text-ws-1"
       >
         {ROLES.map((role) => (
           <RoleItem
@@ -928,9 +942,9 @@ function MemberRoleMenu({
             onSelect={onChange}
           />
         ))}
-        <DropdownMenuSeparator className="bg-white/10" />
+        <DropdownMenuSeparator className="bg-foreground/10" />
         <DropdownMenuItem
-          className="cursor-pointer text-destructive focus:bg-white/10 focus:text-destructive"
+          className="cursor-pointer text-destructive focus:bg-foreground/10 focus:text-destructive"
           onSelect={onRemove}
         >
           {t.shareRemove}
@@ -953,7 +967,7 @@ function RoleItem({
 }) {
   return (
     <DropdownMenuItem
-      className="cursor-pointer flex-col items-start gap-0.5 py-2 focus:bg-white/10 focus:text-ws-1"
+      className="cursor-pointer flex-col items-start gap-0.5 py-2 focus:bg-foreground/10 focus:text-ws-1"
       onSelect={() => onSelect(role)}
     >
       <span className="flex w-full items-center gap-2">

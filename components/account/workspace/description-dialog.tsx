@@ -120,7 +120,7 @@ export function DescriptionDialog({
           "[&>button]:hidden",
         )}
       >
-        <div className="flex shrink-0 items-center gap-3 border-b border-white/[0.07] px-5 py-3.5">
+        <div className="flex shrink-0 items-center gap-3 border-b border-foreground/[0.07] px-5 py-3.5">
           <FileText className="h-[18px] w-[18px] shrink-0 text-ws-accent" />
           <DialogTitle className="truncate text-[15px] font-semibold text-ws-1">
             {t.descMdTitle} — {projectName}
@@ -181,7 +181,7 @@ export function DescriptionDialog({
               type="button"
               onClick={requestClose}
               aria-label={t.cancel}
-              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-ws-3 hover:bg-white/[0.07] hover:text-ws-1"
+              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-ws-3 hover:bg-foreground/[0.07] hover:text-ws-1"
             >
               <X className="h-4 w-4" />
             </button>
@@ -193,7 +193,7 @@ export function DescriptionDialog({
             value={draft}
             onChange={setDraft}
             loadKey={loadKey}
-            className="m-3 flex-1 border-white/[0.07]"
+            className="m-3 flex-1 border-foreground/[0.07]"
           />
         ) : (
           <div className="scrollbar-elegant min-h-0 flex-1 overflow-y-auto px-6 py-5">

@@ -22,7 +22,7 @@ export function AdminSidebarUser({ email, fullName, onSignOut }: Props) {
   const t = useAdminI18n()
   const display = fullName.trim() || email
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-white/[0.03] p-2.5">
+    <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-foreground/[0.03] p-2.5">
       <Avatar className="h-9 w-9 border border-border/50">
         <AvatarFallback className="bg-primary/15 text-sm font-semibold text-primary">
           {avatarLetter(display)}

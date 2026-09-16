@@ -42,14 +42,22 @@ export type ProjectDriveDto = {
   files: ProjectDriveFileDto[]
   folderState: ProjectFolderStateDto | null
   options: ExposedOption[]
+  /** Словарь расширений конвейера: им контрол выбора файла проверяет файл
+   *  до заливки. */
+  fileTypes: Record<string, string[]>
 }
 
 type Props = {
   projectId: string
   options: ExposedOption[]
+  fileTypes: Record<string, string[]>
 }
 
-export function ProjectAutomationPanel({ projectId, options }: Props) {
+export function ProjectAutomationPanel({
+  projectId,
+  options,
+  fileTypes,
+}: Props) {
   const save = async (
     changes: ExposedOptionChange[],
   ): Promise<ExposedOption[]> => {
@@ -70,7 +78,9 @@ export function ProjectAutomationPanel({ projectId, options }: Props) {
 
   return (
     <ExposedOptionsList
+      projectId={projectId}
       options={options}
+      fileTypes={fileTypes}
       onSave={save}
       className="rounded-2xl border border-border/60 bg-[hsl(var(--surface-1))]/40 px-5 py-4"
     />

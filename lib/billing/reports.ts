@@ -232,6 +232,7 @@ export async function searchUsers(q: string, limit = 20): Promise<UserPick[]> {
             COALESCE(balance_gift_cents, 0)::text AS "balanceGiftCents"
        FROM users
       WHERE is_active
+        AND kind = 'person'
         AND (lower(email) LIKE $1 OR lower(COALESCE(full_name, '')) LIKE $1)
       ORDER BY email
       LIMIT $2`,

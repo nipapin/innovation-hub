@@ -7,7 +7,7 @@ import {
   type GateProblem,
 } from "@/lib/vault/gate"
 import { estimateItem } from "@/lib/billing/estimate"
-import { getFunds, type Funds } from "@/lib/billing/funds"
+import { getFunds, holdReserve, type Funds } from "@/lib/billing/funds"
 import type { PayUnitProblem } from "@/lib/billing/pay-unit"
 import { readBillingSettings } from "@/lib/billing/settings"
 import { query, withTransaction } from "@/lib/db"
@@ -638,17 +638,22 @@ export async function materializeCandidates(input: {
   }
 
   /**
-   * Тарифы читаются один раз на проход, деньги — один раз на владельца: в пачке
+   * Тарифы читаются один раз на проход, деньги — один раз на кошелёк: в пачке
    * обычно десятки элементов и два-три человека, и запрос на каждый элемент был
    * бы самой дорогой частью сборки.
+   *
+   * Ключ кэша — кошелёк, а не владелец: за нескольких людей может платить один
+   * (docs/COMPANY_ACCOUNTS_PLAN.md §7), и своя копия остатка у каждого из них
+   * разрешила бы потратить его несколько раз. Допущенная задача вычитается из
+   * этой копии сразу (`holdReserve`) — по той же причине.
    */
   const { settings } = await readBillingSettings()
   const fundsCache = new Map<string, Funds>()
-  const fundsOf = async (ownerId: string): Promise<Funds> => {
-    const cached = fundsCache.get(ownerId)
+  const fundsOf = async (walletUserId: string): Promise<Funds> => {
+    const cached = fundsCache.get(walletUserId)
     if (cached) return cached
-    const funds = await getFunds(ownerId)
-    fundsCache.set(ownerId, funds)
+    const funds = await getFunds(walletUserId)
+    fundsCache.set(walletUserId, funds)
     return funds
   }
 
@@ -871,7 +876,7 @@ export async function materializeCandidates(input: {
         ).cents
       : 0
 
-    const funds = await fundsOf(project.ownerId)
+    const funds = await fundsOf(project.payerId)
     const admission = admitItem({
       ownerId: project.ownerId,
       projectId: project.projectId,
@@ -881,6 +886,7 @@ export async function materializeCandidates(input: {
       estimateCents,
       funds,
       ownerBillingExempt: project.ownerBillingExempt,
+      ownerHasPayer: project.ownerHasPayer,
     })
 
     if (!admission.ok) {
@@ -901,8 +907,12 @@ export async function materializeCandidates(input: {
       payWallet: admission.wallet,
       payGrantId: admission.grantId,
     })
-    if (inserted) created += 1
-    else noteSkip(project.projectId, project.name, "already-queued")
+    if (inserted) {
+      created += 1
+      holdReserve(funds, admission)
+    } else {
+      noteSkip(project.projectId, project.name, "already-queued")
+    }
   }
 
   return { created, skipped, unpriced }

@@ -42,7 +42,7 @@ export function ToolHelpDialog({
         aria-describedby={undefined}
         className="flex max-h-[82vh] w-[640px] max-w-[92vw] flex-col gap-0 overflow-hidden p-0"
       >
-        <DialogHeader className="flex-none border-b border-white/[0.07] px-5 py-4">
+        <DialogHeader className="flex-none border-b border-foreground/[0.07] px-5 py-4">
           <DialogTitle className="text-[16px] font-semibold">{t.srtHotkeysTitle}</DialogTitle>
         </DialogHeader>
         <div className="scrollbar-elegant min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-2">
@@ -51,11 +51,11 @@ export function ToolHelpDialog({
             return (
               <div
                 key={row.title}
-                className="grid grid-cols-[26px_120px_1fr] items-start gap-3 border-b border-white/[0.06] py-3 last:border-b-0"
+                className="grid grid-cols-[26px_120px_1fr] items-start gap-3 border-b border-foreground/[0.06] py-3 last:border-b-0"
               >
                 <Icon className="h-[19px] w-[19px] text-ws-accent" />
                 <div className="flex">
-                  <kbd className="whitespace-nowrap rounded border border-white/[0.10] bg-ws-well px-2 py-[2px] font-mono text-[12px] text-ws-2">
+                  <kbd className="whitespace-nowrap rounded border border-foreground/[0.10] bg-ws-well px-2 py-[2px] font-mono text-[12px] text-ws-2">
                     {row.key}
                   </kbd>
                 </div>

@@ -1,6 +1,7 @@
 import { query, withTransaction } from "@/lib/db"
 import { quarantineQuietly } from "@/lib/pipeline/quarantine"
 import { isElevated } from "@/lib/admin-roles"
+import { OWN_MACHINES_ONLY_KEY } from "@/lib/company-features"
 
 /**
  * Выдача задач машинам.
@@ -40,15 +41,84 @@ export type ClaimedTask = {
   leaseExpiresAt: string
 }
 
-/** Кто зовёт очередь: машина видит либо все проекты, либо только свои. */
+/**
+ * Кто зовёт очередь. Три ступени видимости, а не две
+ * (docs/COMPANY_PIPELINE_PLAN.md §3).
+ */
 export type QueueCaller = {
   computerId: string
   userId: string
   role: string
+  /**
+   * Компания машины. NULL — наша. Заполнено — она стоит у клиента и берёт
+   * только задачи его людей.
+   */
+  companyId?: string | null
 }
 
 function isAdmin(caller: QueueCaller): boolean {
   return isElevated(caller.role)
+}
+
+/**
+ * Что именно видно этой машине в очереди.
+ *
+ * Три ступени:
+ *
+ *   машина компании — задачи людей ЭТОЙ компании, и больше ничего;
+ *   наша машина     — общий раздел и компании, у которых своих машин нет;
+ *   `mch_` человека — проекты своего владельца, как было всегда.
+ *
+ * Средняя ступень — не «всё подряд», и это главное изменение. Компания, отдавшая
+ * нам свои машины, чаще всего сделала это из-за конфиденциальности: её работа не
+ * должна попадать на чужое железо. Поэтому наша машина обходит стороной задачи
+ * тех компаний, у кого машины есть.
+ *
+ * «Есть машины» считается по наличию СТРОКИ, а не по тому, на связи ли она
+ * сейчас. Иначе перезагрузка машины у клиента на пять минут перекидывала бы его
+ * работу к нам и обратно — ровно то, чего он просил не делать.
+ *
+ * Флаг `ownMachinesOnly` (§4) сужает середину ещё раз и отвечает на единственный
+ * оставшийся вопрос: что делать, если своих машин у компании нет СОВСЕМ.
+ * Выключен — берём на себя; включён — очередь стоит. Стоящая очередь видна и
+ * объяснима, молча уехавшая к нам чужая работа — нет.
+ */
+function visibilityClause(caller: QueueCaller): {
+  sql: string
+  params: (string | boolean)[]
+} {
+  if (caller.companyId) {
+    return {
+      sql: `u.company_id = $3`,
+      params: [caller.companyId],
+    }
+  }
+  if (isAdmin(caller)) {
+    return {
+      sql: `(
+             u.company_id IS NULL
+             OR (
+               NOT EXISTS (
+                 SELECT 1 FROM remote_computers rc
+                  WHERE rc.company_id = u.company_id
+                    AND rc.revoked_at IS NULL
+               )
+               -- Сравнение с 'true'::jsonb, а не приведение ->>'...'::boolean:
+               -- в свободном мешке features под этим ключом однажды окажется
+               -- строка, которую приведение не осилит, и упадёт не флаг, а весь
+               -- запрос очереди — то есть встанет обработка у всех сразу.
+               -- Сравнение же тотально: не true значит выключен.
+               AND NOT COALESCE(
+                 (SELECT c.features->'${OWN_MACHINES_ONLY_KEY}' = 'true'::jsonb
+                    FROM companies c WHERE c.id = u.company_id),
+                 FALSE
+               )
+             )
+           )`,
+      params: [],
+    }
+  }
+  return { sql: `p.user_id = $3`, params: [caller.userId] }
 }
 
 type ClaimRow = {
@@ -68,13 +138,14 @@ type ClaimRow = {
  * `null` — очередь пуста; это штатный ответ, а не ошибка: машина дёргает claim на
  * каждом пульсе демона синхронизации (3 с) и пустой ответ получает почти всегда.
  *
- * Видимость задач наследует роль токена: под админским токеном машина разгребает
- * общую очередь, под обычным — только проекты своего владельца. Это граница
- * доверия, а не деталь реализации.
+ * Видимость задач — три ступени, см. `visibilityClause`. Это граница доверия, а
+ * не деталь реализации: машина компании не должна увидеть чужую задачу даже на
+ * мгновение, потому что вслед за задачей она пойдёт за файлами проекта.
  */
 export async function claimNextTask(
   caller: QueueCaller,
 ): Promise<ClaimedTask | null> {
+  const visibility = visibilityClause(caller)
   const result = await query<ClaimRow>(
     `UPDATE tasks t
         SET status           = 'claimed',
@@ -92,8 +163,9 @@ export async function claimNextTask(
         SELECT c.id
           FROM tasks c
           JOIN projects p ON p.id = c.project_id
+          JOIN users u ON u.id = p.user_id
          WHERE c.status = 'queued'
-           AND ($3::boolean OR p.user_id = $4)
+           AND ${visibility.sql}
          ORDER BY c.created_at
          LIMIT 1
          FOR UPDATE SKIP LOCKED
@@ -107,7 +179,7 @@ export async function claimNextTask(
                 (SELECT name FROM projects WHERE id = t.project_id) AS "projectName",
                 (SELECT u.email FROM projects p2 JOIN users u ON u.id = p2.user_id
                   WHERE p2.id = t.project_id) AS "ownerEmail"`,
-    [caller.computerId, String(LEASE_MINUTES), isAdmin(caller), caller.userId],
+    [caller.computerId, String(LEASE_MINUTES), ...visibility.params],
   )
 
   const row = result.rows[0]

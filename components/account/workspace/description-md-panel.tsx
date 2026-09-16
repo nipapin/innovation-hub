@@ -74,7 +74,7 @@ export function DescriptionMdPanel({
   }
 
   const actionClass =
-    "flex items-center gap-1.5 rounded-[9px] border border-white/10 px-3 py-1.5 text-[12.5px] text-ws-2 hover:bg-white/5 disabled:opacity-60"
+    "flex items-center gap-1.5 rounded-[9px] border border-foreground/10 px-3 py-1.5 text-[12.5px] text-ws-2 hover:bg-foreground/5 disabled:opacity-60"
 
   return (
     <section className="flex h-full min-h-[180px] flex-col">
@@ -110,7 +110,7 @@ export function DescriptionMdPanel({
           <Loader2 className="h-4 w-4 animate-spin" />
         </div>
       ) : body ? (
-        <div className="scrollbar-elegant min-h-0 flex-1 overflow-y-auto rounded-[10px] border border-white/[0.07] bg-ws-control p-4">
+        <div className="scrollbar-elegant min-h-0 flex-1 overflow-y-auto rounded-[10px] border border-foreground/[0.07] bg-ws-control p-4">
           <MarkdownView>{body}</MarkdownView>
         </div>
       ) : (

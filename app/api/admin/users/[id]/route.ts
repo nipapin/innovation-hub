@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireAdminApi } from "@/lib/admin-auth"
 import { auditFrom } from "@/lib/audit"
+import { hasDependents } from "@/lib/billing/payer"
 import { clearCapabilities } from "@/lib/repositories/admin-capabilities"
 import { userUpdateSchema } from "@/lib/admin-schemas"
 import { hashPassword } from "@/lib/auth"
@@ -253,6 +254,18 @@ export async function DELETE(
         { status: 400 },
       )
     }
+  }
+
+  // Тот, кто платит за других, уходит только после них: каскад унёс бы ленту
+  // со списаниями их проектов (docs/COMPANY_ACCOUNTS_PLAN.md §7.8).
+  if (await hasDependents(id)) {
+    return NextResponse.json(
+      {
+        message: "This user pays for other people. Reassign them before deleting.",
+        code: "has-dependents",
+      },
+      { status: 409 },
+    )
   }
 
   await deleteUser(id)

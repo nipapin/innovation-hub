@@ -233,7 +233,7 @@ export function BuildTaskScreen({
 
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-      <div className="flex w-full max-w-[440px] flex-col gap-4 rounded-[6px] border border-white/[0.07] bg-ws-raised p-5">
+      <div className="flex w-full max-w-[440px] flex-col gap-4 rounded-[6px] border border-foreground/[0.07] bg-ws-raised p-5">
         <div className="flex items-start gap-2.5">
           <Hammer className="mt-[2px] h-[18px] w-[18px] shrink-0 text-ws-accent" />
           <div className="flex flex-col gap-1">
@@ -254,7 +254,7 @@ export function BuildTaskScreen({
                 value={originalLang}
                 disabled={Boolean(progress)}
                 onChange={(e) => setOriginalLang(e.target.value)}
-                className="h-[30px] min-w-[160px] rounded border border-white/[0.09] bg-ws-well px-2 text-[13px] text-ws-1"
+                className="h-[30px] min-w-[160px] rounded border border-foreground/[0.09] bg-ws-well px-2 text-[13px] text-ws-1"
               >
                 {COMMON.map((code) => (
                   <option key={code} value={code}>
@@ -266,7 +266,7 @@ export function BuildTaskScreen({
 
             {progress ? (
               <div className="flex flex-col gap-2">
-                <div className="h-[3px] overflow-hidden rounded bg-white/[0.08]">
+                <div className="h-[3px] overflow-hidden rounded bg-foreground/[0.08]">
                   <div
                     className="h-full bg-ws-accent transition-[width]"
                     style={{

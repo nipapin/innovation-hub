@@ -1,3 +1,4 @@
+import { getCompanyContext } from "@/lib/company-auth"
 import { notFound, redirect } from "next/navigation"
 
 import {
@@ -20,11 +21,14 @@ export default async function HelpArticlePage({
 
   const { id } = await params
   const topic = findTopic(id)
+  // Вторая ось прав: статью про консоль компании видит тот, кого туда пускает
+  // её гейт, а не обладатель какого-то тега сайта.
+  const viewer = { ...user, companyAdmin: (await getCompanyContext()) !== null }
 
   // Тема, до которой человеку не открыт интерфейс, для него не существует:
   // 404, а не «недостаточно прав» — по перебору id иначе читается карта чужих
   // разделов. Тот же ответ, что у роута шапки.
-  if (!topic || !canSeeTopic(user, topic)) notFound()
+  if (!topic || !canSeeTopic(viewer, topic)) notFound()
 
   const bundle = loadBundle(topic.id)
   if (!bundle) notFound()
@@ -33,7 +37,7 @@ export default async function HelpArticlePage({
   // человек не откроет, — это обещание, которое интерфейс не выполнит.
   const seeAlso: HelpArticleLink[] = seeAlsoOf(topic).flatMap((relatedId) => {
     const related = findTopic(relatedId)
-    if (!related || !canSeeTopic(user, related)) return []
+    if (!related || !canSeeTopic(viewer, related)) return []
 
     const relatedBundle = loadBundle(related.id)
     if (!relatedBundle) return []

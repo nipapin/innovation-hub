@@ -3,6 +3,7 @@ import { z } from "zod"
 import { requireAdminApi } from "@/lib/admin-auth"
 import { auditFrom } from "@/lib/audit"
 import { listPipelineUsers } from "@/lib/pipeline/repository"
+import { listCompanies } from "@/lib/repositories/companies"
 import { findUserById, setUserAutomationEnabled } from "@/lib/repositories/users"
 
 export const runtime = "nodejs"
@@ -18,8 +19,21 @@ export async function GET(request: NextRequest) {
   const auth = await requireAdminApi(request, "projects.access")
   if (auth instanceof NextResponse) return auth
 
-  const users = await listPipelineUsers()
-  return NextResponse.json({ users })
+  // Компании отдаём списком, а не выводим из людей: заведённая, но пока
+  // безлюдная компания обязана быть видна отдельной строкой. Выводись области
+  // из пользователей — она бы просто не появилась, и «завели или не завели»
+  // пришлось бы выяснять в другом разделе.
+  const [users, companies] = await Promise.all([
+    listPipelineUsers(),
+    listCompanies(),
+  ])
+  return NextResponse.json({
+    users,
+    companies: companies.map((company) => ({
+      id: company.id,
+      title: company.title,
+    })),
+  })
 }
 
 const patchSchema = z.object({

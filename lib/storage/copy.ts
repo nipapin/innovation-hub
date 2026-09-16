@@ -33,6 +33,12 @@ type SourceRow = ProjectFileRecord & {
   etag: string | null
   contentHash: string | null
   originMtime: number | null
+  /**
+   * Кто залил оригинал — перенос между проектами оставляет его заливщиком.
+   * Необязательное: строки, собранные не выборкой отсюда (публикация), его
+   * не несут, а переносом и не пользуются.
+   */
+  sourceUploadedBy?: string | null
 }
 
 async function loadSourceFiles(
@@ -44,7 +50,8 @@ async function loadSourceFiles(
     `SELECT ${FILE_FIELDS},
             etag,
             content_hash AS "contentHash",
-            origin_mtime AS "originMtime"
+            origin_mtime AS "originMtime",
+            uploaded_by AS "sourceUploadedBy"
        FROM project_files
       WHERE project_id = $1
         AND id = ANY($2::text[])
@@ -63,7 +70,8 @@ async function loadFolderSubtree(
     `SELECT ${FILE_FIELDS},
             etag,
             content_hash AS "contentHash",
-            origin_mtime AS "originMtime"
+            origin_mtime AS "originMtime",
+            uploaded_by AS "sourceUploadedBy"
        FROM project_files
       WHERE project_id = $1
         AND deleted_at IS NULL
@@ -104,6 +112,8 @@ async function insertCopiedRow(
     originMtime: number | null
     eventId?: string | null
     actor?: StorageActor | null
+    /** Заливщик копии. Не задан — берётся из `actor`, см. ниже. */
+    uploadedBy?: string | null
   },
 ): Promise<ProjectFileRecord> {
   const name = validateLogicalName(input.name)
@@ -133,8 +143,13 @@ async function insertCopiedRow(
       input.contentHash,
       input.originMtime,
       // Копирование — такое же появление файла в проекте, как загрузка: заливщик
-      // тот, кто запустил копирование.
-      input.actor?.isUploader === false ? null : (input.actor?.userId ?? null),
+      // тот, кто запустил копирование. Перенос — не появление: файл тот же, и
+      // заливщик у него прежний, как при переносе внутри проекта.
+      input.uploadedBy !== undefined
+        ? input.uploadedBy
+        : input.actor?.isUploader === false
+          ? null
+          : (input.actor?.userId ?? null),
     ],
   )
   const file = result.rows[0]!
@@ -226,6 +241,8 @@ export async function copySingleFile(input: {
   source: SourceRow
   eventId?: string | null
   actor?: StorageActor | null
+  /** Перенос: заливщиком копии остаётся заливщик оригинала. */
+  keepUploader?: boolean
 }): Promise<ProjectFileRecord> {
   if (input.source.isFolder) {
     throw new StorageWriteError("Use job path for folder copy.", 400)
@@ -269,6 +286,9 @@ export async function copySingleFile(input: {
       originMtime: input.source.originMtime,
       eventId: input.eventId ?? null,
       actor: input.actor,
+      uploadedBy: input.keepUploader
+        ? (input.source.sourceUploadedBy ?? null)
+        : undefined,
     }),
   )
 }
@@ -286,7 +306,12 @@ export async function copyPlanItem(input: {
   folderPathMap: Map<string, string>
   eventId?: string | null
   actor?: StorageActor | null
+  /** Перенос: заливщиком копии остаётся заливщик оригинала. */
+  keepUploader?: boolean
 }): Promise<ProjectFileRecord> {
+  const uploadedBy = input.keepUploader
+    ? (input.item.source.sourceUploadedBy ?? null)
+    : undefined
   const baseDest = input.destFolderPath.replace(/^\/+|\/+$/g, "")
   const relative = input.item.relativeFolder.replace(/^\/+|\/+$/g, "")
 
@@ -316,6 +341,7 @@ export async function copyPlanItem(input: {
         originMtime: null,
         eventId: input.eventId ?? null,
         actor: input.actor,
+        uploadedBy,
       }),
     )
     const sourceRelKey = relative
@@ -355,6 +381,7 @@ export async function copyPlanItem(input: {
       originMtime: input.item.source.originMtime,
       eventId: input.eventId ?? null,
       actor: input.actor,
+      uploadedBy,
     }),
   )
 }

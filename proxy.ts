@@ -47,6 +47,19 @@ export async function proxy(request: NextRequest) {
     return redirectTo(request, (await hasSession(request)) ? "/account" : "/login")
   }
 
+  /**
+   * Консоль компании. Здесь — только «вошёл ли вообще»: роль в компании в JWT
+   * не лежит и лежать не должна, а сессия живёт семь суток — снятый владелец
+   * обязан терять доступ сразу, а не когда-нибудь на следующей неделе. Тот же
+   * довод, по которому в токен не кладут теги (ADMIN_ROLES_PLAN.md §4).
+   *
+   * Авторитетная проверка — `getCompanyContext` в layout и гейт в каждом роуте.
+   */
+  if (pathname.startsWith("/company")) {
+    if (!(await hasSession(request))) return redirectTo(request, "/login")
+    return withNoCache(NextResponse.next())
+  }
+
   if (!pathname.startsWith("/admin")) {
     return NextResponse.next()
   }
@@ -72,5 +85,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/admin/:path*"],
+  matcher: ["/", "/admin/:path*", "/company/:path*"],
 }

@@ -98,9 +98,9 @@ export function HelpModal({
     <Dialog open onOpenChange={(open) => (open ? null : onClose())}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex max-h-[85vh] w-full max-w-[760px] flex-col gap-0 overflow-hidden border-white/10 bg-ws-panel p-0"
+        className="flex max-h-[85vh] w-full max-w-[760px] flex-col gap-0 overflow-hidden border-foreground/10 bg-ws-panel p-0"
       >
-        <DialogHeader className="shrink-0 space-y-0 border-b border-white/[0.07] px-6 py-4 pr-14 text-left">
+        <DialogHeader className="shrink-0 space-y-0 border-b border-foreground/[0.07] px-6 py-4 pr-14 text-left">
           <div className="flex items-center gap-2.5">
             {/* Возврат по пройденному пути. Появляется только когда есть куда
                 возвращаться: кнопка, которая иногда ничего не делает, хуже её
@@ -111,7 +111,7 @@ export function HelpModal({
                 onClick={goBack}
                 aria-label={t.helpBackPrev}
                 title={t.helpBackPrev}
-                className="-ml-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-ws-3 hover:bg-white/5 hover:text-ws-1"
+                className="-ml-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-ws-3 hover:bg-foreground/5 hover:text-ws-1"
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
@@ -150,7 +150,7 @@ export function HelpModal({
           ) : (
             <>
               {article.fallback ? (
-                <p className="mb-4 flex items-start gap-2 rounded-[11px] border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-[12.5px] text-ws-4">
+                <p className="mb-4 flex items-start gap-2 rounded-[11px] border border-foreground/[0.08] bg-foreground/[0.03] px-3.5 py-2.5 text-[12.5px] text-ws-4">
                   <Info className="mt-0.5 h-4 w-4 shrink-0" />
                   {t.helpFallbackNote}
                 </p>
@@ -163,7 +163,7 @@ export function HelpModal({
               </div>
 
               {article.seeAlso.length > 0 ? (
-                <section className="mt-8 border-t border-white/[0.07] pt-4">
+                <section className="mt-8 border-t border-foreground/[0.07] pt-4">
                   <h2 className="mb-2 text-[11.5px] font-semibold uppercase tracking-[0.14em] text-ws-5">
                     {t.helpSeeAlso}
                   </h2>

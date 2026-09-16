@@ -103,14 +103,37 @@ async function deleteProjectPrefix(
   return deleted
 }
 
+/**
+ * Стирает один проект из корзины навсегда: объекты в R2, затем строку.
+ *
+ * `storageOwnerId` — адрес в хранилище, а НЕ владелец: у переданного проекта
+ * объекты остались под тем, кто его завёл, и чистка по `user_id` прошла бы по
+ * пустому префиксу, оставив байты в бакете навсегда. Брать его надо из самой
+ * строки проекта (`COALESCE(storage_owner_id, user_id)`), а не от вызывающего.
+ *
+ * Порядок именно такой: сорвись удаление объектов после `DELETE`, проект исчез
+ * бы из базы вместе с единственной ссылкой на свой префикс, и найти осиротевшие
+ * байты было бы уже нечем. Поэтому ошибка R2 здесь только пишется в журнал —
+ * суточная чистка до этого префикса уже не дойдёт, но строка не должна
+ * оставаться в корзине из-за недоступного на минуту хранилища.
+ */
+export async function purgeProject(
+  id: string,
+  storageOwnerId: string,
+): Promise<void> {
+  try {
+    await deleteProjectPrefix(storageOwnerId, id)
+  } catch (error) {
+    console.error("[storage] purge project R2 failed", id, error)
+  }
+  await query(`DELETE FROM projects WHERE id = $1`, [id])
+}
+
 /** Permanently remove projects soft-deleted longer than trash retention. */
 export async function purgeDeletedProjects(): Promise<{ purged: number }> {
   const cutoff = new Date(
     Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000,
   )
-  // Чистим по адресу в хранилище, а не по владельцу: у переданного проекта
-  // объекты остались под тем, кто его завёл, и удаление по user_id прошло бы по
-  // пустому префиксу, оставив байты в бакете навсегда.
   const rows = await query<{ id: string; storageOwnerId: string }>(
     `SELECT id, COALESCE(storage_owner_id, user_id) AS "storageOwnerId"
        FROM projects
@@ -120,12 +143,7 @@ export async function purgeDeletedProjects(): Promise<{ purged: number }> {
   )
   let purged = 0
   for (const row of rows.rows) {
-    try {
-      await deleteProjectPrefix(row.storageOwnerId, row.id)
-    } catch (error) {
-      console.error("[storage] purge project R2 failed", row.id, error)
-    }
-    await query(`DELETE FROM projects WHERE id = $1`, [row.id])
+    await purgeProject(row.id, row.storageOwnerId)
     purged++
   }
   return { purged }

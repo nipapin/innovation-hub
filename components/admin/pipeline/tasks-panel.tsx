@@ -46,10 +46,10 @@ const STATUS_KEY: Record<TaskStatus, keyof AdminDict> = {
 }
 
 const STATUS_CLASS: Record<TaskStatus, string> = {
-  queued: "border-white/[0.14] text-ws-3",
+  queued: "border-foreground/[0.14] text-ws-3",
   claimed: "border-ws-select/50 bg-ws-select/[0.12] text-primary",
   running: "border-ws-out/40 bg-ws-out/10 text-ws-out",
-  done: "border-white/[0.12] text-ws-4",
+  done: "border-foreground/[0.12] text-ws-4",
   failed: "border-destructive/40 bg-destructive/10 text-destructive",
 }
 
@@ -310,9 +310,9 @@ export function TasksPanel({
   return (
     <section
       aria-label={t.pipelineQueueTitle}
-      className="overflow-hidden rounded-xl border border-white/10 bg-ws-panel"
+      className="overflow-hidden rounded-xl border border-foreground/10 bg-ws-panel"
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-white/[0.07] px-5 py-3.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-foreground/[0.07] px-5 py-3.5">
         <h2 className="text-[16px] font-semibold text-ws-1">
           {t.pipelineQueueTitle}
         </h2>
@@ -341,7 +341,7 @@ export function TasksPanel({
               ? tf(t.pipelineSweepNowTitle, { when: nextSweep })
               : t.pipelineSweepNeedRunning
           }
-          className="ml-auto flex h-8 items-center gap-2 rounded-[9px] border border-white/[0.12] px-2.5 text-[12.5px] text-ws-2 hover:bg-white/5 hover:text-ws-1 disabled:opacity-40"
+          className="ml-auto flex h-8 items-center gap-2 rounded-[9px] border border-foreground/[0.12] px-2.5 text-[12.5px] text-ws-2 hover:bg-foreground/5 hover:text-ws-1 disabled:opacity-40"
         >
           {sweeping ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -358,7 +358,7 @@ export function TasksPanel({
           onClick={() => void load()}
           title={t.pipelineQueueReloadTitle}
           aria-label={t.pipelineQueueReload}
-          className="flex h-8 w-8 items-center justify-center rounded-[9px] text-ws-3 hover:bg-white/5 hover:text-ws-1"
+          className="flex h-8 w-8 items-center justify-center rounded-[9px] text-ws-3 hover:bg-foreground/5 hover:text-ws-1"
         >
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
         </button>
@@ -425,7 +425,7 @@ export function TasksPanel({
 
       {/* Что логов не будет — стоит сказать сразу: раскрыв шаг, админ по опыту
           лог-окна ждёт поток сообщений от плагина, а сюда они не приезжают. */}
-      <p className="border-t border-white/[0.07] px-5 py-2.5 text-[11.5px] text-ws-5">
+      <p className="border-t border-foreground/[0.07] px-5 py-2.5 text-[11.5px] text-ws-5">
         {t.pipelineQueueFootnote}
       </p>
     </section>
@@ -461,7 +461,7 @@ function ZoneHeader({
       <span className="text-[11.5px] font-semibold uppercase tracking-[1px] text-ws-3">
         {title}
       </span>
-      <span className="rounded-full bg-white/[0.08] px-2 py-[1px] text-[11.5px] tabular-nums text-ws-2">
+      <span className="rounded-full bg-foreground/[0.08] px-2 py-[1px] text-[11.5px] tabular-nums text-ws-2">
         {count}
       </span>
       {note ? <span className="text-[11.5px] text-ws-5">{note}</span> : null}
@@ -473,12 +473,12 @@ function ZoneHeader({
       type="button"
       onClick={onToggle}
       aria-expanded={open}
-      className="sticky top-0 z-10 flex w-full items-center gap-2 border-y border-white/[0.06] bg-ws-well px-5 py-2 text-left hover:bg-white/[0.03]"
+      className="sticky top-0 z-10 flex w-full items-center gap-2 border-y border-foreground/[0.06] bg-ws-well px-5 py-2 text-left hover:bg-foreground/[0.03]"
     >
       {body}
     </button>
   ) : (
-    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-white/[0.06] bg-ws-well px-5 py-2">
+    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-foreground/[0.06] bg-ws-well px-5 py-2">
       {body}
     </div>
   )
@@ -523,8 +523,8 @@ function TaskTable({
             <Fragment key={task.id}>
               <tr
                 className={cn(
-                  "border-t border-white/[0.06] align-top",
-                  hasSteps && "cursor-pointer hover:bg-white/[0.02]",
+                  "border-t border-foreground/[0.06] align-top",
+                  hasSteps && "cursor-pointer hover:bg-foreground/[0.02]",
                 )}
                 onClick={() => {
                   if (!hasSteps) return
@@ -578,7 +578,7 @@ function TaskTable({
                     <span className="flex flex-col gap-1">
                       <StepStrip steps={task.steps} />
                       <span className="flex items-center gap-1.5">
-                        <span className="h-[3px] w-16 overflow-hidden rounded-full bg-white/[0.08]">
+                        <span className="h-[3px] w-16 overflow-hidden rounded-full bg-foreground/[0.08]">
                           <span
                             className="block h-full rounded-full bg-ws-out"
                             style={{ width: `${pct}%` }}
@@ -630,7 +630,7 @@ function TaskTable({
                         disabled={busyId === task.id}
                         title={t.pipelineTaskCancelTitle}
                         aria-label={t.pipelineTaskCancel}
-                        className="flex h-7 w-7 items-center justify-center rounded-[7px] text-ws-4 hover:bg-white/5 hover:text-ws-1 disabled:opacity-40"
+                        className="flex h-7 w-7 items-center justify-center rounded-[7px] text-ws-4 hover:bg-foreground/5 hover:text-ws-1 disabled:opacity-40"
                       >
                         {busyId === task.id ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -646,7 +646,7 @@ function TaskTable({
                         disabled={busyId === task.id}
                         title={t.pipelineTaskRequeueTitle}
                         aria-label={t.pipelineTaskRequeue}
-                        className="flex h-7 w-7 items-center justify-center rounded-[7px] text-ws-4 hover:bg-white/5 hover:text-ws-1 disabled:opacity-40"
+                        className="flex h-7 w-7 items-center justify-center rounded-[7px] text-ws-4 hover:bg-foreground/5 hover:text-ws-1 disabled:opacity-40"
                       >
                         <Undo2 className="h-3.5 w-3.5" />
                       </button>
@@ -665,7 +665,7 @@ function TaskTable({
                 </td>
               </tr>
               {isOpen && hasSteps ? (
-                <tr className="border-t border-white/[0.04] bg-black/20">
+                <tr className="border-t border-foreground/[0.04] bg-black/20">
                   <td colSpan={7} className="px-5 py-1">
                     <StepList steps={task.steps} />
                   </td>

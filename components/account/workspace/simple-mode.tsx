@@ -21,9 +21,11 @@ import { cn } from "@/lib/utils"
 import { BottomPanel } from "./bottom-panel"
 import { Breadcrumbs, FileBrowser, useLivePath } from "./file-browser"
 import { GiftCorner } from "./gift-badge"
+import { ProjectGroups } from "./project-groups"
 import {
   TRASH_RETENTION_DAYS,
   fmtDate,
+  fmtDateTime,
   itemsAtPath,
   trashDaysLeft,
 } from "./format"
@@ -31,6 +33,7 @@ import { sectionEmptyText, sectionHeading } from "./sections"
 import { ResizeGrip } from "@/components/account/resize-grip"
 import type { DriveFile, Project } from "./types"
 import { useDragSize } from "@/components/account/use-drag-size"
+import { TrialCta } from "./trial-cta"
 import { useWorkspace } from "./workspace-context"
 import { ViewSwitch } from "./workspace-topbar"
 
@@ -92,7 +95,7 @@ function Pane({
       ? "border-ws-accent/35"
       : kind === "out"
         ? "border-ws-out/30"
-        : "border-white/10"
+        : "border-foreground/10"
   const iconColor =
     kind === "in"
       ? "text-ws-accent"
@@ -107,10 +110,10 @@ function Pane({
         accent,
       )}
     >
-      <div className="flex flex-none items-center gap-3 border-b border-white/[0.07] px-4 py-3.5">
+      <div className="flex flex-none items-center gap-3 border-b border-foreground/[0.07] px-4 py-3.5">
         <span
           className={cn(
-            "flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] border bg-white/[0.04]",
+            "flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] border bg-foreground/[0.04]",
             accent,
           )}
         >
@@ -133,8 +136,8 @@ function Pane({
                     className={cn(
                       "shrink-0 rounded-[8px] px-2 py-0.5 text-[15px] tracking-[0.4px] transition-colors",
                       active
-                        ? "bg-white/[0.09] font-semibold text-ws-1"
-                        : "font-medium text-ws-4 hover:bg-white/[0.05] hover:text-ws-2",
+                        ? "bg-foreground/[0.09] font-semibold text-ws-1"
+                        : "font-medium text-ws-4 hover:bg-foreground/[0.05] hover:text-ws-2",
                     )}
                   >
                     {folder.name}
@@ -155,7 +158,7 @@ function Pane({
       </div>
 
       {path.length > 0 ? (
-        <div className="flex-none border-b border-white/[0.05] px-3.5 py-2">
+        <div className="flex-none border-b border-foreground/[0.05] px-3.5 py-2">
           <Breadcrumbs rootLabel={title} path={path} onNavigate={onNavigate} />
         </div>
       ) : null}
@@ -284,7 +287,7 @@ export function SimpleProject() {
               {selected.name}
             </h3>
             {selected.isPaused ? (
-              <span className="flex shrink-0 items-center gap-1 rounded-full border border-white/[0.14] px-2.5 py-[3px] text-[12px] text-ws-3">
+              <span className="flex shrink-0 items-center gap-1 rounded-full border border-foreground/[0.14] px-2.5 py-[3px] text-[12px] text-ws-3">
                 <Pause className="h-3.5 w-3.5" />
                 {t.paused}
               </span>
@@ -411,9 +414,9 @@ function TrashTile({ project }: { project: Project }) {
         }
       }}
       onContextMenu={(e) => openMenu("project", e, { project })}
-      className="flex cursor-pointer flex-col gap-4 rounded-2xl border border-white/10 bg-ws-panel p-[22px] text-left hover:border-white/[0.18] hover:bg-ws-hover"
+      className="flex cursor-pointer flex-col gap-4 rounded-2xl border border-foreground/10 bg-ws-panel p-[22px] text-left hover:border-foreground/[0.18] hover:bg-ws-hover"
     >
-      <span className="flex h-[46px] w-[46px] items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
+      <span className="flex h-[46px] w-[46px] items-center justify-center rounded-full border border-foreground/10 bg-foreground/[0.04]">
         <Trash2 className="h-[22px] w-[22px] text-ws-4" />
       </span>
       <div>
@@ -421,24 +424,121 @@ function TrashTile({ project }: { project: Project }) {
           {project.name}
         </p>
         <p className="mt-2.5 text-[13px] text-ws-4">
-          {tf(t.trashDeletedOn, { date: fmtDate(deletedAt, lang) })}
+          {tf(t.trashDeletedOn, { date: fmtDateTime(deletedAt, lang) })}
           {" · "}
           {daysLeft === 0
             ? t.trashLastDay
             : tf(t.trashDaysLeft, { days: daysLeft })}
         </p>
       </div>
-      <div className="flex items-center justify-end border-t border-white/[0.07] pt-4">
+      <div className="flex items-center justify-end border-t border-foreground/[0.07] pt-4">
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation()
             restoreProject(project)
           }}
-          className="flex items-center gap-2 rounded-[9px] border border-white/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-white/5"
+          className="flex items-center gap-2 rounded-[9px] border border-foreground/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-foreground/5"
         >
           <RotateCcw className="h-[17px] w-[17px]" />
           {t.mRestore}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** Плитка проекта на витрине: имя, дата, статус обработки и чат. */
+function ProjectTile({ project: p }: { project: Project }) {
+  const { t, lang, selectProject, openChat, openMenu } = useWorkspace()
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => selectProject(p.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          selectProject(p.id)
+        }
+      }}
+      onContextMenu={(e) => openMenu("project", e, { project: p })}
+      className={cn(
+        "flex cursor-pointer flex-col gap-4 rounded-2xl border border-foreground/10 bg-ws-panel p-[22px] text-left hover:border-foreground/[0.18] hover:bg-ws-hover",
+        // Проекты на паузе не должны спорить за внимание с активными.
+        p.isPaused && "opacity-[0.45] hover:opacity-100",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span
+          className={cn(
+            "relative flex h-[46px] w-[46px] items-center justify-center rounded-full border",
+            p.isPaused
+              ? "border-foreground/10 bg-foreground/[0.04]"
+              : "border-ws-out/30 bg-ws-out/[0.08]",
+          )}
+        >
+          <FolderOpen
+            className={cn(
+              "h-[22px] w-[22px]",
+              p.isPaused ? "text-ws-4" : "text-ws-out",
+            )}
+          />
+          {p.gift ? <GiftCorner gift={p.gift} /> : null}
+        </span>
+        {p.memberCount > 0 ? (
+          <span
+            title={tf(t.projectSharedWith, { users: p.memberCount })}
+            className="flex shrink-0 items-center gap-1 rounded-full border border-foreground/10 px-2.5 py-1 text-[12.5px] tabular-nums text-ws-4"
+          >
+            <Users className="h-[15px] w-[15px]" />
+            {p.memberCount}
+          </span>
+        ) : null}
+      </div>
+      <div>
+        <p
+          className={cn(
+            "text-[20px] font-semibold tracking-tight",
+            p.isPaused ? "text-ws-2" : "text-ws-1",
+          )}
+        >
+          {p.name}
+        </p>
+        <p className="mt-2.5 text-[13px] text-ws-4">
+          {fmtDate(p.createdAt, lang)}
+        </p>
+      </div>
+      <div className="flex items-center justify-between gap-3 border-t border-foreground/[0.07] pt-4">
+        <span
+          className={cn(
+            "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-[5px] text-[13px]",
+            p.isPaused
+              ? "border-foreground/[0.10] text-ws-4"
+              : "border-ws-out/40 bg-ws-out/10 text-ws-out",
+          )}
+        >
+          {p.isPaused ? (
+            <Pause className="h-3.5 w-3.5" />
+          ) : (
+            <Play className="h-3.5 w-3.5" />
+          )}
+          {p.isPaused ? t.statusPaused : t.statusActive}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            openChat(p.id)
+          }}
+          className="flex items-center gap-2 rounded-[9px] border border-foreground/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-foreground/5"
+        >
+          <MessageCircle className="h-[17px] w-[17px]" />
+          {t.chat}
+          {p.unreadCount > 0 ? (
+            <span className="h-1.5 w-1.5 rounded-full bg-ws-select" />
+          ) : null}
         </button>
       </div>
     </div>
@@ -452,16 +552,12 @@ function TrashTile({ project }: { project: Project }) {
 export function AllProjectsPage() {
   const {
     t,
-    lang,
     visibleProjects,
     projectTab,
     query,
     setQuery,
     creating,
     createProject,
-    selectProject,
-    openChat,
-    openMenu,
   } = useWorkspace()
 
   const isProjects = projectTab === "projects"
@@ -469,7 +565,7 @@ export function AllProjectsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex-none border-b border-white/[0.07] px-6 pb-6 pt-8 md:px-12 md:pt-11">
+      <div className="flex-none border-b border-foreground/[0.07] px-6 pb-6 pt-8 md:px-12 md:pt-11">
         <div className="mx-auto max-w-[1120px]">
           <div className="flex items-center gap-3">
             <span className="h-0.5 w-[34px] rounded bg-ws-accent" />
@@ -495,7 +591,7 @@ export function AllProjectsPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t.searchProjects}
-                className="h-[52px] w-full rounded-xl border border-white/10 bg-ws-control pl-11 pr-4 text-[15px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
+                className="h-[52px] w-full rounded-xl border border-foreground/10 bg-ws-control pl-11 pr-4 text-[15px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
               />
             </div>
             {isProjects ? (
@@ -509,6 +605,10 @@ export function AllProjectsPage() {
                 {creating ? t.creatingProject : t.newProject}
               </button>
             ) : null}
+            {/* Пробный период рядом с «Новым проектом»: на виду, но вторым по
+                весу — обводкой, а не заливкой, чтобы не спорить с основным
+                действием. Сама кнопка исчезает, когда период уже не доступен. */}
+            {isProjects ? <TrialCta size="page" /> : null}
           </div>
         </div>
       </div>
@@ -525,104 +625,20 @@ export function AllProjectsPage() {
               {sectionEmptyText(projectTab, t)}
             </p>
           ) : (
-            <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-3">
-              {visibleProjects.map((p) =>
-                p.deletedAt ? (
-                  <TrashTile key={p.id} project={p} />
-                ) : (
-                  <div
-                    key={p.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => selectProject(p.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault()
-                        selectProject(p.id)
-                      }
-                    }}
-                    onContextMenu={(e) => openMenu("project", e, { project: p })}
-                    className={cn(
-                      "flex cursor-pointer flex-col gap-4 rounded-2xl border border-white/10 bg-ws-panel p-[22px] text-left hover:border-white/[0.18] hover:bg-ws-hover",
-                      // Проекты на паузе не должны спорить за внимание с активными.
-                      p.isPaused && "opacity-[0.45] hover:opacity-100",
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span
-                        className={cn(
-                          "relative flex h-[46px] w-[46px] items-center justify-center rounded-full border",
-                          p.isPaused
-                            ? "border-white/10 bg-white/[0.04]"
-                            : "border-ws-out/30 bg-ws-out/[0.08]",
-                        )}
-                      >
-                        <FolderOpen
-                          className={cn(
-                            "h-[22px] w-[22px]",
-                            p.isPaused ? "text-ws-4" : "text-ws-out",
-                          )}
-                        />
-                        {p.gift ? <GiftCorner gift={p.gift} /> : null}
-                      </span>
-                      {p.memberCount > 0 ? (
-                        <span
-                          title={tf(t.projectSharedWith, { users: p.memberCount })}
-                          className="flex shrink-0 items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 text-[12.5px] tabular-nums text-ws-4"
-                        >
-                          <Users className="h-[15px] w-[15px]" />
-                          {p.memberCount}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div>
-                      <p
-                        className={cn(
-                          "text-[20px] font-semibold tracking-tight",
-                          p.isPaused ? "text-ws-2" : "text-ws-1",
-                        )}
-                      >
-                        {p.name}
-                      </p>
-                      <p className="mt-2.5 text-[13px] text-ws-4">
-                        {fmtDate(p.createdAt, lang)}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] pt-4">
-                      <span
-                        className={cn(
-                          "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-[5px] text-[13px]",
-                          p.isPaused
-                            ? "border-white/[0.10] text-ws-4"
-                            : "border-ws-out/40 bg-ws-out/10 text-ws-out",
-                        )}
-                      >
-                        {p.isPaused ? (
-                          <Pause className="h-3.5 w-3.5" />
-                        ) : (
-                          <Play className="h-3.5 w-3.5" />
-                        )}
-                        {p.isPaused ? t.statusPaused : t.statusActive}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openChat(p.id)
-                        }}
-                        className="flex items-center gap-2 rounded-[9px] border border-white/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-white/5"
-                      >
-                        <MessageCircle className="h-[17px] w-[17px]" />
-                        {t.chat}
-                        {p.unreadCount > 0 ? (
-                          <span className="h-1.5 w-1.5 rounded-full bg-ws-select" />
-                        ) : null}
-                      </button>
-                    </div>
-                  </div>
-                ),
+            <ProjectGroups
+              size="page"
+              renderItems={(items) => (
+                <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-3">
+                  {items.map((p) =>
+                    p.deletedAt ? (
+                      <TrashTile key={p.id} project={p} />
+                    ) : (
+                      <ProjectTile key={p.id} project={p} />
+                    ),
+                  )}
+                </div>
               )}
-            </div>
+            />
           )}
         </div>
       </div>

@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
       targetType: event.targetType,
       targetId: event.targetId,
       targetLabel: event.targetLabel,
+      companyId: event.companyId,
       meta: event.meta,
       ip: event.ip,
       createdAt: event.createdAt.toISOString(),

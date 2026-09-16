@@ -120,7 +120,7 @@ function tileTone(mimeType: string, isFolder: boolean): string {
   if (isFolder) return "bg-amber-400/15 text-amber-300"
   if (mimeType.startsWith("video/")) return "bg-fuchsia-400/15 text-fuchsia-300"
   if (mimeType.startsWith("image/")) return "bg-sky-400/15 text-sky-300"
-  return "bg-white/[0.06] text-muted-foreground"
+  return "bg-foreground/[0.06] text-muted-foreground"
 }
 
 /** True while a drag carries actual files (as opposed to text/links). */
@@ -530,7 +530,7 @@ export function ProjectDetailSection({
                 </span>
               ) : null}
               {driveMode ? (
-                <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-white/[0.02] p-1">
+                <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-foreground/[0.02] p-1">
                   <ViewToggleButton
                     active={viewMode === "list"}
                     label="List view"
@@ -641,7 +641,7 @@ export function ProjectDetailSection({
             <ul className="divide-y divide-border/60 border-y border-border/60">
               {media.map((item) => (
                 <li key={item.id} className="flex items-center gap-3 py-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-white/[0.03] text-muted-foreground">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-foreground/[0.03] text-muted-foreground">
                     {fileIcon(item.mimeType, false)}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -676,7 +676,11 @@ export function ProjectDetailSection({
         </section>
 
         {drive ? (
-          <ProjectAutomationPanel projectId={project.id} options={drive.options} />
+          <ProjectAutomationPanel
+            projectId={project.id}
+            options={drive.options}
+            fileTypes={drive.fileTypes ?? {}}
+          />
         ) : null}
       </div>
     </div>
@@ -704,7 +708,7 @@ function ViewToggleButton({
         "flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150",
         active
           ? "bg-primary/15 text-primary"
-          : "text-muted-foreground hover:bg-white/[0.05] hover:text-foreground",
+          : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",
       )}
     >
       {children}
@@ -738,7 +742,7 @@ function DriveGridView({
           type="button"
           onClick={() => onNavigate([])}
           className={cn(
-            "shrink-0 rounded px-1.5 py-1 transition-colors hover:bg-white/[0.05] hover:text-foreground",
+            "shrink-0 rounded px-1.5 py-1 transition-colors hover:bg-foreground/[0.05] hover:text-foreground",
             gridPath.length === 0 && "font-medium text-foreground",
           )}
         >
@@ -751,7 +755,7 @@ function DriveGridView({
               type="button"
               onClick={() => onNavigate(gridPath.slice(0, i + 1))}
               className={cn(
-                "rounded px-1.5 py-1 transition-colors hover:bg-white/[0.05] hover:text-foreground",
+                "rounded px-1.5 py-1 transition-colors hover:bg-foreground/[0.05] hover:text-foreground",
                 i === gridPath.length - 1 && "font-medium text-foreground",
               )}
             >
@@ -800,7 +804,7 @@ function DriveGridTile({
       }}
       className={cn(
         "flex items-start gap-3 rounded-xl border border-border/60 bg-[hsl(var(--surface-2))]/60 p-3 text-left transition-colors duration-150",
-        file.isFolder && "cursor-pointer hover:border-border/80 hover:bg-white/[0.04]",
+        file.isFolder && "cursor-pointer hover:border-border/80 hover:bg-foreground/[0.04]",
       )}
     >
       <span
@@ -897,7 +901,7 @@ function DriveColumn({
                 "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
                 selectedId === item.id
                   ? "bg-primary/15 text-primary"
-                  : "text-foreground hover:bg-white/[0.04]",
+                  : "text-foreground hover:bg-foreground/[0.04]",
               )}
             >
               <span className="shrink-0 text-muted-foreground">
@@ -928,7 +932,7 @@ function DriveFilePreview({
 }) {
   return (
     <div className="flex w-64 shrink-0 flex-col items-center gap-4 p-6 text-center">
-      <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border/60 bg-white/[0.03] text-muted-foreground">
+      <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border/60 bg-foreground/[0.03] text-muted-foreground">
         {fileIcon(file.mimeType, false, "h-7 w-7")}
       </span>
       <div className="min-w-0">
@@ -987,7 +991,7 @@ function DriveFileTreeNode({
   if (!file.isFolder) {
     return (
       <li className="flex items-center gap-3 py-3" style={indent}>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-white/[0.03] text-muted-foreground">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-foreground/[0.03] text-muted-foreground">
           {fileIcon(file.mimeType, false)}
         </span>
         <div className="min-w-0 flex-1">
@@ -1025,9 +1029,9 @@ function DriveFileTreeNode({
           <button
             type="button"
             style={indent}
-            className="flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-white/[0.02]"
+            className="flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-foreground/[0.02]"
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-white/[0.03] text-muted-foreground">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-foreground/[0.03] text-muted-foreground">
               <Folder className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">

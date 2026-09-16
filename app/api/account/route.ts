@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { deleteAccountSchema } from "@/lib/account-schemas"
 import { SESSION_COOKIE_NAME, verifyPassword } from "@/lib/auth"
 import { getCurrentUser } from "@/lib/admin-auth"
+import { hasDependents } from "@/lib/billing/payer"
 import {
   countActiveAdmins,
   countActiveSuperAdmins,
@@ -82,6 +83,20 @@ export async function DELETE(request: Request) {
         { status: 409 },
       )
     }
+  }
+
+  // Пока человек платит за других, удалить его нельзя: вместе с аккаунтом ушла
+  // бы лента со списаниями их проектов. Внешний ключ откажет всё равно — здесь
+  // ответ, который можно прочитать.
+  if (await hasDependents(current.id)) {
+    return NextResponse.json(
+      {
+        message:
+          "You pay for other people's work. Ask an administrator to reassign them before deleting your account.",
+        code: "has-dependents",
+      },
+      { status: 409 },
+    )
   }
 
   await deleteUser(current.id)

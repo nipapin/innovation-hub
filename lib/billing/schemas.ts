@@ -53,6 +53,17 @@ export const trialSettingsSchema = z.object({
   enabled: z.boolean(),
   amountCents: z.number().int().min(0).max(1e11),
   lifetimeDays: z.number().int().min(1).max(3650).nullable(),
+  /**
+   * Дата обновления набора. Строку проверяем на разбираемость, а не просто на
+   * тип: непарсящаяся дата тихо отключила бы правило «разрешить заново», и
+   * заметили бы это только по тому, что кнопка у людей не вернулась.
+   */
+  resetFrom: z
+    .string()
+    .refine((value) => Number.isFinite(Date.parse(value)), {
+      message: "Invalid date.",
+    })
+    .nullable(),
 })
 
 /**

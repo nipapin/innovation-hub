@@ -5,7 +5,12 @@ import {
 } from "@aws-sdk/client-s3"
 import type { ProjectFileRecord } from "@/lib/domain-types"
 import { listAllProjectFiles } from "@/lib/repositories/project-files"
-import { buildProjectObjectKey, getS3Bucket, userMetaObjectKey } from "@/lib/s3-config"
+import {
+  appMediaProxyPathForKey,
+  buildProjectObjectKey,
+  getS3Bucket,
+  userMetaObjectKey,
+} from "@/lib/s3-config"
 import { getS3Client, isS3Configured } from "@/lib/s3-client"
 import {
   DESCRIPTION_FILE_NAME,
@@ -14,9 +19,19 @@ import {
   OPTIONS_FILE_NAME,
   OPTIONS_FOLDER_NAME,
 } from "@/lib/storage/keys"
+import { readFileTypeDictionary } from "@/lib/repositories/automation-settings"
 import { applyExposedOptionChanges, type ExposedOptionChange } from "@/lib/options/apply"
 import { ProjectStorageError } from "@/lib/options/errors"
-import { extractExposedOptions } from "@/lib/options/extract"
+import {
+  overlayReferencePath,
+  overlaySettingsFilePath,
+  resolveByTail,
+} from "@/lib/options/overlay-reference"
+import {
+  extractExposedOptions,
+  readExposedOptions,
+  type SkippedOption,
+} from "@/lib/options/extract"
 import type { ExposedOption } from "@/lib/options/types"
 
 /**
@@ -105,6 +120,12 @@ export type ProjectStorageState = {
   files: ProjectStorageFile[]
   folderState: ProjectFolderState | null
   options: ExposedOption[]
+  /**
+   * Свойства, открытые клиенту, но сайту незнакомые. Нужны, чтобы о них можно
+   * было сказать вслух: молча исчезнувшая галочка обходится вечером разбора
+   * (docs/OVERLAY_CONTROL_PLAN.md §7).
+   */
+  skippedOptions: SkippedOption[]
   optionsFileExists: boolean
   /**
    * Версия options.json в хранилище. Приоритет у правки клиента — условной
@@ -112,6 +133,16 @@ export type ProjectStorageState = {
    * моей», иначе Ctrl+S затрёт правку молча (docs/PROJECT_OPTIONS_PANEL.md §4).
    */
   optionsEtag: string | null
+  /**
+   * Словарь типов файлов конвейера — все расширения из его настроек
+   * (`automation_settings`, домен `fileType`). Им контрол выбора файла
+   * проверяет расширение ДО заливки.
+   *
+   * Едет вместе с настройками проекта, а не отдельным запросом, потому что оба
+   * эндпоинта со словарями клиенту недоступны: админский требует права
+   * `pipeline.operate`, машинный — токена `mch_…`.
+   */
+  fileTypes: Record<string, string[]>
   available: boolean
 }
 
@@ -482,8 +513,10 @@ export async function loadProjectStorageState(
       files,
       folderState: null,
       options: [],
+      skippedOptions: [],
       optionsFileExists: false,
       optionsEtag: null,
+      fileTypes: {},
       available: false,
     }
   }
@@ -497,17 +530,108 @@ export async function loadProjectStorageState(
     ? parseFolderState(parseJson(stateRaw))
     : null
   const optionsFileExists = optionsObject != null
-  const options = optionsObject
-    ? extractExposedOptions(parseJson(optionsObject.body))
-    : []
+  // Разбираем один раз: из этого же JSON достаётся и список параметров, и
+  // снимок словаря типов.
+  const optionsJson = optionsObject ? parseJson(optionsObject.body) : null
+  // Вместе со списком — что показать не вышло: свойство с типом, которого сайт
+  // не знает, иначе исчезало бы молча (docs/OVERLAY_CONTROL_PLAN.md §7).
+  const { options, skipped: skippedOptions } = optionsJson
+    ? readExposedOptions(optionsJson)
+    : { options: [], skipped: [] }
+
+  // Референс для рамки наложения (docs/OVERLAY_CONTROL_PLAN.md §8.5). Путь даёт
+  // граф, ссылку — этот слой: только здесь есть ключи объектов и строки файлов.
+  // Всё в пределах ЭТОГО проекта: копия тестового набора у каждого своя, и
+  // заглядывать в шаблон или в соседний проект нельзя.
+  const withReference = options.map((option) => {
+    if (option.control !== "overlaySettings" || !optionsJson) return option
+    const key = overlayReferenceKey(rows, optionsJson, option)
+    return key ? { ...option, referenceUrl: appMediaProxyPathForKey(key) } : option
+  })
 
   return {
     files,
     folderState,
-    options,
+    options: withReference,
+    skippedOptions,
     optionsFileExists,
     optionsEtag: optionsObject?.etag ?? null,
+    fileTypes: await loadFileTypes(),
     available: true,
+  }
+}
+
+/**
+ * Словарь типов файлов конвейера — общий, из его настроек.
+ *
+ * Его отсутствие НЕ должно ронять загрузку проекта: `readFileTypeDictionary`
+ * кидает на незалитой миграции, а файловое дерево к словарю отношения не имеет.
+ * Пустой словарь на клиенте означает «проверить нечем», и выбор файла
+ * продолжает работать.
+ */
+
+/**
+ * Ключ объекта по пути внутри проекта (`Assets/logo.png`).
+ *
+ * Сверяем папку и имя, не считаясь с регистром: путь приходит из графа, а его
+ * туда писали и программа, и сайт, и человек руками. Промах — `null`, и рамка
+ * останется пустой; подставлять «похожий» файл нельзя.
+ */
+function findFileKey(
+  rows: ProjectFileRecord[],
+  projectPath: string,
+): string | null {
+  const parts = projectPath.replace(/^\/+/, "").split("/")
+  const name = parts.pop()?.toLowerCase()
+  if (!name) return null
+  const folder = parts.join("/").toLowerCase()
+  for (const row of rows) {
+    if (row.isFolder || !row.s3Key) continue
+    if (row.name.toLowerCase() !== name) continue
+    if (row.folderPath.replace(/^\/+/, "").toLowerCase() !== folder) continue
+    return row.s3Key
+  }
+  return null
+}
+
+
+/**
+ * Ключ объекта для рамки наложения — два шага поиска (§8.5).
+ *
+ * Сначала сосед по графу: клиент залил файл через `pathNavigator`, путь
+ * относительный, искать нечего. Если соседа нет, значение пустое или файл по
+ * нему не нашёлся — путь из самих настроек (`fgFilePath`), сверкой хвоста.
+ *
+ * Второй шаг нужен не реже первого: автор графа настраивал наложение у себя, и
+ * путь там абсолютный, с его машины. Файл при этом в проекте есть — он приехал
+ * вместе с копией.
+ */
+function overlayReferenceKey(
+  rows: ProjectFileRecord[],
+  optionsJson: unknown,
+  option: ExposedOption,
+): string | null {
+  const fromGraph = overlayReferencePath(optionsJson, option.path)
+  if (fromGraph) {
+    const key = findFileKey(rows, fromGraph)
+    if (key) return key
+  }
+
+  const fromSettings = overlaySettingsFilePath(option.value)
+  if (!fromSettings) return null
+  const candidates = rows
+    .filter((row) => !row.isFolder && row.s3Key)
+    .map((row) => `${row.folderPath.replace(/^\/+/, "")}/${row.name}`)
+  const matched = resolveByTail(candidates, fromSettings)
+  return matched ? findFileKey(rows, matched) : null
+}
+
+async function loadFileTypes(): Promise<Record<string, string[]>> {
+  try {
+    return await readFileTypeDictionary()
+  } catch (error) {
+    console.error("[project-storage] file type dictionary unavailable", error)
+    return {}
   }
 }
 
@@ -568,6 +692,77 @@ export async function setProjectAutomationEnabled(input: {
  * копии с облачной и решает сама (docs/PROJECT_OPTIONS_PANEL.md §4). Поэтому
  * новую версию возвращаем наружу.
  */
+
+/**
+ * Абсолютный `fgFilePath` с машины автора → путь внутри проекта (§8.5).
+ *
+ * Один раз разрешили сверкой хвоста — дальше берём сразу, без поиска. Программа
+ * это поймёт: её модалка резолвит `fgFilePath` через
+ * `toAbsolutePath(settings.fgFilePath, projectPath)`, то есть относительный путь
+ * для неё штатный.
+ *
+ * Делается ПРИ СОХРАНЕНИИ, а не при открытии настроек: запись в граф от простого
+ * просмотра — это то, чего не ждут. И только для путей, похожих на абсолютные:
+ * относительный уже в нужной форме, трогать его незачем.
+ *
+ * Значение по смыслу не меняется — меняется его форма, и обе стороны читают обе.
+ */
+async function relativizeOverlayPaths(
+  root: unknown,
+  projectId: string,
+): Promise<void> {
+  const { options } = readExposedOptions(root)
+  const overlays = options.filter((o) => o.control === "overlaySettings")
+  if (overlays.length === 0) return
+
+  const rows = await listAllProjectFiles(projectId)
+  const candidates = rows
+    .filter((row) => !row.isFolder && row.s3Key)
+    .map((row) => `${row.folderPath.replace(/^\/+/, "")}/${row.name}`)
+
+  for (const option of overlays) {
+    const current = overlaySettingsFilePath(option.value)
+    if (!current || !isAbsoluteLikePath(current)) continue
+    const matched = resolveByTail(candidates, current)
+    if (!matched) continue
+
+    const controlProps = resolveNode(root, option.path)
+    if (!controlProps) continue
+    const raw = controlProps.value
+    if (typeof raw !== "string") continue
+    try {
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue
+      ;(parsed as Record<string, unknown>).fgFilePath = matched
+      controlProps.value = JSON.stringify(parsed)
+    } catch {
+      // Значение испорчено — трогать его тем более не станем.
+    }
+  }
+}
+
+/** Путь с диска: `/Users/…`, `C:\\…` или UNC. Относительный — всё остальное. */
+function isAbsoluteLikePath(path: string): boolean {
+  return path.startsWith("/") || /^[a-z]:[\\/]/i.test(path) || path.startsWith("\\\\")
+}
+
+/** Узел графа по пути из DTO. Тот же обход, что и при записи правок. */
+function resolveNode(
+  root: unknown,
+  path: string[],
+): Record<string, unknown> | null {
+  let node: unknown = root
+  for (const segment of path) {
+    if (!node || typeof node !== "object") return null
+    node = Array.isArray(node)
+      ? node[Number.parseInt(segment, 10)]
+      : (node as Record<string, unknown>)[segment]
+  }
+  return node && typeof node === "object" && !Array.isArray(node)
+    ? (node as Record<string, unknown>)
+    : null
+}
+
 export async function updateProjectExposedOptions(input: {
   storageOwnerId: string
   projectId: string
@@ -589,6 +784,7 @@ export async function updateProjectExposedOptions(input: {
   }
 
   applyExposedOptionChanges(root, input.changes)
+  await relativizeOverlayPaths(root, input.projectId)
 
   const etag = await putObjectText(key, JSON.stringify(root, null, 2))
   return { options: extractExposedOptions(root), etag }

@@ -87,7 +87,7 @@ export function LanguagePicker({
           type="button"
           title={t.srtAddLanguage}
           aria-label={t.srtAddLanguage}
-          className="flex h-[26px] w-[26px] items-center justify-center rounded text-ws-3 hover:bg-white/5 hover:text-ws-1"
+          className="flex h-[26px] w-[26px] items-center justify-center rounded text-ws-3 hover:bg-foreground/5 hover:text-ws-1"
         >
           <Plus className="h-4 w-4" />
         </button>
@@ -101,7 +101,7 @@ export function LanguagePicker({
             {taken.map((code) => (
               <div
                 key={code}
-                className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-[14px] hover:bg-white/5"
+                className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-[14px] hover:bg-foreground/5"
               >
                 <span className="min-w-0 flex-1 truncate">{languageName(code, uiLang)}</span>
                 <span className="shrink-0 font-mono text-[11px] text-ws-5">{code}</span>
@@ -127,7 +127,7 @@ export function LanguagePicker({
           <DropdownMenuItem
             key={code}
             onClick={() => submit(code)}
-            className="cursor-pointer justify-between gap-3 focus:bg-white/10"
+            className="cursor-pointer justify-between gap-3 focus:bg-foreground/10"
           >
             <span className="truncate">{languageName(code, uiLang)}</span>
             <span className="shrink-0 font-mono text-[11px] text-ws-5">{code}</span>
@@ -148,12 +148,12 @@ export function LanguagePicker({
             onChange={(e) => setCustom(e.target.value)}
             placeholder={t.srtLanguageCode}
             maxLength={12}
-            className="h-7 min-w-0 flex-1 rounded border border-white/[0.10] bg-ws-well px-2 text-[12px] text-ws-1 outline-none focus:border-ws-action"
+            className="h-7 min-w-0 flex-1 rounded border border-foreground/[0.10] bg-ws-well px-2 text-[12px] text-ws-1 outline-none focus:border-ws-action"
           />
           <button
             type="submit"
             title={t.toolAdd}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-white/[0.10] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-foreground/[0.10] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
           >
             <Check className="h-4 w-4" />
           </button>

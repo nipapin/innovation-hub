@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -)",
+      "Bash(npm run *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(node -e \"console.log\\(require\\('tailwindcss/package.json'\\).version\\)\")",
+      "Bash(npx tsc *)",
+      "Bash(echo \"tsc-ошибок: $\\(npx tsc --noEmit -p . 2>&1)",
+      "Bash(python3 - /private/tmp/claude-501/-Users-henryh-Desktop-WORK-CEP-DEV-innovation-hub/3e345372-2a69-4dc3-b489-a0e99dac04a1/scratchpad/tw.css)",
+      "Bash(cd /Users/aleksey.ivanov/Desktop/WORK_CEP_DEV/fs.manager.tauri/src/NODE_WIN/nodes/properties/OverlayEdit && wc -l * && echo \"===== types.ts =====\" && cat types.ts)",
+      "Read(//Users/aleksey.ivanov/Desktop/WORK_CEP_DEV/fs.manager.tauri/src/NODE_WIN/nodes/properties/OverlayEdit/**)",
+      "Bash(cd /Users/aleksey.ivanov/Desktop/WORK_CEP_DEV/fs.manager.tauri && grep -rl \"pathNavigator\" src plugins-dev 2>/dev/null | head -20)",
+      "Read(//Users/aleksey.ivanov/Desktop/WORK_CEP_DEV/fs.manager.tauri/**)",
+      "Bash(cd /Users/aleksey.ivanov/Desktop/WORK_CEP_DEV/fs.manager.tauri && grep -rn \"pathNavigator\" plugins-dev 2>/dev/null | head -30)"
+    ]
+  }
+}

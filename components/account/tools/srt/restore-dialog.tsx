@@ -158,7 +158,7 @@ export function SrtRestoreDialog({
         aria-describedby={undefined}
         className="flex max-h-[82vh] w-[640px] max-w-[92vw] flex-col gap-0 overflow-hidden p-0"
       >
-        <DialogHeader className="flex-none border-b border-white/[0.07] px-5 py-4">
+        <DialogHeader className="flex-none border-b border-foreground/[0.07] px-5 py-4">
           <DialogTitle className="text-[16px] font-semibold">{t.srtRestoreTitle}</DialogTitle>
         </DialogHeader>
 
@@ -180,7 +180,7 @@ export function SrtRestoreDialog({
             <h3 className="text-[11px] font-semibold uppercase tracking-[0.32px] text-ws-4">
               {t.srtRestoreWhat}
             </h3>
-            <div className="overflow-hidden rounded-[6px] border border-white/[0.07]">
+            <div className="overflow-hidden rounded-[6px] border border-foreground/[0.07]">
               <Check
                 on={text}
                 label={t.srtRestoreText}
@@ -240,7 +240,7 @@ export function SrtRestoreDialog({
                       "flex h-8 items-center gap-2 rounded border px-3 text-[13px] disabled:opacity-40",
                       on
                         ? "border-ws-action bg-ws-action/[0.18] text-ws-1"
-                        : "border-white/[0.10] text-ws-4 hover:border-white/25 hover:text-ws-2",
+                        : "border-foreground/[0.10] text-ws-4 hover:border-foreground/25 hover:text-ws-2",
                     )}
                   >
                     {lang ? languageName(lang, uiLang) : t.srtColOriginal}
@@ -276,11 +276,11 @@ export function SrtRestoreDialog({
                 {t.srtExportSelectNone}
               </button>
             </div>
-            <div className="overflow-hidden rounded-[6px] border border-white/[0.07]">
+            <div className="overflow-hidden rounded-[6px] border border-foreground/[0.07]">
               {srt.doc.tracks.map((item) => (
                 <label
                   key={item.id}
-                  className="flex cursor-pointer items-center gap-2.5 border-b border-white/[0.06] px-3 py-2 last:border-b-0 hover:bg-white/[0.03]"
+                  className="flex cursor-pointer items-center gap-2.5 border-b border-foreground/[0.06] px-3 py-2 last:border-b-0 hover:bg-foreground/[0.03]"
                 >
                   <input
                     type="checkbox"
@@ -310,7 +310,7 @@ export function SrtRestoreDialog({
           </section>
         </div>
 
-        <div className="flex flex-none items-center gap-3 border-t border-white/[0.07] px-5 py-3.5">
+        <div className="flex flex-none items-center gap-3 border-t border-foreground/[0.07] px-5 py-3.5">
           <p className="min-w-0 flex-1 text-[12px] leading-snug text-ws-3">
             {!sources ? (
               <span className="flex items-center gap-2">
@@ -371,7 +371,7 @@ function Check({
 }) {
   const empty = count === 0
   return (
-    <label className="flex cursor-pointer items-start gap-2.5 border-b border-white/[0.06] px-3 py-2 last:border-b-0 hover:bg-white/[0.03]">
+    <label className="flex cursor-pointer items-start gap-2.5 border-b border-foreground/[0.06] px-3 py-2 last:border-b-0 hover:bg-foreground/[0.03]">
       <input
         type="checkbox"
         checked={on}
@@ -386,9 +386,9 @@ function Check({
         className={cn(
           "mt-[2px] shrink-0 rounded-full border px-2 text-[11px] tabular-nums",
           count == null
-            ? "border-white/[0.08] text-ws-5"
+            ? "border-foreground/[0.08] text-ws-5"
             : empty
-              ? "border-white/[0.08] text-ws-5"
+              ? "border-foreground/[0.08] text-ws-5"
               : "border-ws-action/40 bg-ws-action/[0.14] text-ws-1",
         )}
       >
@@ -483,7 +483,7 @@ function VersionsSection({
       </h3>
       <p className="text-pretty text-[12px] leading-relaxed text-ws-4">{t.srtVersionsHint}</p>
 
-      <div className="overflow-hidden rounded-[6px] border border-white/[0.07]">
+      <div className="overflow-hidden rounded-[6px] border border-foreground/[0.07]">
         <Action
           label={t.srtVersionNew}
           note={t.srtVersionNewNote}
@@ -501,12 +501,12 @@ function VersionsSection({
         {step ? <p className="px-3 pb-2 text-[11.5px] text-ws-4">{step}</p> : null}
       </div>
 
-      <div className="overflow-hidden rounded-[6px] border border-white/[0.07]">
+      <div className="overflow-hidden rounded-[6px] border border-foreground/[0.07]">
         {/*
           Первой строкой — та, в которой работают сейчас. Без неё список читается
           как «вот версии», и непонятно, где в нём человек находится.
         */}
-        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] bg-white/[0.03] px-3 py-2 last:border-b-0">
+        <div className="flex items-center justify-between gap-3 border-b border-foreground/[0.06] bg-foreground/[0.03] px-3 py-2 last:border-b-0">
           <span className="flex min-w-0 flex-col">
             <span className="truncate font-mono text-[12.5px] text-ws-1">dialog.json</span>
             <span className="text-[11.5px] text-ws-4">
@@ -520,7 +520,7 @@ function VersionsSection({
           versions.map(({ entry }) => (
             <div
               key={entry.id}
-              className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-3 py-2 last:border-b-0"
+              className="flex items-center justify-between gap-3 border-b border-foreground/[0.06] px-3 py-2 last:border-b-0"
             >
               <span className="flex min-w-0 flex-col">
                 <span className="truncate font-mono text-[12.5px] text-ws-2">{entry.name}</span>
@@ -539,7 +539,7 @@ function VersionsSection({
                       postVersion(tool.id, { action: "activate", file: entry.name }),
                     )
                   }
-                  className="flex h-[26px] items-center gap-2 rounded border border-white/[0.09] px-2.5 text-[12px] text-ws-2 hover:bg-ws-hover disabled:opacity-60"
+                  className="flex h-[26px] items-center gap-2 rounded border border-foreground/[0.09] px-2.5 text-[12px] text-ws-2 hover:bg-ws-hover disabled:opacity-60"
                 >
                   {busy === entry.name ? (
                     <Loader2 className="h-[13px] w-[13px] animate-spin" />
@@ -555,7 +555,7 @@ function VersionsSection({
                   onClick={() =>
                     void act(`del:${entry.name}`, () => deleteVersion(tool.id, entry.name))
                   }
-                  className="flex h-[26px] w-[26px] items-center justify-center rounded border border-white/[0.09] text-ws-4 hover:bg-ws-hover hover:text-ws-playhead disabled:opacity-60"
+                  className="flex h-[26px] w-[26px] items-center justify-center rounded border border-foreground/[0.09] text-ws-4 hover:bg-ws-hover hover:text-ws-playhead disabled:opacity-60"
                 >
                   {busy === `del:${entry.name}` ? (
                     <Loader2 className="h-[13px] w-[13px] animate-spin" />
@@ -593,7 +593,7 @@ function Action({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex w-full items-center gap-2.5 border-b border-white/[0.06] px-3 py-2.5 text-left last:border-b-0 hover:bg-ws-hover disabled:opacity-60"
+      className="flex w-full items-center gap-2.5 border-b border-foreground/[0.06] px-3 py-2.5 text-left last:border-b-0 hover:bg-ws-hover disabled:opacity-60"
     >
       {busy ? (
         <Loader2 className="h-[15px] w-[15px] shrink-0 animate-spin text-ws-accent" />

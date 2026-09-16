@@ -24,7 +24,14 @@ export async function GET(request: NextRequest) {
   }
 
   const data = await getStatistics({
-    scope: { ownerId: auth.userId, userId: null, projectId: q.projectId },
+    scope: {
+      ownerId: auth.userId,
+      userId: null,
+      projectId: q.projectId,
+      // Кабинет остаётся кабинетом и у сотрудника компании: своя статистика,
+      // только по своим проектам (план §6.5).
+      companyId: null,
+    },
     breakdown: q.breakdown,
     period: q.period,
   })

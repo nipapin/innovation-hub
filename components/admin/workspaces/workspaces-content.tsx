@@ -17,7 +17,11 @@ import { WorkspaceDialogs } from "@/components/account/workspace/workspace-dialo
 import { WorkspaceProvider } from "@/components/account/workspace/workspace-context"
 import { createWorkspaceSource } from "./workspace-source"
 import { TransferDialog } from "./transfer-dialog"
-import { UsersColumn, type PipelineUserDto } from "./users-column"
+import {
+  UsersColumn,
+  type CompanyPickDto,
+  type PipelineUserDto,
+} from "./users-column"
 
 /**
  * «Папки пользователей»: три колонки — люди, их проекты, файлы — и нижняя
@@ -40,6 +44,7 @@ import { UsersColumn, type PipelineUserDto } from "./users-column"
  */
 function WorkspacesLayout({
   users,
+  companies,
   loadingUsers,
   selectedUserId,
   ownerEmail,
@@ -48,6 +53,7 @@ function WorkspacesLayout({
   onTransferred,
 }: {
   users: PipelineUserDto[]
+  companies: CompanyPickDto[]
   loadingUsers: boolean
   selectedUserId: string | null
   ownerEmail: string | null
@@ -62,6 +68,7 @@ function WorkspacesLayout({
       <div className="hidden min-h-0 flex-1 lg:flex">
         <UsersColumn
           users={users}
+          companies={companies}
           loading={loadingUsers}
           selectedUserId={selectedUserId}
           onSelectUser={onSelectUser}
@@ -103,6 +110,7 @@ export function WorkspacesContent() {
   const canManage = can("projects.manage")
 
   const [users, setUsers] = useState<PipelineUserDto[]>([])
+  const [companies, setCompanies] = useState<CompanyPickDto[]>([])
   const [loadingUsers, setLoadingUsers] = useState(true)
 
   const loadUsers = useCallback(async () => {
@@ -115,6 +123,7 @@ export function WorkspacesContent() {
       }
       const data = await res.json()
       setUsers(data.users ?? [])
+      setCompanies(data.companies ?? [])
     } finally {
       setLoadingUsers(false)
     }
@@ -164,6 +173,7 @@ export function WorkspacesContent() {
     <WorkspaceProvider source={source}>
       <WorkspacesLayout
         users={users}
+        companies={companies}
         loadingUsers={loadingUsers}
         selectedUserId={selectedUserId}
         ownerEmail={ownerEmail}

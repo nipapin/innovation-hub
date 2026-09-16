@@ -13,6 +13,8 @@ export type AuditEvent = {
   targetType: string | null
   targetId: string | null
   targetLabel: string | null
+  /** Компания, в которой произошло действие — читает консоль компании, этап 4. */
+  companyId: string | null
   meta: Record<string, unknown>
   ip: string | null
   createdAt: Date
@@ -25,6 +27,7 @@ const EVENT_FIELDS = `
   action,
   target_type AS "targetType",
   target_id   AS "targetId",
+  company_id  AS "companyId",
   meta,
   ip,
   created_at  AS "createdAt"
@@ -46,6 +49,8 @@ export async function recordAuditEvent(input: {
   targetId?: string | null
   /** Человекочитаемая подпись цели на момент события: email, имя компьютера. */
   targetLabel?: string | null
+  /** Компания, в которой произошло действие. Пишем с первого дня — план §12.3. */
+  companyId?: string | null
   meta?: Record<string, unknown>
   ip?: string | null
 }): Promise<void> {
@@ -55,20 +60,66 @@ export async function recordAuditEvent(input: {
 
     await query(
       `INSERT INTO admin_audit_log
-         (actor_id, actor_email, action, target_type, target_id, meta, ip)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+         (actor_id, actor_email, action, target_type, target_id, company_id, meta, ip)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
       [
         input.actorId,
         input.actorEmail,
         input.action,
         input.targetType ?? null,
         input.targetId ?? null,
+        input.companyId ?? null,
         JSON.stringify(meta),
         input.ip ?? null,
       ],
     )
   } catch (error) {
     console.error("[audit] failed to record", input.action, error)
+  }
+}
+
+/**
+ * Журнал ОДНОЙ компании — консоль компании, план §6.4.
+ *
+ * Отдельная функция, а не фильтр у `listAuditEvents`: там `companyId` был бы
+ * ещё одним необязательным параметром среди прочих, и роут консоли мог бы
+ * позвать её, забыв его передать, — то есть показать админу компании весь
+ * журнал сайта. Здесь companyId первый и обязательный, пропустить его нельзя.
+ */
+export async function listCompanyAuditEvents(options: {
+  companyId: string
+  limit: number
+  before?: string | null
+}): Promise<{ events: AuditEvent[]; nextCursor: string | null }> {
+  const params: unknown[] = [options.companyId]
+  let cursor = ""
+  if (options.before) {
+    params.push(options.before)
+    cursor = `AND id < $${params.length}::bigint`
+  }
+  params.push(options.limit + 1)
+
+  const result = await query<AuditEvent>(
+    `SELECT ${EVENT_FIELDS}
+       FROM admin_audit_log
+      WHERE company_id = $1
+        ${cursor}
+      ORDER BY id DESC
+      LIMIT $${params.length}`,
+    params,
+  )
+
+  const rows = result.rows
+  const hasMore = rows.length > options.limit
+  const events = hasMore ? rows.slice(0, options.limit) : rows
+
+  return {
+    events: events.map((row) => ({
+      ...row,
+      targetLabel:
+        typeof row.meta?.label === "string" ? (row.meta.label as string) : null,
+    })),
+    nextCursor: hasMore ? (events[events.length - 1]?.id ?? null) : null,
   }
 }
 

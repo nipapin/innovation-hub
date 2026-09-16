@@ -80,7 +80,7 @@ export function HelpDot({
 
       <PopoverContent
         align={align}
-        className="w-[320px] border-white/[0.09] bg-ws-panel p-3.5 shadow-ws-menu"
+        className="w-[320px] border-foreground/[0.09] bg-ws-panel p-3.5 shadow-ws-menu"
       >
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin text-ws-4" />

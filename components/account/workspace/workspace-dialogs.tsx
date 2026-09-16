@@ -76,7 +76,7 @@ export function WorkspaceDialogs() {
                   submit()
                 }
               }}
-              className="h-10 rounded-[9px] border-white/10 bg-ws-control text-[14px] text-ws-1 focus-visible:border-ws-select focus-visible:ring-0 focus-visible:ring-offset-0"
+              className="h-10 rounded-[9px] border-foreground/10 bg-ws-control text-[14px] text-ws-1 focus-visible:border-ws-select focus-visible:ring-0 focus-visible:ring-offset-0"
             />
           </div>
           <DialogFooter>
@@ -123,7 +123,7 @@ export function WorkspaceDialogs() {
             ) : null}
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-white/10 bg-transparent text-ws-2 hover:bg-white/5 hover:text-ws-1">
+            <AlertDialogCancel className="border-foreground/10 bg-transparent text-ws-2 hover:bg-foreground/5 hover:text-ws-1">
               {t.cancel}
             </AlertDialogCancel>
             <AlertDialogAction
@@ -194,7 +194,7 @@ export function WorkspaceDialogs() {
             <Button
               variant="ghost"
               onClick={() => conflict?.decide("skip", applyAll)}
-              className="text-ws-3 hover:bg-white/5 hover:text-ws-1"
+              className="text-ws-3 hover:bg-foreground/5 hover:text-ws-1"
             >
               {t.conflictSkip}
             </Button>
@@ -202,7 +202,7 @@ export function WorkspaceDialogs() {
               <Button
                 variant="outline"
                 onClick={() => conflict?.decide("rename", applyAll)}
-                className="border-white/10 bg-transparent text-ws-2 hover:bg-white/5 hover:text-ws-1"
+                className="border-foreground/10 bg-transparent text-ws-2 hover:bg-foreground/5 hover:text-ws-1"
               >
                 {t.conflictKeepBoth}
               </Button>

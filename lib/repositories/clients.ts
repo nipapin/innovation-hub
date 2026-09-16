@@ -44,6 +44,21 @@ export async function listClientsByIds(ids: string[]): Promise<ClientRecord[]> {
   return result.rows
 }
 
+/** Клиенты нескольких владельцев — рамка компании (COMPANY_PIPELINE_PLAN.md §2). */
+export async function listClientsByUserIds(
+  userIds: string[],
+): Promise<ClientRecord[]> {
+  if (userIds.length === 0) return []
+  const result = await query<ClientRecord>(
+    `SELECT ${CLIENT_FIELDS}
+       FROM clients
+      WHERE user_id = ANY($1::text[])
+      ORDER BY display_name ASC, created_at ASC`,
+    [[...new Set(userIds)]],
+  )
+  return result.rows
+}
+
 export async function listAllClients(): Promise<ClientRecord[]> {
   const result = await query<ClientRecord>(
     `SELECT ${CLIENT_FIELDS}

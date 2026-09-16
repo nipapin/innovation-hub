@@ -131,7 +131,7 @@ export function RunPanel({
 
   return (
     <>
-      <section className="rounded-xl border border-white/10 bg-ws-well px-4 py-3">
+      <section className="rounded-xl border border-foreground/10 bg-ws-well px-4 py-3">
         <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ws-4">
           <span className="flex items-center gap-1.5">
             <span
@@ -211,7 +211,7 @@ export function RunPanel({
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
-              className="flex h-[52px] shrink-0 items-center gap-2.5 rounded-[11px] border border-white/[0.14] px-5 text-[14px] text-ws-2 hover:bg-white/5"
+              className="flex h-[52px] shrink-0 items-center gap-2.5 rounded-[11px] border border-foreground/[0.14] px-5 text-[14px] text-ws-2 hover:bg-foreground/5"
             >
               <Sliders className="h-[18px] w-[18px]" />
               {t.pipelineSettings}

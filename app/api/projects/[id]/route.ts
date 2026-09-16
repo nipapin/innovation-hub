@@ -97,7 +97,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             message:
               resume.reason === "trial-over"
                 ? "Trial period is over. Top up the balance to continue."
-                : "Not enough funds to resume processing.",
+                : resume.reason === "payer-no-funds"
+                  ? "The payer is out of funds. Ask whoever pays for your work to top up."
+                  : "Not enough funds to resume processing.",
             code: resume.reason,
           },
           { status: 409 },
@@ -158,6 +160,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     role: auth.role,
     machineTokenId: null,
     computerId: null,
+    machineCompanyId: null,
     scopedProjectId: null,
     capabilities: auth.capabilities,
   }

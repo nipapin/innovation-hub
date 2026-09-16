@@ -231,7 +231,7 @@ export const ChatsColumn = memo(function ChatsColumn({
   return (
     <section
       style={{ width: size }}
-      className="relative flex h-full shrink-0 flex-col overflow-hidden border-r border-white/[0.08] bg-ws-well"
+      className="relative flex h-full shrink-0 flex-col overflow-hidden border-r border-foreground/[0.08] bg-ws-well"
     >
       <div className="shrink-0 px-4 pb-3 pt-4">
         <div className="flex items-baseline justify-between gap-2">
@@ -256,7 +256,7 @@ export const ChatsColumn = memo(function ChatsColumn({
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t.chatsSearch}
             aria-label={t.chatsSearch}
-            className="h-[38px] w-full rounded-[9px] border border-white/10 bg-ws-control pl-[34px] pr-3 text-[13px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
+            className="h-[38px] w-full rounded-[9px] border border-foreground/10 bg-ws-control pl-[34px] pr-3 text-[13px] text-ws-1 outline-none placeholder:text-ws-4 focus:border-ws-select"
           />
         </div>
       </div>
@@ -291,7 +291,7 @@ export const ChatsColumn = memo(function ChatsColumn({
                       })}
                       className={cn(
                         "mb-1 w-full rounded-[10px] px-2.5 py-2.5 text-left",
-                        active ? "bg-ws-hover" : "hover:bg-white/[0.04]",
+                        active ? "bg-ws-hover" : "hover:bg-foreground/[0.04]",
                         // Архивный проект приглушаем, как и в «Папках»: работа по
                         // нему не идёт, но переписка остаётся доступной.
                         chat.isArchived && !active ? "opacity-60" : null,
@@ -311,7 +311,7 @@ export const ChatsColumn = memo(function ChatsColumn({
                           {chat.projectName}
                         </span>
                         {chat.isArchived ? (
-                          <span className="shrink-0 rounded border border-white/10 px-1 py-px text-[10px] uppercase tracking-wide text-ws-5">
+                          <span className="shrink-0 rounded border border-foreground/10 px-1 py-px text-[10px] uppercase tracking-wide text-ws-5">
                             {t.chatsArchived}
                           </span>
                         ) : null}
@@ -359,7 +359,7 @@ export const ChatsColumn = memo(function ChatsColumn({
                 type="button"
                 onClick={() => void loadMore()}
                 disabled={loadingMore}
-                className="mb-2 mt-1 flex w-full items-center justify-center gap-2 rounded-[9px] border border-white/10 py-2 text-[12.5px] text-ws-3 hover:bg-white/[0.04] disabled:opacity-50"
+                className="mb-2 mt-1 flex w-full items-center justify-center gap-2 rounded-[9px] border border-foreground/10 py-2 text-[12.5px] text-ws-3 hover:bg-foreground/[0.04] disabled:opacity-50"
               >
                 {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {t.chatsMore}

@@ -136,14 +136,14 @@ export function PostingQueuePanel({
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : jobs.length === 0 ? (
-          <p className="rounded-lg border border-white/[0.08] px-4 py-5 text-[13px] text-ws-4">
+          <p className="rounded-lg border border-foreground/[0.08] px-4 py-5 text-[13px] text-ws-4">
             {t.postingQueueEmpty}
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-white/[0.08]">
+          <div className="overflow-x-auto rounded-lg border border-foreground/[0.08]">
             <table className="w-full min-w-[820px] text-[12.5px]">
               <thead className="text-left text-[11px] uppercase tracking-[0.14em] text-ws-5">
-                <tr className="border-b border-white/[0.08]">
+                <tr className="border-b border-foreground/[0.08]">
                   <th className="px-3 py-2 font-medium">{t.postingColProject}</th>
                   <th className="px-3 py-2 font-medium">{t.postingColFile}</th>
                   <th className="px-3 py-2 font-medium">{t.postingColTarget}</th>
@@ -156,7 +156,7 @@ export function PostingQueuePanel({
                 {jobs.map((job) => (
                   <tr
                     key={job.id}
-                    className="border-b border-white/[0.05] last:border-0"
+                    className="border-b border-foreground/[0.05] last:border-0"
                   >
                     <td className="px-3 py-2 text-ws-2">
                       <span className="block truncate">{job.projectName}</span>
@@ -254,14 +254,14 @@ export function PostingQueuePanel({
         </header>
 
         {routes.length === 0 ? (
-          <p className="rounded-lg border border-white/[0.08] px-4 py-5 text-[13px] text-ws-4">
+          <p className="rounded-lg border border-foreground/[0.08] px-4 py-5 text-[13px] text-ws-4">
             {t.postingRoutesEmpty}
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-white/[0.08]">
+          <div className="overflow-x-auto rounded-lg border border-foreground/[0.08]">
             <table className="w-full min-w-[820px] text-[12.5px]">
               <thead className="text-left text-[11px] uppercase tracking-[0.14em] text-ws-5">
-                <tr className="border-b border-white/[0.08]">
+                <tr className="border-b border-foreground/[0.08]">
                   <th className="px-3 py-2 font-medium">{t.postingColProject}</th>
                   <th className="px-3 py-2 font-medium">{t.postingColTarget}</th>
                   <th className="px-3 py-2 font-medium">{t.postingColQueued}</th>
@@ -272,7 +272,7 @@ export function PostingQueuePanel({
                 {routes.map((route) => (
                   <tr
                     key={`${route.projectId}:${route.finderId}`}
-                    className="border-b border-white/[0.05] last:border-0"
+                    className="border-b border-foreground/[0.05] last:border-0"
                   >
                     <td className="px-3 py-2 text-ws-2">
                       <span className="block truncate">{route.projectName}</span>

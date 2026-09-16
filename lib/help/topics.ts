@@ -38,8 +38,18 @@ export type HelpSection = (typeof HELP_SECTIONS)[number]["key"]
 /**
  * Кому статья видна.
  *
- * `"user"` — любому вошедшему. Иначе — тег права: статью видит тот, кому открыт
- * тот же кусок интерфейса, про который она написана.
+ * `"user"` — любому вошедшему. `"company-admin"` — тому, кого пускает гейт
+ * консоли компании (lib/company-auth.ts). Иначе — тег права САЙТА: статью видит
+ * тот, кому открыт тот же кусок интерфейса, про который она написана.
+ *
+ * Осей прав две и они независимы (COMPANY_ACCOUNTS_PLAN.md §4), поэтому у
+ * аудитории появилось отдельное значение, а не подходящий по смыслу сайтовый
+ * тег: админ компании — обычный `USER` на сайте, и любой тег отсюда закрыл бы
+ * ему статью про его же консоль.
+ *
+ * Разбивать `"company-admin"` на теги компании пока не за чем: разделов в
+ * консоли шесть, и статья про неё одна. Когда их станет больше — сюда добавится
+ * `CompanyCapability`, ровно тем же приёмом.
  *
  * ВАЖНО: это не «скрыть абзац», а «показать другую статью». Одна и та же
  * настройка для пользователя и для админа — это два разных текста, а не один с
@@ -48,7 +58,7 @@ export type HelpSection = (typeof HELP_SECTIONS)[number]["key"]
  * их в одну статью даёт текст, плохой для обоих. Поэтому пара живёт двумя
  * темами, связанными через `seeAlso`.
  */
-export type HelpAudience = "user" | AdminCapability
+export type HelpAudience = "user" | "company-admin" | AdminCapability
 
 type HelpTopicShape = {
   id: string
@@ -119,6 +129,28 @@ export const HELP_TOPICS = [
     id: "features.overview",
     section: "site",
     audience: "features.manage",
+  },
+  // Компании — в «Установке», а не в «Деньгах»: общий кошелёк это следствие, а
+  // сам раздел про то, как устроена площадка и кто на ней есть.
+  {
+    id: "companies.overview",
+    section: "site",
+    audience: "companies.manage",
+    seeAlso: ["companies.people", "billing.promo.payer"],
+  },
+  {
+    id: "companies.people",
+    section: "site",
+    audience: "companies.manage",
+    seeAlso: ["companies.overview", "billing.promo.payer"],
+  },
+  // Вторая ось прав: эту статью читает админ компании, а он обычный `USER` на
+  // сайте — любой сайтовый тег закрыл бы ему текст про его же консоль.
+  {
+    id: "companies.console",
+    section: "site",
+    audience: "company-admin",
+    standalone: true,
   },
   {
     id: "pipeline.file-types",
@@ -280,6 +312,7 @@ export const HELP_TOPICS = [
       "billing.promo.user",
       "billing.promo.grant",
       "billing.promo.projects",
+      "billing.promo.payer",
       "billing.promo.overdraft",
       "billing.promo.history",
       "billing.trial",
@@ -308,6 +341,12 @@ export const HELP_TOPICS = [
     section: "billing",
     audience: "billing.promo",
     seeAlso: ["billing.promo", "billing.rates.limits"],
+  },
+  {
+    id: "billing.promo.payer",
+    section: "billing",
+    audience: "billing.promo",
+    seeAlso: ["billing.promo", "billing.promo.grant", "billing.promo.overdraft"],
   },
   {
     id: "billing.promo.history",
@@ -346,17 +385,23 @@ export function seeAlsoOf(topic: HelpTopic): readonly string[] {
  * Проверка нужна на сервере, при отдаче: спрятать ссылку мало — текст не должен
  * попадать в клиентский бандл, иначе «скрытая» часть читается из devtools.
  */
-export function canSeeTopic(
-  user: { role: UserRole; capabilities: readonly AdminCapability[] },
-  topic: HelpTopic,
-): boolean {
+export type HelpViewer = {
+  role: UserRole
+  capabilities: readonly AdminCapability[]
+  /**
+   * Пускает ли его гейт в консоль компании. Готовый ответ, а не роль с тегами:
+   * решает это `lib/company-auth.ts`, и повторять правило здесь значило бы
+   * завести второй источник правды — он однажды разойдётся с первым.
+   */
+  companyAdmin?: boolean
+}
+
+export function canSeeTopic(user: HelpViewer, topic: HelpTopic): boolean {
   if (topic.audience === "user") return true
+  if (topic.audience === "company-admin") return user.companyAdmin === true
   return hasCapability(user.role, user.capabilities, topic.audience)
 }
 
-export function visibleTopics(user: {
-  role: UserRole
-  capabilities: readonly AdminCapability[]
-}): HelpTopic[] {
+export function visibleTopics(user: HelpViewer): HelpTopic[] {
   return HELP_TOPICS.filter((topic) => canSeeTopic(user, topic))
 }

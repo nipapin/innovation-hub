@@ -560,19 +560,19 @@ export function VoiceEditor({ tool }: { tool: ToolInstance }) {
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="flex h-14 flex-none items-center gap-2.5 border-b border-white/[0.07] px-3 md:px-4">
+      <header className="flex h-14 flex-none items-center gap-2.5 border-b border-foreground/[0.07] px-3 md:px-4">
         <SourcePicker tool={tool} />
         <button
           type="button"
           title={t.srtSettings}
           onClick={() => setSettingsOpen(true)}
-          className="flex h-[34px] w-[34px] items-center justify-center rounded-md border border-white/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+          className="flex h-[34px] w-[34px] items-center justify-center rounded-md border border-foreground/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
         >
           <Settings className="h-[17px] w-[17px]" />
         </button>
 
         {doc ? (
-          <div className="flex items-center gap-1 rounded-md border border-white/[0.07] bg-ws-raised p-[3px]">
+          <div className="flex items-center gap-1 rounded-md border border-foreground/[0.07] bg-ws-raised p-[3px]">
             {languages.map((code) => (
               <button
                 key={code}
@@ -597,7 +597,7 @@ export function VoiceEditor({ tool }: { tool: ToolInstance }) {
         {doc ? (
           <div
             title={t.voiceListenHint}
-            className="flex items-center gap-1 rounded-md border border-white/[0.07] bg-ws-raised p-[3px]"
+            className="flex items-center gap-1 rounded-md border border-foreground/[0.07] bg-ws-raised p-[3px]"
           >
             <button
               type="button"
@@ -642,7 +642,7 @@ export function VoiceEditor({ tool }: { tool: ToolInstance }) {
             className={cn(
               "flex h-[34px] items-center gap-2 rounded px-3 text-[13px] font-semibold",
               api && api.genPending > 0
-                ? "border border-white/[0.07] text-ws-2 hover:bg-ws-hover"
+                ? "border border-foreground/[0.07] text-ws-2 hover:bg-ws-hover"
                 : "bg-ws-action text-white hover:bg-ws-action-hover",
             )}
           >
@@ -666,7 +666,7 @@ export function VoiceEditor({ tool }: { tool: ToolInstance }) {
           type="button"
           title={t.srtHotkeys}
           onClick={() => setHelpOpen(true)}
-          className="flex h-[34px] w-[34px] items-center justify-center rounded border border-white/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+          className="flex h-[34px] w-[34px] items-center justify-center rounded border border-foreground/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
         >
           <HelpCircle className="h-[18px] w-[18px]" />
         </button>
@@ -675,7 +675,7 @@ export function VoiceEditor({ tool }: { tool: ToolInstance }) {
             <button
               type="button"
               disabled={!doc}
-              className="flex h-[34px] items-center gap-2 rounded border border-white/[0.07] px-3 text-[13px] text-ws-2 hover:bg-ws-hover disabled:opacity-40"
+              className="flex h-[34px] items-center gap-2 rounded border border-foreground/[0.07] px-3 text-[13px] text-ws-2 hover:bg-ws-hover disabled:opacity-40"
             >
               <Download className="h-[17px] w-[17px]" />
               {t.srtExport}
@@ -712,7 +712,7 @@ export function VoiceEditor({ tool }: { tool: ToolInstance }) {
               onClick={() =>
                 setExportReq({ layout: "per-track", langs: [effectiveLang], autoRun: false })
               }
-              className="cursor-pointer focus:bg-white/10"
+              className="cursor-pointer focus:bg-foreground/10"
             >
               {t.srtExportAdvanced}
             </DropdownMenuItem>
@@ -722,7 +722,7 @@ export function VoiceEditor({ tool }: { tool: ToolInstance }) {
           type="button"
           title={t.toolClose}
           onClick={closeTool}
-          className="flex h-[34px] w-[34px] items-center justify-center rounded border border-white/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+          className="flex h-[34px] w-[34px] items-center justify-center rounded border border-foreground/[0.07] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
         >
           <X className="h-[18px] w-[18px]" />
         </button>
@@ -815,7 +815,7 @@ function ExportMenuItem({
     <DropdownMenuItem
       onClick={onClick}
       disabled={disabled}
-      className="cursor-pointer gap-3 focus:bg-white/10"
+      className="cursor-pointer gap-3 focus:bg-foreground/10"
     >
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate">{title}</span>

@@ -33,6 +33,8 @@ export type RemoteComputerAuthRow = {
   createdBy: string
   email: string
   isActive: boolean
+  /** NULL — наша машина. Заполнено — машина компании, см. COMPANY_PIPELINE_PLAN.md §2. */
+  companyId: string | null
 }
 
 function parseMeta(raw: unknown): Record<string, unknown> {
@@ -103,6 +105,7 @@ export async function findActiveRemoteComputerByTokenHash(
     `SELECT rc.id,
             rc.name,
             rc.created_by AS "createdBy",
+            rc.company_id AS "companyId",
             u.email,
             u.is_active AS "isActive"
        FROM remote_computers rc
@@ -119,18 +122,24 @@ export async function createRemoteComputer(input: {
   description?: string
   createdBy: string
   rawToken: string
+  /**
+   * Компания машины. NULL — наша, как было всегда. Заполнено — она стоит у
+   * клиента и видит только его проекты (docs/COMPANY_PIPELINE_PLAN.md §2).
+   */
+  companyId?: string | null
 }): Promise<{ id: string; token: string; name: string }> {
   const id = randomUUID()
   const tokenHash = hashMachineToken(input.rawToken)
   await query(
-    `INSERT INTO remote_computers (id, name, description, token_hash, created_by)
-     VALUES ($1, $2, $3, $4, $5)`,
+    `INSERT INTO remote_computers (id, name, description, token_hash, created_by, company_id)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
     [
       id,
       input.name,
       input.description?.trim() ?? "",
       tokenHash,
       input.createdBy,
+      input.companyId ?? null,
     ],
   )
   return { id, token: input.rawToken, name: input.name }

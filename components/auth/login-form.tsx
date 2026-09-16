@@ -122,7 +122,19 @@ export function LoginForm({
           </div>
         ) : null}
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          {/* method="post" — не для сервера, а на случай отправки ДО гидратации.
+              Несколько сотен миллисекунд страница живёт без JavaScript (а при
+              ошибке в скрипте — всегда), и Enter в этот промежуток отправит
+              форму сам. По умолчанию это GET, то есть пароль уедет в адресную
+              строку, а оттуда в историю браузера, логи сервера и заголовок
+              Referer. POST кладёт поля в тело запроса. Обработчика по этому
+              адресу нет и отправка ничем не кончится — но пароль нигде не
+              осядет. */}
+          <form
+            method="post"
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-4"
+          >
             <FormField
               control={form.control}
               name="email"

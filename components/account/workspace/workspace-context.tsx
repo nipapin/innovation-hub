@@ -20,6 +20,7 @@ import {
 } from "@/components/account/i18n"
 import type { ExposedOptionChange } from "@/lib/options/apply"
 import type { ExposedOption } from "@/lib/options/types"
+import type { SkippedOption } from "@/lib/options/extract"
 import {
   UploadCancelled,
   isUploadCancelled,
@@ -38,6 +39,7 @@ import {
   resolveRevealTarget,
   siblingFiles,
 } from "./format"
+import { mapTrashItem, type TrashItem, type TrashSort } from "./trash-model"
 import { projectCapabilities } from "./access"
 import { CABINET_SOURCE } from "./source"
 import type {
@@ -69,16 +71,13 @@ const DELTA_INTERVAL_MS = 4000
 /**
  * Раздел списка проектов. Живёт в URL (`?tab=…`), потому что в боковом меню
  * это обычные ссылки, а не состояние страницы.
+ *
+ * Расшаренные — не раздел, а группа внутри «Проектов» (project-groups.tsx).
+ * Старые ссылки `?tab=shared` приводят туда же: неизвестный раздел — «Проекты».
  */
-export type ProjectTab = "projects" | "shared" | "tools" | "archive" | "trash"
+export type ProjectTab = "projects" | "tools" | "archive" | "trash"
 
-const PROJECT_TABS: ProjectTab[] = [
-  "projects",
-  "shared",
-  "tools",
-  "archive",
-  "trash",
-]
+const PROJECT_TABS: ProjectTab[] = ["projects", "tools", "archive", "trash"]
 
 function parseTab(raw: string | null): ProjectTab {
   return PROJECT_TABS.includes(raw as ProjectTab)
@@ -177,6 +176,13 @@ type WorkspaceValue = {
   patchProject: (id: string, body: Record<string, unknown>) => Promise<void>
   setArchived: (project: Project, archived: boolean) => void
   deleteProject: (id: string) => void
+  /**
+   * Перечитать список проектов. Нужна тем, кто добавляет проекты в обход
+   * рабочего места — например выдаче тестового периода: копии появляются на
+   * сервере, и без перечитки человек смотрит на пустой кабинет и думает, что
+   * ничего не произошло.
+   */
+  reloadProjects: () => Promise<void>
 
   // хранилище
   rootFiles: DriveFile[]
@@ -197,6 +203,14 @@ type WorkspaceValue = {
 
   // параметры обработки, открытые клиенту (exposedToSite в options.json)
   exposedOptions: ExposedOption[]
+  skippedOptions: SkippedOption[]
+  /**
+   * Типы файлов, которые знает обработка: снимок из графа поверх общего
+   * словаря. Нужен контролу выбора файла — он проверяет расширение до заливки,
+   * чтобы человек узнал о неподдерживаемом типе сразу, а не по молчащей
+   * обработке.
+   */
+  fileTypes: Record<string, string[]>
   /**
    * Сохранение правок. null — источник не даёт адреса (админский вид):
    * панель тогда только показывает значения.
@@ -325,6 +339,57 @@ type WorkspaceValue = {
   afterTransfer: () => Promise<void>
   closeShareDialog: () => void
   restoreProject: (project: Project) => void
+  /** Стереть проект из корзины навсегда — вместе с файлами и объектами в R2. */
+  purgeProjectForever: (project: Project) => void
+
+  // корзина
+  /**
+   * Всё удалённое по всем проектам сразу. Список всегда полный, даже когда
+   * человек смотрит на один проект: сузить его — дело показа, а колонке слева
+   * всё равно нужно знать, у каких проектов вообще есть что-то в корзине.
+   */
+  trashItems: TrashItem[]
+  loadingTrash: boolean
+  /**
+   * Живые проекты, у которых что-то лежит в корзине. В колонке это такие же
+   * строки, как удалённые проекты: разница лишь в том, что в корзине не сам
+   * проект, а часть его файлов, и восстанавливать целиком нечего.
+   */
+  trashProjects: {
+    id: string
+    name: string
+    count: number
+    /** Когда из проекта удаляли в последний раз — подпись на строке. */
+    lastDeletedAt: string
+  }[]
+  /** Строка корзины по id файла — из неё видно, что с этим файлом можно делать. */
+  trashItemOf: (fileId: string) => TrashItem | null
+  /** Чью корзину показываем. `null` — корень, файлы всех проектов вперемешку. */
+  trashProjectId: string | null
+  selectTrashProject: (id: string | null) => void
+  /** Удалённое выбранного проекта — то, что рисует правая область. */
+  trashScoped: TrashItem[]
+  /**
+   * Проект выбранного в корзине файла. По нему подсвечивается карточка слева:
+   * в корне файлы лежат вперемешку, и «откуда это» — первый вопрос к строке.
+   */
+  trashHighlightId: string | null
+  trashSort: TrashSort
+  setTrashSort: (s: TrashSort) => void
+  /** Разбивать корень корзины на группы по проектам. */
+  groupProjects: boolean
+  setGroupProjects: (v: boolean) => void
+  /**
+   * Режим «без папок»: все файлы поддерева одним списком, с путём под именем.
+   * Не вид (`view`), а поправка к нему — сочетается и со списком, и с плиткой.
+   */
+  flat: boolean
+  setFlat: (v: boolean) => void
+  reloadTrash: () => void
+  restoreTrashFile: (file: DriveFile) => void
+  purgeTrashFile: (file: DriveFile) => void
+  /** Очистка корзины: стирает проекты, лежащие в ней. */
+  emptyTrash: () => void
 
   // перемещение
   /** Элементы, для которых открыт диалог выбора папки назначения. */
@@ -332,7 +397,15 @@ type WorkspaceValue = {
   openMoveDialog: (items: DriveFile[]) => void
   closeMoveDialog: () => void
   /** Перенос внутри проекта: меняется только логический путь. */
-  moveItems: (items: DriveFile[], destFolderPath: string) => Promise<void>
+  /**
+   * Перенести в папку. Оба проекта по умолчанию — выбранный; разные `from` и
+   * `to` — перенос между проектами (копия туда, оригинал в корзину).
+   */
+  moveItems: (
+    items: DriveFile[],
+    destFolderPath: string,
+    projects?: { from?: string; to?: string },
+  ) => Promise<void>
 
   // буфер обмена
   clipboard: Clipboard | null
@@ -379,6 +452,26 @@ export function useWorkspace() {
   const ctx = useContext(Ctx)
   if (!ctx) throw new Error("useWorkspace must be used within WorkspaceProvider")
   return ctx
+}
+
+/**
+ * Дождаться фоновой работы хранилища: копирования, переноса между проектами.
+ * Ждём ограниченно, полминуты: дольше работа доедет и без нас, просто без
+ * тоста. `pending` значит «ещё идёт, а мы перестали ждать».
+ */
+async function waitForStorageJob(
+  jobId: string,
+): Promise<{ state: "done" | "failed" | "pending"; error?: string | null }> {
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 1000))
+    const res = await fetch(`/api/storage/v1/jobs/${jobId}`)
+    if (!res.ok) break
+    const data = await res.json()
+    const state = data.job?.state
+    if (state === "done") return { state: "done" }
+    if (state === "failed") return { state: "failed", error: data.job?.error }
+  }
+  return { state: "pending" }
 }
 
 async function uploadViaXhr(
@@ -526,6 +619,9 @@ export function WorkspaceProvider({
    */
   const [inStatus, setInStatus] = useState<Record<string, InItemStatus>>({})
   const [exposedOptions, setExposedOptions] = useState<ExposedOption[]>([])
+  /** Что автор графа открыл, а сайт нарисовать не смог — см. ExposedOptionsList. */
+  const [skippedOptions, setSkippedOptions] = useState<SkippedOption[]>([])
+  const [fileTypes, setFileTypes] = useState<Record<string, string[]>>({})
   const [driveAvailable, setDriveAvailable] = useState(true)
   const [loadingFiles, setLoadingFiles] = useState(false)
   const [path, setPath] = useState<DriveFile[]>([])
@@ -728,12 +824,22 @@ export function WorkspaceProvider({
           setRootFiles([])
           setInStatus({})
           setExposedOptions([])
+          setSkippedOptions([])
+          setFileTypes({})
           setPath([])
           toast.error(tRef.current.driveUnavailable)
           return
         }
         setDriveAvailable(true)
         setExposedOptions(Array.isArray(data.options) ? data.options : [])
+        setSkippedOptions(
+          Array.isArray(data.skippedOptions) ? data.skippedOptions : [],
+        )
+        setFileTypes(
+          data.fileTypes && typeof data.fileTypes === "object"
+            ? (data.fileTypes as Record<string, string[]>)
+            : {},
+        )
         const files: DriveFile[] = data.files ?? []
         setRootFiles(files)
         setFilesProjectId(projectId)
@@ -978,11 +1084,12 @@ export function WorkspaceProvider({
 
   /**
    * Раздел проекта: архив перекрывает группу, неизвестная группа считается личной.
-   * Разделы в боковом меню плоские, поэтому группировки внутри списка больше нет.
+   * Расшаренный живёт в «Проектах» — там он отдельной группой (project-groups.tsx).
+   * Проверяется до архива, как и раньше, когда у него был свой раздел.
    */
   const tabOf = useCallback((p: Project): ProjectTab => {
     if (p.deletedAt) return "trash"
-    if (p.sharedWithMe) return "shared"
+    if (p.sharedWithMe) return "projects"
     if (p.isArchived) return "archive"
     if (p.groupName === "tools") return "tools"
     return "projects"
@@ -991,7 +1098,6 @@ export function WorkspaceProvider({
   const counts = useMemo(() => {
     const acc: Record<ProjectTab, number> = {
       projects: 0,
-      shared: 0,
       tools: 0,
       archive: 0,
       trash: 0,
@@ -1015,6 +1121,9 @@ export function WorkspaceProvider({
       setPath([])
       setSelectedFile(null)
       setDraft("")
+      // Выбор в колонке один: открытый проект снимает сужение корзины, иначе
+      // подсвеченными остались бы сразу две строки.
+      setTrashProjectId(null)
       router.replace(buildUrl(id, projectTab), { scroll: false })
     },
     [router, buildUrl, projectTab],
@@ -1037,11 +1146,17 @@ export function WorkspaceProvider({
         // Общее «Failed» отправило бы человека искать ошибку там, где её нет.
         if (res.status === 409) {
           const body = (await res.json().catch(() => ({}))) as { code?: string }
-          if (body.code === "trial-over" || body.code === "no-funds") {
+          if (
+            body.code === "trial-over" ||
+            body.code === "no-funds" ||
+            body.code === "payer-no-funds"
+          ) {
             toast.error(
               body.code === "trial-over"
                 ? t.trialBannerOver
-                : t.trialBannerNoFunds,
+                : body.code === "payer-no-funds"
+                  ? t.resumePayerNoFunds
+                  : t.trialBannerNoFunds,
             )
             return
           }
@@ -1821,6 +1936,261 @@ export function WorkspaceProvider({
     ],
   )
 
+  // ---------- корзина ----------
+
+  const [trashItems, setTrashItems] = useState<TrashItem[]>([])
+  const [loadingTrash, setLoadingTrash] = useState(false)
+  const [trashProjectId, setTrashProjectId] = useState<string | null>(null)
+  const [trashSort, setTrashSort] = useState<TrashSort>("date")
+  const [groupProjects, setGroupProjects] = useState(true)
+  const [flat, setFlat] = useState(false)
+
+  /**
+   * Корзина читается целиком, по всем проектам, и сужается уже здесь.
+   *
+   * У роута есть и выборка по одному проекту, но интерфейсу она не годится:
+   * в ней нет имён проектов (в своей корзине проект и так известен), а колонке
+   * слева нужен полный перечень тех, у кого вообще есть удалённое. Читать же
+   * два списка вместо одного — это два состояния, которые разъезжаются.
+   */
+  const loadTrash = useCallback(async () => {
+    const url = sourceRef.current.trashUrl?.(null)
+    if (!url) {
+      setTrashItems([])
+      return
+    }
+    setLoadingTrash(true)
+    try {
+      const res = await fetch(url)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setTrashItems([])
+        return
+      }
+      const raw: unknown[] = Array.isArray(data.items) ? data.items : []
+      setTrashItems(
+        raw.map((item) => mapTrashItem(item as Record<string, unknown>)),
+      )
+    } finally {
+      setLoadingTrash(false)
+    }
+  }, [])
+
+  const reloadTrash = useCallback(() => {
+    void loadTrash()
+  }, [loadTrash])
+
+  // Читаем, только когда на корзину смотрят: в остальное время это запрос по
+  // всем проектам сразу ради данных, которые никто не покажет.
+  useEffect(() => {
+    if (projectTab !== "trash") return
+    void loadTrash()
+  }, [projectTab, loadTrash])
+
+  const trashProjects = useMemo(() => {
+    const byId = new Map<
+      string,
+      { id: string; name: string; count: number; lastDeletedAt: string }
+    >()
+    for (const item of trashItems) {
+      // Удалённые проекты в этот список не идут: у них слева своя карточка, со
+      // своим «Восстановить», и вторая строка про те же файлы была бы тем же
+      // проектом в корзине дважды.
+      if (item.projectDeleted) continue
+      const found = byId.get(item.projectId)
+      if (found) {
+        found.count += 1
+        // Список приходит от свежего к старому, но полагаться на это здесь
+        // незачем: подпись обещает последнее удаление, а не первое встреченное.
+        if (item.deletedAt > found.lastDeletedAt) {
+          found.lastDeletedAt = item.deletedAt
+        }
+      } else {
+        byId.set(item.projectId, {
+          id: item.projectId,
+          name: item.projectName,
+          count: 1,
+          lastDeletedAt: item.deletedAt,
+        })
+      }
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [trashItems])
+
+  const trashScoped = useMemo(
+    () =>
+      trashProjectId
+        ? trashItems.filter((item) => item.projectId === trashProjectId)
+        : trashItems,
+    [trashItems, trashProjectId],
+  )
+
+  /**
+   * Выбор в колонке корзины один на всех.
+   *
+   * Строки в ней двух родов — удалённый проект и живой проект с удалёнными
+   * файлами, — но выбирают из них по очереди, а не одновременно. Пока это были
+   * два независимых состояния, подсвечивались обе строки сразу, а правая область
+   * показывала ту, что выбрана проектом: клик по второй выглядел как промах.
+   */
+  const selectTrashProject = useCallback(
+    (id: string | null) => {
+      setTrashProjectId(id)
+      clearSelection()
+    },
+    [clearSelection],
+  )
+
+  const trashHighlightId = useMemo(() => {
+    if (trashProjectId) return trashProjectId
+    if (!selectedFile) return null
+    return (
+      trashItems.find((item) => item.fileId === selectedFile.id)?.projectId ??
+      null
+    )
+  }, [trashProjectId, selectedFile, trashItems])
+
+  const trashItemOf = useCallback(
+    (fileId: string) =>
+      trashItems.find((item) => item.fileId === fileId) ?? null,
+    [trashItems],
+  )
+
+  const restoreTrashFile = useCallback(
+    (file: DriveFile) => {
+      const item = trashItemOf(file.id)
+      const url = sourceRef.current.trashRestoreUrl?.()
+      if (!item || !url) return
+      void (async () => {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: item.projectId,
+            fileId: item.fileId,
+          }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          toast.error(data.message ?? tRef.current.restoreItemFailed)
+          return
+        }
+        toast.success(tRef.current.restoreItemDone)
+        await loadTrash()
+        // Файл вернулся в живой проект. Если на него сейчас смотрят — дерево
+        // должно это показать, иначе восстановленного файла в папке не видно.
+        if (item.projectId === selectedId) await loadDrive(selectedId, true)
+      })()
+    },
+    [trashItemOf, loadTrash, loadDrive, selectedId],
+  )
+
+  const purgeTrashFile = useCallback(
+    (file: DriveFile) => {
+      const item = trashItemOf(file.id)
+      if (!item) return
+      const t = tRef.current
+      setConfirm({
+        title: t.mPurge,
+        description: tf(t.confirmPurgeItem, { name: item.name }),
+        confirmLabel: t.mPurge,
+        destructive: true,
+        onConfirm: () => {
+          void (async () => {
+            const url = sourceRef.current.trashPurgeUrl?.(
+              item.projectId,
+              item.fileId,
+            )
+            if (!url) return
+            const res = await fetch(url, { method: "DELETE" })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) {
+              toast.error(data.message ?? t.purgeFailed)
+              return
+            }
+            toast.success(t.purgeItemDone)
+            await loadTrash()
+          })()
+        },
+      })
+    },
+    [trashItemOf, loadTrash],
+  )
+
+  const purgeProjectForever = useCallback(
+    (project: Project) => {
+      const t = tRef.current
+      setConfirm({
+        title: t.mPurge,
+        description: tf(t.confirmPurgeProject, { name: project.name }),
+        confirmLabel: t.mPurge,
+        destructive: true,
+        onConfirm: () => {
+          void (async () => {
+            const url = sourceRef.current.projectPurgeUrl?.()
+            if (!url) return
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ projectId: project.id }),
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) {
+              toast.error(data.message ?? t.purgeFailed)
+              return
+            }
+            toast.success(t.purgeProjectDone)
+            // Проекта больше нет — смотреть на него нельзя даже как на
+            // удалённый, поэтому сначала снимаем выбор, потом перечитываем.
+            if (project.id === selectedId) clearSelection()
+            await loadProjects()
+            notifyProjectsChanged()
+          })()
+        },
+      })
+    },
+    [selectedId, clearSelection, loadProjects],
+  )
+
+  /**
+   * Очистка корзины — про проекты, а не про файлы.
+   *
+   * Удалённые файлы живых проектов остаются: они лежат каждый в своей корзине,
+   * и «очистить» на разделе, где видны и те и другие, снесло бы заодно их. Для
+   * файла есть своё «удалить навсегда», по одному.
+   */
+  const emptyTrash = useCallback(() => {
+    const t = tRef.current
+    const doomed = projects.filter((p) => p.deletedAt)
+    if (doomed.length === 0) return
+    setConfirm({
+      title: t.emptyTrashAction,
+      description: t.confirmEmptyTrash,
+      confirmLabel: t.emptyTrashAction,
+      destructive: true,
+      onConfirm: () => {
+        void (async () => {
+          const url = sourceRef.current.projectPurgeUrl?.()
+          if (!url) return
+          let failed = 0
+          for (const project of doomed) {
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ projectId: project.id }),
+            })
+            if (!res.ok) failed += 1
+          }
+          if (failed > 0) toast.error(t.purgeFailed)
+          else toast.success(t.emptyTrashDone)
+          clearSelection()
+          await loadProjects()
+          notifyProjectsChanged()
+        })()
+      },
+    })
+  }, [projects, clearSelection, loadProjects])
+
   // ---------- контекстное меню ----------
 
   const openMenu = useCallback(
@@ -1852,19 +2222,66 @@ export function WorkspaceProvider({
   const closeMoveDialog = useCallback(() => setMoveTargets(null), [])
 
   /**
-   * Перенос идёт через storage v1: `/rename` меняет логический путь,
-   * объект в R2 остаётся на месте (см. docs/BACKEND_PLAN.md, модель B).
+   * Внутри проекта перенос идёт через storage v1: `/rename` меняет логический
+   * путь, объект в R2 остаётся на месте (см. docs/BACKEND_PLAN.md, модель B).
+   * Между проектами — `/move`: копия туда и оригинал в корзину одной работой.
    */
   const moveItems = useCallback(
-    async (items: DriveFile[], destFolderPath: string) => {
-      if (!selectedId || items.length === 0) return
+    async (
+      items: DriveFile[],
+      destFolderPath: string,
+      projects?: { from?: string; to?: string },
+    ) => {
+      const fromId = projects?.from ?? selectedId
+      const toId = projects?.to ?? selectedId
+      if (!selectedId || !fromId || !toId || items.length === 0) return
+
+      if (fromId !== toId) {
+        const url = sourceRef.current.crossProjectMoveUrl?.()
+        if (!url) {
+          toast.error(t.moveCrossProject)
+          return
+        }
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: fromId,
+            fileIds: items.map((f) => f.id),
+            destProjectId: toId,
+            destFolderPath,
+          }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          toast.error(data.message ?? "Move failed")
+          return
+        }
+        setSelection([])
+        setClipboard(null)
+        if (res.status === 202 && data.jobId) {
+          // Папку ждём в фоне: диалог и буфер отпускаем сразу, а дерево
+          // перечитаем, когда работа доедет.
+          toast.message(t.moveStarted)
+          void waitForStorageJob(data.jobId).then(async (job) => {
+            if (job.state === "done") toast.success(t.mMove)
+            if (job.state === "failed") toast.error(job.error ?? "Move failed")
+            await loadDrive(selectedId, true)
+          })
+          return
+        }
+        toast.success(t.mMove)
+        await loadDrive(selectedId, true)
+        return
+      }
+
       let failed = 0
       for (const file of items) {
         const res = await fetch(sourceRef.current.moveUrl(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            projectId: selectedId,
+            projectId: fromId,
             fileId: file.id,
             folderPath: destFolderPath,
           }),
@@ -1880,7 +2297,7 @@ export function WorkspaceProvider({
       setClipboard(null)
       await loadDrive(selectedId, true)
     },
-    [selectedId, t.mMove, loadDrive],
+    [selectedId, t.mMove, t.moveCrossProject, t.moveStarted, loadDrive],
   )
 
   // ---------- буфер обмена ----------
@@ -1908,7 +2325,12 @@ export function WorkspaceProvider({
     (destFolderPath: string) => {
       if (!clipboard || !selectedId) return
       if (clipboard.op === "cut") {
-        void moveItems(clipboard.items, destFolderPath)
+        // Буфер переживает смену проекта: вырезанное в другом проекте
+        // переезжает между проектами.
+        void moveItems(clipboard.items, destFolderPath, {
+          from: clipboard.projectId,
+          to: selectedId,
+        })
         return
       }
       void (async () => {
@@ -1929,22 +2351,9 @@ export function WorkspaceProvider({
         }
         if (res.status === 202 && data.jobId) {
           toast.message(`Copy started (${data.jobId.slice(0, 8)}…)`)
-          // Poll briefly then refresh.
-          for (let i = 0; i < 30; i++) {
-            await new Promise((r) => setTimeout(r, 1000))
-            const jobRes = await fetch(`/api/storage/v1/jobs/${data.jobId}`)
-            if (!jobRes.ok) break
-            const jobData = await jobRes.json()
-            const state = jobData.job?.state
-            if (state === "done") {
-              toast.success(t.clipboardPaste)
-              break
-            }
-            if (state === "failed") {
-              toast.error(jobData.job?.error ?? "Copy failed")
-              break
-            }
-          }
+          const job = await waitForStorageJob(data.jobId)
+          if (job.state === "done") toast.success(t.clipboardPaste)
+          if (job.state === "failed") toast.error(job.error ?? "Copy failed")
         } else {
           toast.success(t.clipboardPaste)
         }
@@ -1985,6 +2394,7 @@ export function WorkspaceProvider({
     patchProject,
     setArchived,
     deleteProject,
+    reloadProjects: loadProjects,
     rootFiles,
     driveAvailable,
     loadingFiles,
@@ -1993,6 +2403,8 @@ export function WorkspaceProvider({
     outFolder,
     inStatusOf,
     exposedOptions,
+    skippedOptions,
+    fileTypes,
     saveExposedOptions: source.exposedOptionsUrl ? saveExposedOptions : null,
     path,
     currentItems,
@@ -2047,6 +2459,25 @@ export function WorkspaceProvider({
     afterTransfer,
     closeShareDialog,
     restoreProject,
+    purgeProjectForever,
+    trashItems,
+    loadingTrash,
+    trashProjects,
+    trashProjectId,
+    selectTrashProject,
+    trashScoped,
+    trashHighlightId,
+    trashItemOf,
+    trashSort,
+    setTrashSort,
+    groupProjects,
+    setGroupProjects,
+    flat,
+    setFlat,
+    reloadTrash,
+    restoreTrashFile,
+    purgeTrashFile,
+    emptyTrash,
     moveTargets,
     openMoveDialog,
     closeMoveDialog,
