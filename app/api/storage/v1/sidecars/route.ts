@@ -143,6 +143,7 @@ export async function PUT(request: NextRequest) {
         storageOwnerId: access.storageOwnerId,
         projectId: access.projectId,
         changes: data.changes,
+        actor: { userId: auth.userId },
       })
       await writeSidecarSync({
         storageOwnerId: access.storageOwnerId,

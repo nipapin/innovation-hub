@@ -169,3 +169,41 @@ export function projectInviteWithPasswordHtml(input: {
   </tr>`
   return wrapEmail(inner, input.brand)
 }
+
+/**
+ * Приглашение в компанию — без проекта.
+ *
+ * Отдельный шаблон, а не ветка проектного: тот весь построен вокруг названия
+ * проекта и роли в нём, а здесь человека зовут в рабочее место целиком, и
+ * никакого проекта ещё нет. Подставить пустое имя проекта значило бы отправить
+ * письмо с дырой на месте заголовка.
+ */
+export function companyWelcomeWithPasswordHtml(input: {
+  inviteeName: string
+  inviterName: string
+  email: string
+  temporaryPassword: string
+  loginUrl: string
+  brand: MailBrand
+}): string {
+  const inner = `<tr>
+    <td style="padding:32px 32px 8px;font-family:${FONT};color:#0f172a;">
+      <p style="margin:0 0 6px;font-size:13px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;color:#64748b;">You’re invited</p>
+      <h1 style="margin:0 0 20px;font-size:24px;line-height:30px;font-weight:700;letter-spacing:-0.4px;">${escapeHtml(input.brand.name)}</h1>
+      <p style="margin:0;font-size:16px;line-height:24px;color:#334155;">Hi ${escapeHtml(input.inviteeName)},</p>
+      <p style="margin:12px 0 0;font-size:16px;line-height:24px;color:#334155;"><strong style="color:#0f172a;">${escapeHtml(input.inviterName)}</strong> added you to ${escapeHtml(input.brand.name)}. Your workspace is ready.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 4px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
+        <tr>
+          <td style="padding:16px;">
+            <div style="font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:#64748b;">Sign-in details</div>
+            <p style="margin:10px 0 0;font-family:${FONT};font-size:14px;line-height:22px;color:#334155;">Email<br/><strong style="color:#0f172a;">${escapeHtml(input.email)}</strong></p>
+            <p style="margin:12px 0 0;font-family:${FONT};font-size:14px;line-height:22px;color:#334155;">Temporary password<br/><code style="display:inline-block;margin-top:4px;padding:6px 10px;background:#0b0f17;color:#e8eef6;border-radius:8px;font-size:14px;letter-spacing:0.3px;">${escapeHtml(input.temporaryPassword)}</code></p>
+            <p style="margin:12px 0 0;font-family:${FONT};font-size:12px;line-height:18px;color:#64748b;">You’ll be asked to change this password after sign-in.</p>
+          </td>
+        </tr>
+      </table>
+      ${ctaButton(input.loginUrl, `Sign in to ${escapeHtml(input.brand.name)}`)}
+    </td>
+  </tr>`
+  return wrapEmail(inner, input.brand)
+}

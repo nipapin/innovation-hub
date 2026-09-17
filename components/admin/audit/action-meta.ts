@@ -16,6 +16,7 @@ import {
   ToggleRight,
   Trash2,
   UserCog,
+  UserPlus,
   Workflow,
 } from "lucide-react"
 
@@ -236,6 +237,13 @@ export const ACTION_META: Record<
     labelKey: "auditCompanyRoleChanged",
     icon: ShieldCheck,
     tone: "access",
+  },
+  // Не «danger», в отличие от перевода: аккаунта до этого не существовало, и
+  // ничьей принадлежности и ничьего кошелька это действие не задевает.
+  "company.member_added": {
+    labelKey: "auditCompanyMemberAdded",
+    icon: UserPlus,
+    tone: "neutral",
   },
   "company.capability_granted": {
     labelKey: "auditCompanyCapabilityGranted",

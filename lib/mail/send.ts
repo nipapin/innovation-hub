@@ -5,6 +5,7 @@ import { findCompanyById } from "@/lib/repositories/companies"
 import { findUserById } from "@/lib/repositories/users"
 import {
   INSTALLATION_BRAND,
+  companyWelcomeWithPasswordHtml,
   projectAccessGrantedHtml,
   projectInviteWithPasswordHtml,
   shareRoleCopy,
@@ -163,6 +164,45 @@ export async function sendProjectInviteWithPasswordEmail(input: {
     temporaryPassword: input.temporaryPassword,
     loginUrl,
     brand,
+  })
+  return sendMail({ to: input.to, subject, html, text })
+}
+
+/**
+ * Письмо новому сотруднику компании (план §7).
+ *
+ * Бренд обязателен, в отличие от проектных писем: человека зовут в конкретную
+ * компанию, и подпись установки на этом письме означала бы, что его позвали
+ * не туда, куда позвали.
+ */
+export async function sendCompanyWelcomeEmail(input: {
+  to: string
+  inviteeName: string
+  inviterName: string
+  temporaryPassword: string
+  brand: MailBrand
+}): Promise<MailResult> {
+  const site = siteBase()
+  const loginUrl = `${site}/login`
+  const subject = `${input.inviterName} invited you to ${input.brand.name}`
+  const text = [
+    `Hi ${input.inviteeName},`,
+    ``,
+    `${input.inviterName} added you to ${input.brand.name}.`,
+    ``,
+    `Sign in: ${loginUrl}`,
+    `Email: ${input.to}`,
+    `Temporary password: ${input.temporaryPassword}`,
+    ``,
+    `You will be asked to change this password after sign-in.`,
+  ].join("\n")
+  const html = companyWelcomeWithPasswordHtml({
+    inviteeName: input.inviteeName,
+    inviterName: input.inviterName,
+    email: input.to,
+    temporaryPassword: input.temporaryPassword,
+    loginUrl,
+    brand: input.brand,
   })
   return sendMail({ to: input.to, subject, html, text })
 }

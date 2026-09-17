@@ -21,17 +21,18 @@ export const TITLE_FRAME: Record<TitleFormat, { width: number; height: number }>
 }
 
 /**
- * Шрифты — только системные (§2.1 плана).
+ * Шрифты, которые сайт предлагал раньше, — шесть системных.
  *
- * Шрифт ищется ПО ИМЕНИ на машине, которая рендерит: не нашла — libass молча
- * подставит другой, и клиент узнает об этом по готовому ролику. Поэтому список
- * закрытый и состоит из тех, что есть на любой системе, а браузер рисует их без
- * подгрузки веб-шрифта — превью и ролик показывают одно лицо.
+ * Список БОЛЬШЕ НЕ ЗАКРЫТЫЙ: у проекта появилась своя папка шрифтов
+ * (`options/fonts`), файл едет вместе с проектом, и «шрифт обязан стоять на всех
+ * машинах парка» перестало быть условием — docs/FONTS_PLAN.md §2.
  *
- * Impact сюда не входит намеренно: у него на разных системах разное покрытие
- * кириллицы, и русский текст местами подменяется другим шрифтом.
+ * Константа осталась для одного: в проектах, настроенных до этой работы, в
+ * значении стоит «Arial», и модалке надо отличать такое имя от выбранного из
+ * витрины. Положить эти файлы в нашу библиотеку нельзя — они принадлежат
+ * Microsoft и Monotype (§5 плана).
  */
-export const TITLE_FONTS = [
+export const TITLE_SYSTEM_FONTS = [
   "Arial",
   "Georgia",
   "Times New Roman",
@@ -39,7 +40,20 @@ export const TITLE_FONTS = [
   "Trebuchet MS",
   "Courier New",
 ] as const
-export type TitleFont = (typeof TITLE_FONTS)[number]
+
+/**
+ * Имя шрифта — свободная строка, но не любая.
+ *
+ * Запрещено ровно то, что ломает получателей: управляющие символы и запятая
+ * (строка `Style:` в ASS разделена запятыми), а также символы, недопустимые в
+ * имени файла, — шрифт ищется по имени файла в `options/fonts`.
+ *
+ * Латиницей НЕ ограничиваем, хотя у самой программы для скачивания с Google
+ * проверка строже (`check_font_family`): в папку проекта автор мог положить
+ * файл с любым именем, и подменить такое имя на «Arial» значило бы молча
+ * переписать его настройки.
+ */
+const FONT_NAME = /^[^\u0000-\u001f,{}\\/:*?"<>|]{1,64}$/u
 
 /** Цвета текста: белый, чёрный и несколько ярких. Свой задаётся пипеткой. */
 export const TITLE_COLORS = [
@@ -119,7 +133,7 @@ export const TITLE_LIMITS = {
 
 /** То, что правит сайт. Одно на все три формата — см. `applyToAll`. */
 export type TitleValue = {
-  font: TitleFont
+  font: string
   size: number
   color: string
   position: TitlePosition
@@ -204,7 +218,13 @@ export function parseTitleValue(raw: unknown): TitleValue {
   const position = asRecord(block.position) ?? {}
   const outline = asRecord(block.outline) ?? {}
 
-  const font = TITLE_FONTS.find((item) => item === text.font) ?? fallback.font
+  // Имя берём как есть, если оно годное: закрытого списка больше нет, и
+  // подменять выбор автора графа на «Arial» только потому, что мы такого шрифта
+  // не предлагаем, значило бы молча переписать его настройки.
+  const font =
+    typeof text.font === "string" && FONT_NAME.test(text.font.trim())
+      ? text.font.trim()
+      : fallback.font
   const vAlign = position.vAlign
   const place: TitlePosition =
     vAlign === "top" ? "top" : vAlign === "middle" ? "middle" : "bottom"
@@ -225,6 +245,39 @@ export function parseTitleValue(raw: unknown): TitleValue {
     shadow: matchPreset(TITLE_SHADOWS, asRecord(block.shadow), "none") as TitleShadowPreset,
     box: matchPreset(TITLE_BOXES, asRecord(block.background), "none") as TitleBoxPreset,
   }
+}
+
+/**
+ * Все шрифты, которые называет значение, — по одному на формат.
+ *
+ * Сайт пишет один и тот же во все три, но автор графа в программе мог поставить
+ * разные, и при установке в проект (docs/FONTS_PLAN.md §7) нужны все: на вход
+ * ноды придёт ролик неизвестного формата, и не положенный шрифт остановит
+ * прогон ровно тогда, когда придёт «не тот» формат.
+ */
+export function titleFontNames(raw: unknown): string[] {
+  let root: unknown = null
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      root = JSON.parse(raw)
+    } catch {
+      return []
+    }
+  } else if (raw && typeof raw === "object") {
+    root = raw
+  }
+  const obj = asRecord(root)
+  if (!obj) return []
+
+  const names = new Set<string>()
+  for (const format of TITLE_FORMATS) {
+    const block = asRecord(obj[format])
+    const font = asRecord(block?.text)?.font
+    if (typeof font === "string" && FONT_NAME.test(font.trim())) {
+      names.add(font.trim())
+    }
+  }
+  return [...names]
 }
 
 /**

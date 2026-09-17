@@ -355,6 +355,7 @@ export const putSidecarAction = defineAction(putSidecarSchema, async (auth, data
         storageOwnerId: access.storageOwnerId,
         projectId: access.projectId,
         changes: data.changes,
+        actor: actorFromAuth(auth),
       })
       await writeSidecarSync({
         storageOwnerId: access.storageOwnerId,

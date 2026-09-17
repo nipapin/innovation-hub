@@ -736,11 +736,17 @@ function VideoAdjustSettingsControl({ value, disabled, onChange }: ControlProps)
  * Титры. Обёртка над модалкой: строка с JSON туда и обратно, разбор и слияние —
  * lib/options/title.ts.
  */
-function TitleSettingsControl({ value, disabled, onChange }: ControlProps) {
+function TitleSettingsControl({
+  value,
+  disabled,
+  projectId,
+  onChange,
+}: ControlProps) {
   return (
     <TitleControl
       value={typeof value === "string" ? value : ""}
       disabled={disabled}
+      projectId={projectId}
       onChange={onChange}
     />
   )

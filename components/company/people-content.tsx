@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import type { CompanyRole } from "@/lib/domain-types"
 
 type Person = {
@@ -27,9 +28,9 @@ type Person = {
 /**
  * «Сотрудники» — роли внутри компании.
  *
- * Заводить и переводить людей отсюда нельзя: перевод меняет плательщика и
- * снимает права, то есть задевает деньги и принадлежность, и живёт он в нашей
- * админке (план §6.6). Здесь — только роль в компании.
+ * Заводить новых — можно (план §7). ПЕРЕВОДИТЬ существующих нельзя: перевод
+ * меняет плательщика и снимает права, то есть задевает деньги и принадлежность,
+ * и живёт он в нашей админке (план §6.6).
  */
 export function CompanyPeople({ currentUserId }: { currentUserId: string }) {
   const { t } = useI18n()
@@ -80,6 +81,7 @@ export function CompanyPeople({ currentUserId }: { currentUserId: string }) {
 
   return (
     <div className="space-y-6">
+      <AddPeople onAdded={load} />
       <Section title={t.coPeopleTitle} description={t.coPeopleSub}>
       {loading ? (
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -129,6 +131,111 @@ export function CompanyPeople({ currentUserId }: { currentUserId: string }) {
       </Section>
       <CompanyOutsiders />
     </div>
+  )
+}
+
+type AddOutcome =
+  | "created"
+  | "mail-failed"
+  | "already"
+  | "taken"
+  | "invalid"
+  | "failed"
+
+/**
+ * «Добавить сотрудника» — заведение нового аккаунта по почте.
+ *
+ * Результат показывается построчно и НЕ исчезает сам: в строке «заведён, но
+ * письмо не ушло» лежит единственное, что отличает заведённого человека от
+ * вошедшего, — и всплывающее уведомление унесло бы это через три секунды.
+ */
+function AddPeople({ onAdded }: { onAdded: () => Promise<void> | void }) {
+  const { t } = useI18n()
+  const [raw, setRaw] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [results, setResults] = useState<
+    { email: string; outcome: AddOutcome }[]
+  >([])
+
+  const outcomeText: Record<AddOutcome, string> = {
+    created: t.coPeopleAddCreated,
+    "mail-failed": t.coPeopleAddMailFailed,
+    already: t.coPeopleAddAlready,
+    taken: t.coPeopleAddTaken,
+    invalid: t.coPeopleAddInvalid,
+    failed: t.coPeopleAddFailed,
+  }
+
+  // Запятая, точка с запятой, пробел, перевод строки: адреса приходят из письма,
+  // из таблицы и из мессенджера, и требовать одного разделителя — значит просить
+  // человека почистить список руками.
+  const emails = raw
+    .split(/[\s,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  const submit = async () => {
+    if (emails.length === 0) return
+    setBusy(true)
+    try {
+      const res = await fetch("/api/company/people", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails }),
+      })
+      if (!res.ok) {
+        toast.error(t.coSaveFailed)
+        return
+      }
+      const body = (await res.json()) as {
+        results: { email: string; outcome: AddOutcome }[]
+      }
+      setResults(body.results)
+      // Поле чистим только если кого-то действительно завели: иначе человек
+      // потеряет список, который вставлял, и наберёт его заново.
+      if (body.results.some((row) => row.outcome === "created")) {
+        setRaw("")
+        await onAdded()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Section title={t.coPeopleAddTitle} description={t.coPeopleAddSub}>
+      <div className="space-y-3">
+        <Textarea
+          value={raw}
+          onChange={(event) => setRaw(event.target.value)}
+          placeholder={t.coPeopleAddPlaceholder}
+          rows={3}
+          disabled={busy}
+        />
+        <Button onClick={() => void submit()} disabled={busy || emails.length === 0}>
+          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          {t.coPeopleAddButton}
+        </Button>
+        {results.length > 0 ? (
+          <ul className="space-y-1 text-sm">
+            {results.map((row) => (
+              <li key={row.email} className="flex flex-wrap gap-x-2">
+                <span className="text-foreground">{row.email}</span>
+                <span
+                  className={
+                    row.outcome === "created"
+                      ? "text-muted-foreground"
+                      : "text-amber-600 dark:text-amber-500"
+                  }
+                >
+                  {outcomeText[row.outcome]}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </Section>
   )
 }
 

@@ -1,9 +1,8 @@
-import { randomBytes } from "node:crypto"
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireUserApi } from "@/lib/admin-auth"
 import { auditFrom } from "@/lib/audit"
-import { hashPassword } from "@/lib/auth"
+import { createAccountByEmail } from "@/lib/invite-account"
 import {
   mailBrandForOwner,
   sendProjectAccessGrantedEmail,
@@ -17,7 +16,6 @@ import {
   type ProjectAccessRole,
   type ProjectMemberRole,
 } from "@/lib/project-access"
-import { syncUserMeta } from "@/lib/project-storage"
 import {
   findProjectMembership,
   listProjectMembers,
@@ -27,12 +25,7 @@ import {
 import { rememberShareContact } from "@/lib/repositories/share-contacts"
 import { hasCapability } from "@/lib/admin-capabilities"
 import { checkCompanyInvite } from "@/lib/company-invite-gate"
-import {
-  createUser,
-  findUserByEmail,
-  findUserById,
-  updateUser,
-} from "@/lib/repositories/users"
+import { findUserByEmail, findUserById } from "@/lib/repositories/users"
 
 export const runtime = "nodejs"
 
@@ -62,10 +55,6 @@ const patchSchema = z.object({
   userId: z.string().min(1),
   role: roleSchema,
 })
-
-function tempPassword(): string {
-  return randomBytes(9).toString("base64url")
-}
 
 function uniqueEmails(parsed: z.infer<typeof inviteSchema>): string[] {
   const raw = [
@@ -128,34 +117,22 @@ async function inviteOne(input: {
   let temporaryPassword: string | null = null
 
   if (!user) {
-    temporaryPassword = tempPassword()
-    const passwordHash = await hashPassword(temporaryPassword)
-    const fullName =
-      input.fullName?.trim() || input.email.split("@")[0] || "User"
-    const createdUser = await createUser({
-      fullName,
+    // Заведение аккаунта — общий код с консолью компании (`lib/invite-account.ts`).
+    // Две копии разошлись бы молча и разошлись бы именно по `mustChangePassword`.
+    const account = await createAccountByEmail({
       email: input.email,
-      passwordHash,
+      fullName: input.fullName,
     })
-    await updateUser(createdUser.id, { mustChangePassword: true })
-    user = await findUserByEmail(input.email)
-    if (!user) {
+    if (!account) {
       return {
         email: input.email,
         ok: false,
         message: "Could not create user.",
       }
     }
+    user = account.user
+    temporaryPassword = account.temporaryPassword
     created = true
-    try {
-      await syncUserMeta({
-        userId: createdUser.id,
-        email: createdUser.email,
-        createdAt: createdUser.createdAt.toISOString(),
-      })
-    } catch {
-      // best-effort
-    }
   }
 
   if (user.id === input.projectOwnerId) {

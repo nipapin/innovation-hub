@@ -13,19 +13,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { missingCharacters } from "@/lib/fonts/coverage"
+import { loadFont } from "@/lib/fonts/face-loader"
 import {
   mergeTitleValue,
   parseTitleValue,
   sizeForFormat,
   TITLE_BOXES,
   TITLE_COLORS,
-  TITLE_FONTS,
   TITLE_FORMATS,
   TITLE_FRAME,
   TITLE_LIMITS,
   TITLE_POSITIONS,
   TITLE_SAMPLE_TEXT,
   TITLE_SHADOWS,
+  TITLE_SYSTEM_FONTS,
   type TitleBoxPreset,
   type TitleFormat,
   type TitlePosition,
@@ -33,6 +35,7 @@ import {
   type TitleValue,
 } from "@/lib/options/title"
 import { cn } from "@/lib/utils"
+import { FontPicker, useFontSources } from "./font-picker"
 import { FieldGroup, SliderField } from "./modal-fields"
 
 /**
@@ -170,10 +173,12 @@ function ChoiceRow<T extends string>({
 export function TitleControl({
   value,
   disabled,
+  projectId,
   onChange,
 }: {
   value: string
   disabled: boolean
+  projectId: string
   onChange: (next: string) => void
 }) {
   const { t } = useI18n()
@@ -183,9 +188,62 @@ export function TitleControl({
   /** Текст образца НЕ сохраняется: настоящие слова придут из входа ноды. */
   const [sample, setSample] = useState(TITLE_SAMPLE_TEXT)
 
+  const sources = useFontSources(projectId, open)
+  const [covered, setCovered] = useState<Set<number> | null>(null)
+  const [fontState, setFontState] = useState<"none" | "loading" | "ready" | "failed">(
+    "none",
+  )
+
   useEffect(() => {
     if (open) setDraft(parseTitleValue(value))
   }, [open, value])
+
+  /**
+   * Образец рисуется НАСТОЯЩИМ файлом — тем, который поедет на машину
+   * (docs/FONTS_PLAN.md §6). Из тех же байтов приходит покрытие: без него
+   * браузер молча подставил бы системный шрифт, и образец с иероглифами
+   * выглядел бы правильным там, где libass нарисует пустые квадраты.
+   */
+  useEffect(() => {
+    if (!open) return
+    const family = draft.font
+    const url = sources.resolveUrl(family)
+    if (!url) {
+      // Системный шрифт: файла у нас нет, браузер рисует своим. Покрытие
+      // неизвестно, и молчать тут честнее, чем гадать.
+      setCovered(null)
+      setFontState("none")
+      return
+    }
+
+    let alive = true
+    setFontState("loading")
+    loadFont(family, url)
+      .then((font) => {
+        if (!alive) return
+        setCovered(font.covered)
+        setFontState("ready")
+      })
+      .catch(() => {
+        if (!alive) return
+        setCovered(null)
+        setFontState("failed")
+      })
+    return () => {
+      alive = false
+    }
+  }, [open, draft.font, sources])
+
+  const missing = useMemo(
+    () => (covered ? missingCharacters(covered, sample) : []),
+    [covered, sample],
+  )
+
+  /** Системный шрифт из старых настроек — и чем его заменить (§5 плана). */
+  const legacy = TITLE_SYSTEM_FONTS.some((name) => name === draft.font)
+  const replacement = legacy
+    ? (sources.library.find((font) => font.replaces === draft.font) ?? null)
+    : null
 
   const summary = useMemo(() => {
     const parsed = parseTitleValue(value)
@@ -256,6 +314,28 @@ export function TitleControl({
                   if (next !== null) setSample(next || TITLE_SAMPLE_TEXT)
                 }}
               />
+              {/* Каких символов в шрифте нет — под самим образцом, где их и
+                  недосчитались. Это не предупреждение «на всякий случай»:
+                  ответ прочитан из таблицы `cmap` того же файла. */}
+              {missing.length > 0 ? (
+                <p className="max-w-[300px] text-[11px] leading-snug text-destructive">
+                  {t.fontMissing}{" "}
+                  <span className="font-medium">
+                    {missing.slice(0, 12).join(" ")}
+                    {missing.length > 12 ? " …" : ""}
+                  </span>
+                </p>
+              ) : null}
+              {fontState === "loading" ? (
+                <p className="max-w-[300px] text-[11px] leading-snug text-muted-foreground">
+                  {t.fontLoading}
+                </p>
+              ) : null}
+              {fontState === "failed" ? (
+                <p className="max-w-[300px] text-[11px] leading-snug text-destructive">
+                  {t.fontFailed}
+                </p>
+              ) : null}
               {/* Честно про приближение — на экране, а не в подсказке. */}
               <p className="max-w-[300px] text-[11px] leading-snug text-muted-foreground">
                 {t.titleApproximate}
@@ -268,21 +348,30 @@ export function TitleControl({
                   <Label className="text-[12px] text-muted-foreground">
                     {t.titleFont}
                   </Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {TITLE_FONTS.map((font) => (
-                      <Button
-                        key={font}
-                        type="button"
-                        size="sm"
-                        variant={font === draft.font ? "default" : "outline"}
-                        onClick={() => set({ font })}
-                        style={{ fontFamily: `"${font}", sans-serif` }}
-                        className="text-[12px] font-normal"
-                      >
-                        {font}
-                      </Button>
-                    ))}
-                  </div>
+                  <FontPicker
+                    sources={sources}
+                    value={draft.font}
+                    onChange={(choice) => set({ font: choice.family })}
+                  />
+                  {/* Системный шрифт файла в проект не кладёт: раздавать Arial
+                      мы не вправе, и на машине без него прогон остановится. */}
+                  {legacy ? (
+                    <p className="text-[11px] leading-snug text-muted-foreground">
+                      {t.fontLegacy}
+                      {replacement ? (
+                        <>
+                          {" "}
+                          <button
+                            type="button"
+                            onClick={() => set({ font: replacement.family })}
+                            className="underline underline-offset-2 hover:text-foreground"
+                          >
+                            {t.fontReplaceWith} {replacement.family}
+                          </button>
+                        </>
+                      ) : null}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-1.5">

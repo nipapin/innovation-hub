@@ -28,6 +28,7 @@
     "db:backup": "node scripts/db-backup.mjs",
     "drive:oauth": "node scripts/google-drive-oauth.mjs",
     "drive:provision-users": "node scripts/drive-provision-users.mjs",
+    "fonts:seed": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/fonts-seed.mjs",
     "s3:ensure-prefix": "node scripts/s3-ensure-prefix.mjs",
     "s3:set-cors": "node scripts/s3-set-cors.mjs",
     "s3:test-upload": "node scripts/s3-test-presigned-upload.mjs",

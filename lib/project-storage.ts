@@ -20,7 +20,11 @@ import {
   OPTIONS_FOLDER_NAME,
 } from "@/lib/storage/keys"
 import { readFileTypeDictionary } from "@/lib/repositories/automation-settings"
+import { findFontEntry } from "@/lib/fonts/catalog"
+import { installFamilyIntoProject } from "@/lib/fonts/library"
+import type { StorageActor } from "@/lib/storage/write-path"
 import { applyExposedOptionChanges, type ExposedOptionChange } from "@/lib/options/apply"
+import { titleFontNames } from "@/lib/options/title"
 import { ProjectStorageError } from "@/lib/options/errors"
 import {
   overlayReferencePath,
@@ -741,6 +745,51 @@ async function relativizeOverlayPaths(
   }
 }
 
+/**
+ * Шрифты титров — в папку проекта (docs/FONTS_PLAN.md §7).
+ *
+ * Делается ПРИ СОХРАНЕНИИ, по уже записанному значению, а не при выборе в
+ * модалке: перебирая шрифты, клиент открывает и закрывает её десяток раз, и
+ * каждое «Применить» оставляло бы в проекте файл, который никуда не поехал.
+ * Значение и файл должны появляться вместе.
+ *
+ * Разбор значения, а не отдельный канал от браузера, — по той же причине, что у
+ * `relativizeOverlayPaths` рядом: что реально уедет на машину, знает файл, а не
+ * страница, с которой пришла правка.
+ *
+ * Не бросает. Настройки титров — работа клиента, и терять её из-за
+ * незакопировавшегося шрифта нельзя; прогон на отсутствующий шрифт пожалуется
+ * сам, а молча потерянная правка не пожалуется никогда. То же решение, что в
+ * программе (`stashFontsInProject`).
+ */
+async function installTitleFonts(
+  root: unknown,
+  storageOwnerId: string,
+  projectId: string,
+  actor?: StorageActor | null,
+): Promise<void> {
+  const { options } = readExposedOptions(root)
+  const families = new Set<string>()
+  for (const option of options) {
+    if (option.control !== "titleSettings") continue
+    for (const name of titleFontNames(option.value)) families.add(name)
+  }
+  if (families.size === 0) return
+
+  for (const family of families) {
+    // Шрифта нет в витрине — значит это либо системный из старых настроек
+    // (Arial и прочие, §5 плана), либо файл, который автор положил в проект
+    // сам. И в том, и в другом случае класть нам нечего.
+    if (!findFontEntry(family)) continue
+    await installFamilyIntoProject({
+      storageOwnerId,
+      projectId,
+      family,
+      actor,
+    })
+  }
+}
+
 /** Путь с диска: `/Users/…`, `C:\\…` или UNC. Относительный — всё остальное. */
 function isAbsoluteLikePath(path: string): boolean {
   return path.startsWith("/") || /^[a-z]:[\\/]/i.test(path) || path.startsWith("\\\\")
@@ -767,6 +816,8 @@ export async function updateProjectExposedOptions(input: {
   storageOwnerId: string
   projectId: string
   changes: ExposedOptionChange[]
+  /** Кто правит — попадёт в `uploaded_by` шрифта, положенного в проект. */
+  actor?: StorageActor | null
 }): Promise<{ options: ExposedOption[]; etag: string | null }> {
   const key = projectOptionsKey(input.storageOwnerId, input.projectId)
   const raw = await getObjectText(key)
@@ -787,5 +838,9 @@ export async function updateProjectExposedOptions(input: {
   await relativizeOverlayPaths(root, input.projectId)
 
   const etag = await putObjectText(key, JSON.stringify(root, null, 2))
+  // После записи значения, а не до: файл шрифта без настройки, которая его
+  // называет, — мусор в проекте, а настройка без файла хотя бы доедет до
+  // машины, где сработает последнее звено `fonts.ensure`.
+  await installTitleFonts(root, input.storageOwnerId, input.projectId, input.actor)
   return { options: extractExposedOptions(root), etag }
 }

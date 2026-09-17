@@ -48,6 +48,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       storageOwnerId: project.storageOwnerId,
       projectId: project.id,
       changes: parsed.data.changes,
+      actor: { userId: auth.userId },
     })
     await writeSidecarSync({
       storageOwnerId: project.storageOwnerId,
