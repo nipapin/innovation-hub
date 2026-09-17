@@ -40,11 +40,24 @@ export function CompanyShell({
   companies,
   currentCompanyId,
   isSiteSuperAdmin,
+  sections,
+  className,
   children,
 }: {
   companyTitle: string
   companyRole: CompanyRole
   capabilities: CompanyCapability[]
+  /**
+   * Класс на корень консоли — им приезжает область покраски гостя (план §4).
+   *
+   * Отдельным `div` вокруг было бы проще, но он встал бы внутрь
+   * `overflow-hidden`-контейнера оболочки, между ним и этой разметкой, и
+   * однажды изменил бы прокрутку консоли молча. Класс на уже существующем
+   * корне новых узлов не добавляет.
+   */
+  className?: string
+  /** Набор разделов, проданный компании. `null` — все (план §2). */
+  sections: string[] | null
   /** Непусто только у суперадмина сайта — ему одному есть между чем выбирать. */
   companies: CompanyPick[]
   currentCompanyId: string
@@ -56,7 +69,7 @@ export function CompanyShell({
   const pathname = usePathname() ?? ""
   const router = useRouter()
   const [exiting, setExiting] = useState(false)
-  const tools = visibleCompanyTools(companyRole, capabilities)
+  const tools = visibleCompanyTools(companyRole, capabilities, sections)
 
   const switchCompany = async (companyId: string) => {
     await fetch("/api/company/scope", {
@@ -89,7 +102,12 @@ export function CompanyShell({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8 md:px-8">
+    <div
+      className={cn(
+        "mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8 md:px-8",
+        className,
+      )}
+    >
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-5">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
@@ -186,12 +204,14 @@ export function CompanyShell({
 export function CompanyToolCards({
   companyRole,
   capabilities,
+  sections,
 }: {
   companyRole: CompanyRole
   capabilities: CompanyCapability[]
+  sections: string[] | null
 }) {
   const { t } = useI18n()
-  const tools = visibleCompanyTools(companyRole, capabilities)
+  const tools = visibleCompanyTools(companyRole, capabilities, sections)
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">

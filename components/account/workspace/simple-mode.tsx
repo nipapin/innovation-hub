@@ -30,6 +30,7 @@ import {
   trashDaysLeft,
 } from "./format"
 import { sectionEmptyText, sectionHeading } from "./sections"
+import { TrashLifespan } from "./trash-lifespan"
 import { ResizeGrip } from "@/components/account/resize-grip"
 import type { DriveFile, Project } from "./types"
 import { useDragSize } from "@/components/account/use-drag-size"
@@ -414,7 +415,7 @@ function TrashTile({ project }: { project: Project }) {
         }
       }}
       onContextMenu={(e) => openMenu("project", e, { project })}
-      className="flex cursor-pointer flex-col gap-4 rounded-2xl border border-foreground/10 bg-ws-panel p-[22px] text-left hover:border-foreground/[0.18] hover:bg-ws-hover"
+      className="relative flex cursor-pointer flex-col gap-4 overflow-hidden rounded-2xl border border-foreground/10 bg-ws-panel p-[22px] text-left hover:border-foreground/[0.18] hover:bg-ws-hover"
     >
       <span className="flex h-[46px] w-[46px] items-center justify-center rounded-full border border-foreground/10 bg-foreground/[0.04]">
         <Trash2 className="h-[22px] w-[22px] text-ws-4" />
@@ -431,6 +432,8 @@ function TrashTile({ project }: { project: Project }) {
             : tf(t.trashDaysLeft, { days: daysLeft })}
         </p>
       </div>
+      <TrashLifespan deletedAt={deletedAt} />
+
       <div className="flex items-center justify-end border-t border-foreground/[0.07] pt-4">
         <button
           type="button"

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireUserApi } from "@/lib/admin-auth"
+import { isProjectChatSyncEnabled } from "@/lib/company-chat-gate"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 import { findUserById } from "@/lib/repositories/users"
 import { requireProjectAccess } from "@/lib/project-access"
@@ -79,7 +80,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   // The message is already safely stored; a YouGile delivery failure should
   // not make the user lose it — just log and leave `delivered: false`.
-  if (isYouGileConfigured()) {
+  // Зеркало — отдельное решение от самого чата: компания может писать нам, не
+  // отдавая переписку в нашу внутреннюю доску (§2.6). Сообщение при этом уже
+  // сохранено и видно обеим сторонам на сайте.
+  if (isYouGileConfigured() && (await isProjectChatSyncEnabled(project.userId))) {
     try {
       const yougileMessageId = await deliverProjectMessageToYouGile({
         projectId: project.id,

@@ -28,8 +28,9 @@ import { nodeIdForPath, nodeOrderMap } from "./graph-order"
  *
  * Отбор — по `controlType` из белого списка, а не по типу значения: у
  * `valueRange` и `autocomplete` значение и так массив, и «примитив ли это»
- * больше не отличает простой контрол от тяжёлого (`convertSettings` и
- * подобные держат в `value` объект и на сайте не рисуются).
+ * больше не отличает простой контрол от тяжёлого. Тяжёлые контролы со строкой
+ * JSON в значении сайт теперь тоже рисует — каждый своей модалкой; не рисуются
+ * лишь те, которых нет в списке (`keying`, `collectScheme`).
  */
 
 function str(raw: unknown): string | null {
@@ -145,11 +146,13 @@ function readValue(
       const hi = normalizeNumeric(num(raw[1], cfg.max), cfg)
       return [Math.min(lo, hi), Math.max(lo, hi)]
     }
+    case "convertSettings":
+    case "titleSettings":
     case "videoAdjustment":
     case "overlaySettings":
       // Строка с JSON — отдаём как есть: разбирает её модалка тем же кодом,
-      // каким сервер потом сливает правку (lib/options/overlay.ts и
-      // video-adjust.ts). Держать в DTO разобранный объект значило бы завести
+      // каким сервер потом сливает правку (overlay.ts, video-adjust.ts,
+      // title.ts, convert.ts). Держать в DTO разобранный объект значило бы завести
       // второй формат значения, которого нет ни в графе, ни в записи.
       return typeof cp.value === "string" ? cp.value : ""
 

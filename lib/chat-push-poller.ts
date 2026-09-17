@@ -27,6 +27,10 @@ export function startChatPushPoller(): void {
   const tick = async () => {
     if (!isYouGileConfigured()) return
     try {
+      // Компании с выключенным зеркалом отсеивает сам запрос
+      // (listProjectsWithYougileChat). Проверять их ЗДЕСЬ нельзя: тик один на
+      // всю установку, и любой ранний `return` в этом цикле остановил бы опрос
+      // всем остальным компаниям заодно. См. docs/COMPANY_SETUP_PANEL_PLAN.md §2.6.
       const projects = await listProjectsWithYougileChat()
       for (const project of projects) {
         await syncProjectChatFromYouGile(project)

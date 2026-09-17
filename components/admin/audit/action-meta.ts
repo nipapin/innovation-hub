@@ -247,6 +247,18 @@ export const ACTION_META: Record<
     icon: ShieldCheck,
     tone: "access",
   },
+  "company.renamed": {
+    labelKey: "auditCompanyRenamed",
+    icon: Building2,
+    tone: "neutral",
+  },
+  // «access»: набор проданного решает, что компании ВИДНО, — это про доступ, а
+  // не про оформление, хотя правится по соседству с ним.
+  "company.sets_changed": {
+    labelKey: "auditCompanySetsChanged",
+    icon: Building2,
+    tone: "access",
+  },
   // «neutral»: оформление не раздаёт доступ. Домен — исключение по весу, но
   // отдельным действием он не пишется: экран у них один.
   "company.branding_changed": {
@@ -283,6 +295,30 @@ export const ACTION_META: Record<
     labelKey: "auditCompanyAutomationDisabled",
     icon: Workflow,
     tone: "neutral",
+  },
+  // `Plug`, а не `Building2`: это про связь с внешним сервисом, а не про саму
+  // компанию. «neutral» — доступа зеркало никому не раздаёт.
+  "company.chat_sync_enabled": {
+    labelKey: "auditCompanyChatSyncEnabled",
+    icon: Plug,
+    tone: "neutral",
+  },
+  "company.chat_sync_disabled": {
+    labelKey: "auditCompanyChatSyncDisabled",
+    icon: Plug,
+    tone: "neutral",
+  },
+  // `Gift` — работа за наш счёт это подарок и есть. Тон не «neutral»: доступа
+  // флаг не раздаёт, но деньги двигает, и в ленте журнала он должен выделяться.
+  "company.billing_free_enabled": {
+    labelKey: "auditCompanyBillingFreeEnabled",
+    icon: Gift,
+    tone: "access",
+  },
+  "company.billing_free_disabled": {
+    labelKey: "auditCompanyBillingFreeDisabled",
+    icon: Gift,
+    tone: "access",
   },
 }
 

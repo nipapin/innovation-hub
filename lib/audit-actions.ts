@@ -87,6 +87,11 @@ export const AUDIT_ACTIONS = [
   "company.role_changed",
   "company.capability_granted",
   "company.capability_revoked",
+  // Переименование. Отдельно от `company.branding_changed`, хотя экран у них
+  // один: название видит вся компания сразу — в сайдбаре, шапке и письмах, — и
+  // на вопрос «почему у нас другое имя» ответить должен один поиск, а не
+  // вычитывание оформления.
+  "company.renamed",
   // Оформление: акцент, логотип, домен. Пишется, потому что смена домена
   // меняет то, что видит человек на странице входа, ещё не войдя.
   "company.branding_changed",
@@ -104,6 +109,21 @@ export const AUDIT_ACTIONS = [
   // делают куда чаще первого.
   "company.automation_enabled",
   "company.automation_disabled",
+  // Набор проданного: инструменты кабинета и разделы консоли
+  // (docs/COMPANY_SETUP_PANEL_PLAN.md §2). Одно действие на оба, потому что
+  // правятся они одним сохранением и вопрос к ним общий — «почему у компании
+  // пропал раздел». Что именно изменилось, лежит в `meta`.
+  "company.sets_changed",
+  // Дублирование переписки проектов в наш YouGile (§2.6). Отдельно от набора:
+  // набор — про то, что компания видит у себя, а это про то, уезжает ли её
+  // переписка к нам. Спросят об этом тоже отдельно — «почему её сообщения
+  // перестали приходить в доску».
+  "company.chat_sync_enabled",
+  "company.chat_sync_disabled",
+  // Работа за наш счёт (§3). Своё действие, а не `sets_changed`: это решение про
+  // деньги, и в журнале его ищут отдельно — «с какого числа мы платим за них».
+  "company.billing_free_enabled",
+  "company.billing_free_disabled",
 ] as const
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]

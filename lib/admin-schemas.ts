@@ -109,13 +109,25 @@ export const userUpdateSchema = z.object({
  * Slug уходит в email служебного кошелька, в адреса и в будущем в префикс
  * хранилища (docs/COMPANY_ACCOUNTS_PLAN.md §9) — только латиница, цифры и дефис.
  */
+/**
+ * Название компании. Отдельной строкой, потому что читателей у него двое —
+ * заведение и переименование (docs/COMPANY_SETUP_PANEL_PLAN.md §1), — и
+ * разъехавшиеся требования означали бы, что заведённое имя нельзя сохранить
+ * обратно тем же текстом.
+ */
+export const companyTitleSchema = z
+  .string()
+  .trim()
+  .min(2, "Title must be at least 2 characters.")
+  .max(120)
+
 export const companyCreateSchema = z.object({
   slug: z
     .string()
     .min(2, "Slug must be at least 2 characters.")
     .max(60)
     .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "Use lowercase letters, digits and hyphens."),
-  title: z.string().min(2, "Title must be at least 2 characters.").max(120),
+  title: companyTitleSchema,
 })
 
 export const companyTransferSchema = z.object({

@@ -6,7 +6,7 @@ import { z } from "zod"
 import { requireUserApi } from "@/lib/admin-auth"
 import { requireProjectAccess } from "@/lib/project-access"
 import { listFilesInFolder } from "@/lib/repositories/project-files"
-import { findUserTool } from "@/lib/repositories/user-tools"
+import { findLiveUserTool } from "@/lib/tool-instance-gate"
 import { getS3Bucket } from "@/lib/s3-config"
 import { projectUploadObjectKey } from "@/lib/project-storage"
 import { getS3Client, isS3Configured } from "@/lib/s3-client"
@@ -46,7 +46,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (auth instanceof NextResponse) return auth
   const { id } = await params
 
-  const tool = await findUserTool(id, auth.userId)
+  const tool = await findLiveUserTool(id, auth.userId)
   if (!tool) return NextResponse.json({ message: "Tool not found." }, { status: 404 })
 
   const source = (tool.source ?? {}) as { projectId?: string | null; folderPath?: string | null }
@@ -251,7 +251,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (auth instanceof NextResponse) return auth
   const { id } = await params
 
-  const tool = await findUserTool(id, auth.userId)
+  const tool = await findLiveUserTool(id, auth.userId)
   if (!tool) return NextResponse.json({ message: "Tool not found." }, { status: 404 })
 
   const source = (tool.source ?? {}) as { projectId?: string | null; folderPath?: string | null }

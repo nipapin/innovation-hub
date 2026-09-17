@@ -45,6 +45,12 @@ export type BalanceState = {
    * читался бы как собственный пустой кошелёк.
    */
   paidBy?: { name: string } | null
+  /**
+   * Работа идёт за наш счёт (docs/COMPANY_SETUP_PANEL_PLAN.md §3.5): ни суммы,
+   * ни пополнения. Отдельно от `paidBy`, а не поверх него: там деньги есть и у
+   * них имя, здесь их не берут вовсе, и называть нас плательщиком не надо.
+   */
+  freeOfCharge?: boolean
   /** За кого платит этот человек — объясняет чужие проекты в его ленте. */
   payingFor?: string[]
 }
@@ -157,6 +163,25 @@ export function BalanceWidget({
 
   const own = state?.balances.own ?? 0
   const gift = state?.balances.gift ?? 0
+
+  // За наш счёт — ни суммы, ни кнопки, и раньше проверки плательщика: у
+  // сотрудника такой компании плательщик формально есть (её кошелёк), но
+  // говорить ему про чужой кошелёк незачем — денег с него не берут.
+  //
+  // Строка НЕ объясняет, кто платит: «за наш счёт» означает в том числе «они про
+  // это не знают» (§3.5). Поэтому здесь про обработку, а не про деньги.
+  if (state?.freeOfCharge) {
+    return (
+      <div className={cn("min-w-0", className)}>
+        <div className="truncate text-[13px] text-foreground">
+          {t.freeOfChargeLine}
+        </div>
+        <div className="mt-1 text-[11.5px] text-muted-foreground">
+          {t.freeOfChargeHint}
+        </div>
+      </div>
+    )
+  }
 
   // Не его кошелёк — ни суммы, ни кнопки пополнения: пополнить чужой он не
   // может, а число здесь выглядело бы его собственным.

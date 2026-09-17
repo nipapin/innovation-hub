@@ -56,6 +56,16 @@ export function CompanyBrandingPanel({
   onSaved: () => void
 }) {
   const { t } = useI18n()
+  const [title, setTitle] = useState(companyTitle)
+  /**
+   * Название, которое экран считает сохранённым.
+   *
+   * Не состояние и не пропса: пропса обновляется, когда родитель перечитывает
+   * список, а поле — нет, и сравнение с ней объявило бы чужое переименование
+   * нашей правкой. Здесь лежит ровно то, что видел человек, когда открыл экран
+   * или последний раз сохранил, и сервер сверяет переименование именно с ним.
+   */
+  const savedTitle = useRef(companyTitle)
   const [accent, setAccent] = useState<AccentValue>(initial.accent)
   const [monogram, setMonogram] = useState(initial.monogram ?? "")
   const [logoUrl, setLogoUrl] = useState(initial.logoUrl ?? "")
@@ -140,10 +150,21 @@ export function CompanyBrandingPanel({
   }
 
   const save = async () => {
+    // Проверка здесь же, а не только отказом сервера: сохранение заодно грузит
+    // логотип, и упасть на разборе запроса после заливки файла значило бы
+    // оставить в хранилище объект, за которым уже никто не придёт.
+    if (title.trim().length < 2) {
+      toast.error(t.brandNameShort)
+      return
+    }
     setBusy(true)
     try {
       let nextUrl = logoUrl
-      let nextKey = pending ? null : initial.logoKey
+      // Ключ идёт за АДРЕСОМ, а не за наличием нового файла. Иначе снятый
+      // логотип оставлял бы ключ на месте, сервер видел бы ключ прежним и не
+      // сносил объект — тот самый сирота, против которого написан комментарий
+      // об отложенной загрузке выше, только с другого конца.
+      let nextKey = logoUrl ? initial.logoKey : null
       if (pending) {
         const uploaded = await uploadPending(pending.file)
         if (!uploaded) return
@@ -155,6 +176,12 @@ export function CompanyBrandingPanel({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // Название — только если его правили. Слать его на каждое сохранение
+          // значило бы просить переименование там, где человек трогал логотип,
+          // и упираться в сверку на сервере без всякой причины.
+          ...(title.trim() !== savedTitle.current
+            ? { title: title.trim(), expectedTitle: savedTitle.current }
+            : {}),
           accent,
           monogram,
           logoUrl: nextUrl,
@@ -178,9 +205,11 @@ export function CompanyBrandingPanel({
         toast.error(
           body.code === "domain-taken"
             ? t.brandDomainTaken
-            : body.code === "low-contrast"
-              ? t.brandContrastFail
-              : t.coSaveFailed,
+            : body.code === "title-stale"
+              ? t.brandNameStale
+              : body.code === "low-contrast"
+                ? t.brandContrastFail
+                : t.coSaveFailed,
         )
         return
       }
@@ -188,6 +217,8 @@ export function CompanyBrandingPanel({
       if (pending) URL.revokeObjectURL(pending.preview)
       setPending(null)
       setLogoUrl(nextUrl)
+      // Сохранённое имя теперь наше: следующая сверка пойдёт от него.
+      savedTitle.current = title.trim()
       toast.success(t.coSaved)
       onSaved()
     } finally {
@@ -197,6 +228,20 @@ export function CompanyBrandingPanel({
 
   return (
     <Section title={t.brandTitle} description={t.brandSub}>
+      {/* Название первым: оно тяжелее остального на этом экране — его видит вся
+          компания, а не только тот, кто откроет её страницу. */}
+      <div className="max-w-md space-y-1.5">
+        <Label htmlFor="brand-name">{t.brandName}</Label>
+        <Input
+          id="brand-name"
+          maxLength={120}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          disabled={busy}
+        />
+        <p className="text-[11px] text-muted-foreground">{t.brandNameHint}</p>
+      </div>
+
       <div className="space-y-2">
         <Label>{t.brandAccent}</Label>
         <div className="flex flex-wrap items-center gap-2">
@@ -270,7 +315,7 @@ export function CompanyBrandingPanel({
             id="brand-monogram"
             maxLength={2}
             value={monogram}
-            placeholder={monogramFrom(companyTitle)}
+            placeholder={monogramFrom(title)}
             onChange={(event) => setMonogram(event.target.value.toUpperCase())}
             disabled={busy}
           />
@@ -302,7 +347,7 @@ export function CompanyBrandingPanel({
                 className="h-full w-full object-contain"
               />
             ) : (
-              monogram || monogramFrom(companyTitle)
+              monogram || monogramFrom(title)
             )}
           </span>
 

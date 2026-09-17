@@ -106,7 +106,7 @@ export function PipelineAreas({ tick }: { tick: number }) {
   if (loading || areas.length < 2) return null
 
   return (
-    <Section title={t.areasTitle} description={t.areasSub}>
+    <Section title={t.areasTitle} description={t.areasSub} collapsible>
       {(
         <div className="overflow-x-auto rounded-xl border border-border/60">
           <table className="w-full min-w-[720px] text-sm">

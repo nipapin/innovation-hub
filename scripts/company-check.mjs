@@ -12,10 +12,11 @@
  *
  * Что проверяется:
  *
- *   1. Каждый роут под app/api/company/** зовёт `requireCompanyApi`
- *      или `requireCompanyApiAnyAdmin` — в КАЖДОМ экспортируемом обработчике.
- *   2. Каждая страница под app/company/** зовёт `requireCompanyPage`
- *      или `requireCompanyMember`.
+ *   1. Каждый роут под app/api/company/** зовёт `requireCompanyApi`,
+ *      `requireCompanyApiAnyAdmin` или `requireCompanyApiSection` — в КАЖДОМ
+ *      экспортируемом обработчике.
+ *   2. Каждая страница под app/company/** зовёт `requireCompanyPage`,
+ *      `requireCompanyMember` или `requireCompanySection`.
  *   3. Результат гейта проверяется на `NextResponse` — иначе отказ утёк бы
  *      в тело ответа вместо кода состояния.
  *   4. Ни один роут консоли не зовёт админские гварды: перепутанный гвард
@@ -31,8 +32,17 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const apiDir = join(root, "app/api/company")
 const pagesDir = join(root, "app/company")
 
-const API_GUARDS = ["requireCompanyApi", "requireCompanyApiAnyAdmin"]
-const PAGE_GUARDS = ["requireCompanyPage", "requireCompanyMember"]
+const API_GUARDS = [
+  "requireCompanyApi",
+  "requireCompanyApiAnyAdmin",
+  "requireCompanyApiSection",
+]
+const PAGE_GUARDS = [
+  "requireCompanyPage",
+  "requireCompanyMember",
+  // Раздел без тега, закрытый набором компании (COMPANY_SETUP_PANEL_PLAN §2).
+  "requireCompanySection",
+]
 const ADMIN_GUARDS = ["requireAdminApi", "requireCapabilityPage"]
 /** Обработчики роута: каждый отвечает сам за себя. */
 const HANDLERS = ["GET", "POST", "PUT", "PATCH", "DELETE"]

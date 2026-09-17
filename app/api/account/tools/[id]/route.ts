@@ -2,10 +2,10 @@ import { NextResponse, type NextRequest } from "next/server"
 import { requireUserApi } from "@/lib/admin-auth"
 import {
   deleteUserTool,
-  findUserTool,
   updateUserTool,
 } from "@/lib/repositories/user-tools"
 import { updateToolSchema } from "@/lib/tool-schemas"
+import { findLiveUserTool } from "@/lib/tool-instance-gate"
 
 export const runtime = "nodejs"
 
@@ -32,6 +32,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     )
   }
 
+  // Отдельной проверкой ПЕРЕД правкой: правка идёт одним запросом в базу и сама
+  // экземпляр не читает, поэтому подменить здесь было нечего — гвард пришлось
+  // ставить явно (§2.5).
+  if (!(await findLiveUserTool(id, auth.userId))) {
+    return NextResponse.json({ message: "Tool not found." }, { status: 404 })
+  }
+
   const tool = await updateUserTool(id, auth.userId, parsed.data)
   if (!tool) return NextResponse.json({ message: "Tool not found." }, { status: 404 })
   return NextResponse.json({ tool })
@@ -43,7 +50,11 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   if (auth instanceof NextResponse) return auth
   const { id } = await params
 
-  const existing = await findUserTool(id, auth.userId)
+  // Удаление тоже под гвардом, хотя оно ничего не открывает: экземпляр
+  // непроданного инструмента и так не виден в списке, убирать его человеку
+  // неоткуда, а исключение «здесь можно» — первая трещина в правиле, ради
+  // которого гвард и заводился.
+  const existing = await findLiveUserTool(id, auth.userId)
   if (!existing) return NextResponse.json({ message: "Tool not found." }, { status: 404 })
 
   await deleteUserTool(id, auth.userId)

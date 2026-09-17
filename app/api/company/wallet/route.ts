@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { getFunds } from "@/lib/billing/funds"
 import { requireCompanyApi } from "@/lib/company-auth"
+import { readCompanyFeatures } from "@/lib/company-features"
 import { findCompanyById } from "@/lib/repositories/companies"
 import {
   listCompanyLedger,
@@ -25,6 +26,16 @@ export async function GET(request: NextRequest) {
 
   const company = await findCompanyById(auth.companyId)
   if (!company) {
+    return NextResponse.json({ message: "Company not found." }, { status: 404 })
+  }
+
+  // За наш счёт — кошелька для них не существует (§3.5). 404, а не 403: «нет
+  // доступа» — это приглашение выяснять, у кого он есть, и разговор про наш
+  // минус на их кошельке начался бы именно с него.
+  //
+  // Компания уже прочитана выше, поэтому здесь чтение из неё, а не второй поход
+  // в базу за тем же самым.
+  if (readCompanyFeatures(company.features).billingFree) {
     return NextResponse.json({ message: "Company not found." }, { status: 404 })
   }
 

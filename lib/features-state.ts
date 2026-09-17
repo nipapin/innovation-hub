@@ -6,6 +6,7 @@ import {
   type FeatureKey,
   type FeatureState,
 } from "@/lib/features"
+import { setAllows } from "@/lib/company-features"
 import { envFeatureValue, installationDefault } from "@/lib/features-env"
 import { readFeatureOverrides } from "@/lib/repositories/feature-flags"
 import { TOOLS } from "@/lib/tools/registry"
@@ -93,12 +94,21 @@ export async function requireFeature(key: FeatureKey): Promise<boolean> {
  * Инструмент без флага в реестре доступен всегда: заводить выключатель на каждый
  * — обязанность автора инструмента (docs/TOOLS_DEV_GUIDE.md), а не условие
  * работы каталога.
+ *
+ * `companyTools` — набор, проданный компании человека
+ * (docs/COMPANY_SETUP_PANEL_PLAN.md §2). Он ТОЛЬКО сужает и применяется вторым:
+ * выключатель установки главнее, иначе запись в базе клиента включала бы код,
+ * которого на этой установке может не быть вовсе. `null` (ключа нет, человек не
+ * в компании) не сужает ничего.
  */
-export async function enabledToolKeys(): Promise<string[]> {
+export async function enabledToolKeys(
+  companyTools: string[] | null = null,
+): Promise<string[]> {
   const state = await getFeatureState()
   return TOOLS.filter((tool) => {
     const feature = featureForTool(tool.key)
-    return !feature || state[feature.key]
+    if (feature && !state[feature.key]) return false
+    return setAllows(companyTools, tool.key)
   }).map((tool) => tool.key)
 }
 

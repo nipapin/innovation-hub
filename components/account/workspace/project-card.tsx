@@ -17,6 +17,7 @@ import { tf } from "@/components/account/i18n"
 import { cn } from "@/lib/utils"
 import { fmtDateTime, trashDaysLeft } from "./format"
 import { GiftBadge } from "./gift-badge"
+import { TrashLifespan } from "./trash-lifespan"
 import type { Project } from "./types"
 import { useWorkspace } from "./workspace-context"
 
@@ -60,7 +61,7 @@ function TrashProjectCard({ project }: { project: Project }) {
       }}
       onContextMenu={(e) => openMenu("project", e, { project })}
       className={cn(
-        "relative mb-[7px] cursor-pointer rounded-lg border px-[5px] py-2.5",
+        "relative mb-[7px] cursor-pointer overflow-hidden rounded-lg border px-[5px] py-2.5",
         isMenuTarget
           ? "border-ws-accent/75"
           : selected
@@ -123,6 +124,8 @@ function TrashProjectCard({ project }: { project: Project }) {
           ) : null}
         </div>
       </div>
+
+      <TrashLifespan deletedAt={deletedAt} />
     </div>
   )
 }

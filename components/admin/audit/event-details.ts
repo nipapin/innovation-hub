@@ -28,6 +28,36 @@ export function detailsOf(
     const to = typeof meta.to === "string" ? meta.to : "?"
     return tf(t.auditRoleFromTo, { from, to })
   }
+  // Переименование компании. Тем же шаблоном «было → стало», что и смена роли:
+  // подпись события несёт только НОВОЕ имя, и без этой строки старое лежало бы
+  // в `meta` нечитаемым — а вопрос к записи ровно один, как компания называлась
+  // раньше (docs/COMPANY_SETUP_PANEL_PLAN.md §1.3).
+  if (event.action === "company.renamed") {
+    const from = typeof meta.from === "string" ? meta.from : "?"
+    const to = typeof meta.to === "string" ? meta.to : "?"
+    return tf(t.auditRoleFromTo, { from, to })
+  }
+  /**
+   * Набор проданного. Без этой строки запись говорит только «набор изменён», то
+   * есть ровно то же, что и её подпись, — а спрашивают у неё «что у компании
+   * пропало» (план §2).
+   *
+   * `null` под ключом — «набор не задан», и это не то же самое, что пустой
+   * список: первое значит «всё, что есть», второе — «ничего». Читаются они
+   * разными словами намеренно, иначе разобраться в записи будет нельзя.
+   */
+  if (event.action === "company.sets_changed") {
+    const parts: string[] = []
+    const describe = (label: string, value: unknown) => {
+      if (value === undefined) return
+      if (!Array.isArray(value)) parts.push(`${label}: ${t.auditSetsAll}`)
+      else if (value.length === 0) parts.push(`${label}: ${t.auditSetsNone}`)
+      else parts.push(`${label}: ${value.join(", ")}`)
+    }
+    describe(t.auditSetsTools, meta.companyTools)
+    describe(t.auditSetsSections, meta.companySections)
+    return parts.length > 0 ? parts.join(" · ") : null
+  }
   if (event.action === "user.password_reset" && meta.isSelf === true) {
     return t.auditSelfNote
   }

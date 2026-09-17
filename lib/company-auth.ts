@@ -10,6 +10,11 @@ import {
   type CompanyCapability,
 } from "@/lib/company-capabilities"
 import { listCompanyCapabilitiesFor } from "@/lib/repositories/company-capabilities"
+import { readCompanyFeatures, setAllows } from "@/lib/company-features"
+import {
+  sectionsForCapability,
+  type CompanySectionKey,
+} from "@/lib/company-sections"
 import { findCompanyById, listCompanies } from "@/lib/repositories/companies"
 import { findUserById } from "@/lib/repositories/users"
 import type { CompanyRole } from "@/lib/domain-types"
@@ -45,6 +50,18 @@ export type CompanyContext = {
    */
   companyRole: CompanyRole
   capabilities: CompanyCapability[]
+  /**
+   * Набор разделов, проданный компании (COMPANY_SETUP_PANEL_PLAN §2). `null` —
+   * набор не задан, доступны все.
+   *
+   * Третья ось, независимая от роли и тегов: роль отвечает «кто он здесь», теги
+   * — «что ему поручено внутри компании», набор — «что этой компании продано».
+   * Суженный набор действует и на суперадмина-гостя: он смотрит консоль глазами
+   * владельца, и показывать ему разделы, которых у компании нет, значило бы
+   * отвечать не на тот вопрос — наша сторона распоряжается набором из админки,
+   * а не изнутри чужой консоли.
+   */
+  companySections: string[] | null
   /** Суперадмин сайта смотрит чужую компанию: показываем переключатель. */
   isSiteSuperAdmin: boolean
 }
@@ -101,6 +118,7 @@ async function resolve(token: string | undefined): Promise<Resolution> {
         companyTitle: company.title,
         companyRole: "owner",
         capabilities: [...COMPANY_CAPABILITIES],
+        companySections: readCompanyFeatures(company.features).companySections,
         isSiteSuperAdmin: true,
       },
     }
@@ -134,6 +152,7 @@ async function resolve(token: string | undefined): Promise<Resolution> {
         user.companyRole === "owner"
           ? [...COMPANY_CAPABILITIES]
           : await listCompanyCapabilitiesFor(user.id),
+      companySections: readCompanyFeatures(company.features).companySections,
       isSiteSuperAdmin: false,
     },
   }
@@ -164,13 +183,47 @@ export async function requireCompanyPage(
   if (!hasCompanyCapability(context.companyRole, context.capabilities, capability)) {
     redirect("/company")
   }
+  if (!capabilitySold(context, capability)) redirect("/company")
   return context
+}
+
+/**
+ * Продан ли компании хоть один раздел под этим тегом.
+ *
+ * «Хоть один», а не «единственный»: тег и раздел — разные вещи, и однажды один
+ * тег откроет два раздела (см. lib/company-sections.ts). Тег, за которым
+ * разделов нет вовсе, набором не закрывается — иначе `people.invite`, живущий в
+ * рабочем месте, а не в консоли, погас бы заодно.
+ */
+function capabilitySold(
+  context: CompanyContext,
+  capability: CompanyCapability,
+): boolean {
+  const sections = sectionsForCapability(capability)
+  if (sections.length === 0) return true
+  return sections.some((key) => setAllows(context.companySections, key))
 }
 
 /** Страница, открытая всем админам компании: журнал (§6.4). */
 export async function requireCompanyMember(): Promise<CompanyContext> {
   const context = await getCompanyContext()
   if (!context) redirect("/account")
+  return context
+}
+
+/**
+ * Страница раздела, который не закрыт тегом, — журнал.
+ *
+ * Отдельно от `requireCompanyMember`, потому что набор надо проверить и здесь.
+ * Без этого правило «гейт и меню отвечают одно и то же» держалось бы только для
+ * разделов с тегом, а журнал, убранный из набора, исчезал бы из колонки и
+ * спокойно открывался по прямому адресу — то есть набор был бы украшением.
+ */
+export async function requireCompanySection(
+  section: CompanySectionKey,
+): Promise<CompanyContext> {
+  const context = await requireCompanyMember()
+  if (!setAllows(context.companySections, section)) redirect("/company")
   return context
 }
 
@@ -198,6 +251,32 @@ export async function requireCompanyApi(
     return NextResponse.json(
       { message: "You don't have access to this section." },
       { status: 403 },
+    )
+  }
+  // Отказ по набору — здесь же, а не только в меню: раздел, пропавший из
+  // колонки, но отвечающий на запросы, это не выключенный раздел, а спрятанный.
+  if (!capabilitySold(context, capability)) {
+    return NextResponse.json(
+      { message: "This section is not available for this company." },
+      { status: 404 },
+    )
+  }
+  return context
+}
+
+/**
+ * Роут раздела без тега — журнал компании. Пара к `requireCompanySection`.
+ */
+export async function requireCompanyApiSection(
+  request: NextRequest,
+  section: CompanySectionKey,
+): Promise<CompanyContext | NextResponse> {
+  const context = await requireCompanyApiAnyAdmin(request)
+  if (context instanceof NextResponse) return context
+  if (!setAllows(context.companySections, section)) {
+    return NextResponse.json(
+      { message: "This section is not available for this company." },
+      { status: 404 },
     )
   }
   return context

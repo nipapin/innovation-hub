@@ -1,3 +1,4 @@
+import { isProjectChatSyncEnabled } from "@/lib/company-chat-gate"
 import { isPushConfigured, sendPushToUser } from "@/lib/push"
 import {
   filterExistingYougileMessageIds,
@@ -60,6 +61,20 @@ export async function syncProjectChatFromYouGile(project: {
   if (!chatId || !isYouGileConfigured()) return
   if (missingYouGileChatIds.has(chatId)) return
   if (Date.now() < skipPullsUntil) return
+  /**
+   * Компания выключила зеркало (или чат целиком) — тянуть нечего (§2.6).
+   *
+   * Проверка ЗДЕСЬ, а не у вызывающих: их пять — два роута, две страницы и
+   * фоновый опрос, — и шестой, добавленный позже, молча потёк бы чужой
+   * перепиской. Запрос стоит после дешёвых проверок выше: если тянуть всё
+   * равно нечего, базу дёргать незачем.
+   *
+   * У опроса это второй забор после фильтра в самом запросе
+   * (listProjectsWithYougileChat), и это не лишнее: там он нужен, чтобы
+   * выключенная компания не стоила тику строк, здесь — чтобы правило
+   * действовало и на тех, кто пришёл не оттуда.
+   */
+  if (!(await isProjectChatSyncEnabled(project.userId))) return
 
   try {
     const config = getYouGileConfig()

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { companyChatSyncSql } from "@/lib/company-features"
 import { query } from "@/lib/db"
 import type {
   ProjectGroupName,
@@ -505,7 +506,11 @@ export async function listProjectsWithYougileChat(): Promise<ProjectRecord[]> {
        FROM projects
       WHERE yougile_chat_id IS NOT NULL
         AND COALESCE(is_paused, FALSE) = FALSE
-        AND deleted_at IS NULL`,
+        AND deleted_at IS NULL
+        -- Компании с выключенным зеркалом отсеиваются ЗДЕСЬ, в запросе, а не в
+        -- цикле опроса: там отказ пришлось бы делать возвратом на весь тик, и
+        -- одна выключенная компания остановила бы опрос всем остальным (§2.6).
+        AND ${companyChatSyncSql("projects.user_id")}`,
   )
   return result.rows
 }

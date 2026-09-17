@@ -1,5 +1,8 @@
 "use client"
 
+import { useState } from "react"
+import { ChevronDown, ChevronRight } from "lucide-react"
+
 import {
   Card,
   CardContent,
@@ -25,6 +28,8 @@ export function Section({
   title,
   description,
   help,
+  collapsible,
+  defaultOpen = true,
   children,
 }: {
   title: string
@@ -35,22 +40,51 @@ export function Section({
    * подробности, которых нет (docs/HELP_SYSTEM.md §7).
    */
   help?: HelpTopicId
+  /**
+   * Складывать по клику на заголовок. По умолчанию нет: у формы прятать нечего,
+   * а вот таблица, ради которой не приходили, занимает экран целиком.
+   */
+  collapsible?: boolean
+  defaultOpen?: boolean
   children: React.ReactNode
 }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const shown = !collapsible || open
+
   return (
     <Card className="border-border/60 bg-card">
       <CardHeader className="gap-1.5">
         <CardTitle className="flex items-center gap-2.5 text-base font-semibold">
-          {title}
+          {collapsible ? (
+            <button
+              type="button"
+              onClick={() => setOpen((prev) => !prev)}
+              aria-expanded={open}
+              className="-ml-1 flex items-center gap-2 rounded px-1 text-left transition-colors hover:text-foreground/80"
+            >
+              {open ? (
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
+              {title}
+            </button>
+          ) : (
+            title
+          )}
           {help ? <HelpSectionButton id={help} /> : null}
         </CardTitle>
-        {description ? (
+        {/* Свёрнутая секция — одна строка: описание под скрытой таблицей
+            объясняет то, чего на экране уже нет. */}
+        {description && shown ? (
           <CardDescription className="max-w-3xl text-sm leading-relaxed">
             {description}
           </CardDescription>
         ) : null}
       </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
+      {shown ? (
+        <CardContent className="space-y-4">{children}</CardContent>
+      ) : null}
     </Card>
   )
 }

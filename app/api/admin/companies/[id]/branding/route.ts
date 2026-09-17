@@ -16,7 +16,9 @@ import {
   findCompanyById,
   setCompanyBranding,
   setCompanyDomain,
+  setCompanyTitle,
 } from "@/lib/repositories/companies"
+import { companyTitleSchema } from "@/lib/admin-schemas"
 
 export const runtime = "nodejs"
 
@@ -40,6 +42,20 @@ const accentSchema = z.union([
 ])
 
 const schema = z.object({
+  /**
+   * Название компании (COMPANY_SETUP_PANEL_PLAN.md §1).
+   *
+   * Живёт на этом экране, а не в общем PATCH компании, по той же причине, что и
+   * домен: человек, пришедший поправить вид компании, ищет её имя здесь. Та же
+   * строка требований, что и при заведении — иначе заведённое имя нельзя было
+   * бы сохранить обратно нетронутым.
+   */
+  title: companyTitleSchema.optional(),
+  /**
+   * Название, которое экран считал текущим. Обязательно вместе с `title`:
+   * переименование без него — слепая запись поверх чужой правки.
+   */
+  expectedTitle: z.string().max(120).optional(),
   accent: accentSchema.optional(),
   /** Пустая строка — снять логотип и вернуть монограмму. */
   logoUrl: z.string().max(500).nullable().optional(),
@@ -125,6 +141,59 @@ export async function PATCH(
     }
   }
 
+  /**
+   * Переименование — ПОСЛЕ домена и отдельной строкой журнала.
+   *
+   * Порядок здесь не косметика. Форма шлёт название вместе с доменом и акцентом
+   * одним сохранением, а занятый домен отвечает отказом 409. Переименуй мы
+   * первыми — компания осталась бы уже переименованной для всех сотрудников,
+   * тогда как экран показал бы несохранившуюся правку; человек пошёл бы
+   * исправлять домен, не зная, что имя уже сменилось. Домен — единственный шаг
+   * с содержательным отказом, поэтому он идёт первым, а всё за ним либо
+   * проходит, либо означает, что компанию удалили прямо во время запроса.
+   *
+   * Отдельная строка журнала, хотя сохранение одно: название видит вся компания
+   * сразу, и «кто это сделал» спросят про него, а не про акцент. Приходит оно
+   * только когда его правили, поэтому щелчок по логотипу журнал не трогает.
+   */
+  let currentTitle = company.title
+  if (parsed.data.title !== undefined) {
+    // Экран шлёт название, только когда его правили, и всегда вместе с тем,
+    // что считал текущим. Пришло одно без другого — это не наш экран.
+    if (parsed.data.expectedTitle === undefined) {
+      return NextResponse.json(
+        { message: "A rename must carry the title it expects to replace.", code: "expected-title-missing" },
+        { status: 400 },
+      )
+    }
+    const renamed = await setCompanyTitle({
+      companyId: id,
+      title: parsed.data.title,
+      expectedTitle: parsed.data.expectedTitle,
+    })
+    if (!renamed.ok) {
+      return renamed.reason === "stale"
+        ? NextResponse.json(
+            {
+              message: "This company was renamed while the screen was open.",
+              code: "title-stale",
+              currentTitle: company.title,
+            },
+            { status: 409 },
+          )
+        : NextResponse.json({ message: "Company not found." }, { status: 404 })
+    }
+    currentTitle = renamed.company.title
+    await auditFrom(request, auth)({
+      action: "company.renamed",
+      targetType: "company",
+      targetId: id,
+      targetLabel: renamed.company.title,
+      companyId: id,
+      meta: { from: parsed.data.expectedTitle, to: renamed.company.title },
+    })
+  }
+
   // Правим поверх текущего: экран шлёт то, что человек трогал, а не всё сразу.
   const current = readBranding(company.branding)
   const next = {
@@ -179,7 +248,9 @@ export async function PATCH(
     action: "company.branding_changed",
     targetType: "company",
     targetId: id,
-    targetLabel: company.title,
+    // Имя ПОСЛЕ переименования, а не из снимка на входе: иначе одно сохранение
+    // оставляло бы в ленте две записи с разными названиями одной компании.
+    targetLabel: currentTitle,
     companyId: id,
     meta: { accent: next.accent, domain: parsed.data.domain },
   })

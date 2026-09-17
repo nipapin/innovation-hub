@@ -6,7 +6,8 @@ import { tf } from "@/components/account/i18n"
 import { ResizeGrip } from "@/components/account/resize-grip"
 import { useDragSize } from "@/components/account/use-drag-size"
 import { cn } from "@/lib/utils"
-import { fmtDateTime, TRASH_RETENTION_DAYS } from "./format"
+import { fmtDateTime, TRASH_RETENTION_DAYS, trashDaysLeft } from "./format"
+import { TrashLifespan } from "./trash-lifespan"
 import { ProjectCard } from "./project-card"
 import { ProjectGroups } from "./project-groups"
 import { sectionHeading, sectionEmptyText } from "./sections"
@@ -57,7 +58,13 @@ function TrashAllFilesRow() {
 function TrashFilesCard({
   row,
 }: {
-  row: { id: string; name: string; count: number; lastDeletedAt: string }
+  row: {
+    id: string
+    name: string
+    count: number
+    lastDeletedAt: string
+    oldestDeletedAt: string
+  }
 }) {
   const {
     t,
@@ -68,6 +75,7 @@ function TrashFilesCard({
     selectTrashProject,
   } = useWorkspace()
 
+  const daysLeft = trashDaysLeft(row.oldestDeletedAt)
   const active = !selectedId && trashProjectId === row.id
   // Выбранный в общем списке файл подсвечивает свой проект: «откуда это» —
   // первый вопрос к строке, лежащей вперемешку с чужими.
@@ -86,7 +94,7 @@ function TrashFilesCard({
         }
       }}
       className={cn(
-        "relative mb-[7px] cursor-pointer rounded-lg border px-[5px] py-2.5",
+        "relative mb-[7px] cursor-pointer overflow-hidden rounded-lg border px-[5px] py-2.5",
         active
           ? "border-ws-select/55 bg-gradient-to-b from-ws-select/[0.22] to-ws-select/[0.06] shadow-ws-inset"
           : hinted
@@ -112,11 +120,17 @@ function TrashFilesCard({
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="min-w-0 truncate text-[11.5px] text-ws-5">
           {tf(t.trashDeletedOn, { date: fmtDateTime(row.lastDeletedAt, lang) })}
+          {" · "}
+          {/* Срок — по самому давнему удалению: файлы уходили в корзину в разное
+              время, и сгорит первым тот, что лежит дольше всех. */}
+          {daysLeft === 0 ? t.trashLastDay : tf(t.trashDaysLeft, { days: daysLeft })}
         </span>
         <span className="shrink-0 rounded-full border border-foreground/[0.12] px-2.5 py-[3px] text-[11px] tabular-nums text-ws-4">
           {tf(t.trashFilesCount, { count: row.count })}
         </span>
       </div>
+
+      <TrashLifespan deletedAt={row.oldestDeletedAt} />
     </div>
   )
 }

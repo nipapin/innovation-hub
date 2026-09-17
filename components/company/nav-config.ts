@@ -13,6 +13,7 @@ import {
   hasCompanyCapability,
   type CompanyCapability,
 } from "@/lib/company-capabilities"
+import { setAllows } from "@/lib/company-features"
 import type { CompanyRole } from "@/lib/domain-types"
 
 /**
@@ -105,11 +106,18 @@ export const COMPANY_TOOLS: CompanyTool[] = [
 export function visibleCompanyTools(
   role: CompanyRole,
   capabilities: readonly CompanyCapability[],
+  /**
+   * Набор разделов, проданный компании (COMPANY_SETUP_PANEL_PLAN §2). `null` —
+   * набор не задан, видно всё, что открывают теги. Вторая ось поверх первой:
+   * тег отвечает «кому внутри компании», набор — «что этой компании продано».
+   */
+  sections: string[] | null = null,
 ): CompanyTool[] {
   return COMPANY_TOOLS.filter(
     (tool) =>
-      tool.capability === null ||
-      hasCompanyCapability(role, capabilities, tool.capability),
+      setAllows(sections, tool.key) &&
+      (tool.capability === null ||
+        hasCompanyCapability(role, capabilities, tool.capability)),
   )
 }
 

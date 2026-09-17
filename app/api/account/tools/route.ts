@@ -6,6 +6,8 @@ import {
 } from "@/lib/repositories/user-tools"
 import { createToolSchema } from "@/lib/tool-schemas"
 import { enabledToolKeys } from "@/lib/features-state"
+import { readCompanyFeatures } from "@/lib/company-features"
+import { findCompanyFeaturesForUser } from "@/lib/repositories/companies"
 import { findTool } from "@/lib/tools/registry"
 
 export const runtime = "nodejs"
@@ -14,9 +16,15 @@ export const runtime = "nodejs"
 export async function GET(request: NextRequest) {
   const auth = await requireUserApi(request)
   if (auth instanceof NextResponse) return auth
+  // Каталог сужается набором, проданным компании этого человека
+  // (docs/COMPANY_SETUP_PANEL_PLAN.md §2). Вне компании набора нет, и `null`
+  // не сужает ничего.
+  const features = readCompanyFeatures(
+    await findCompanyFeaturesForUser(auth.userId),
+  )
   const [tools, catalog] = await Promise.all([
     listUserTools(auth.userId),
-    enabledToolKeys(),
+    enabledToolKeys(features.companyTools),
   ])
   // Экземпляры погашенного инструмента не отдаются, но и не удаляются: строки
   // в `user_tools` остаются с настройками и привязкой к папке. Включили обратно
@@ -59,7 +67,10 @@ export async function POST(request: NextRequest) {
   // «ещё не готов» и «здесь такого не бывает» — разные ответы. Проверка на
   // сервере обязательна: каталог в браузере его уже не показывает, но роут не
   // должен верить странице.
-  if (!(await enabledToolKeys()).includes(definition.key)) {
+  const features = readCompanyFeatures(
+    await findCompanyFeaturesForUser(auth.userId),
+  )
+  if (!(await enabledToolKeys(features.companyTools)).includes(definition.key)) {
     return NextResponse.json({ message: "Unknown tool." }, { status: 404 })
   }
 

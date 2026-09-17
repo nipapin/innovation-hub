@@ -1,7 +1,10 @@
 import { query } from "@/lib/db"
 import { REMOTE_COMPUTER_ONLINE_MS, type ProjectRecord } from "@/lib/domain-types"
 import { TEAM_UNREAD_COUNT_SQL } from "@/lib/repositories/project-chat"
-import { companyAutomationSql } from "@/lib/company-features"
+import {
+  companyAutomationSql,
+  companyBillingFreeSql,
+} from "@/lib/company-features"
 
 /**
  * Запросы «Конвейера» — админского вида на обработку всех проектов сайта.
@@ -182,6 +185,15 @@ export type WatchedProject = {
    * не у него, и «пополните баланс» послало бы его туда, где он бессилен.
    */
   ownerHasPayer: boolean
+  /**
+   * Компания владельца работает за наш счёт (§3).
+   *
+   * Отдельное поле рядом с `ownerBillingExempt`, а не слияние с ним: они
+   * одинаково открывают допуск и по-разному ведут себя с деньгами. Тот гасит
+   * запись суммы, этот — нет, и именно его минус на кошельке компании и есть
+   * цифра нашего вложения.
+   */
+  companyBillingFree: boolean
 }
 
 /**
@@ -217,7 +229,11 @@ export async function listWatchedProjects(): Promise<WatchedProject[]> {
             p.estimate_units::float8 AS "estimateUnits",
             COALESCE(u.billing_exempt, FALSE) AS "ownerBillingExempt",
             COALESCE(u.payer_user_id, u.id) AS "payerId",
-            (u.payer_user_id IS NOT NULL) AS "ownerHasPayer"
+            (u.payer_user_id IS NOT NULL) AS "ownerHasPayer",
+            -- Колонкой, а не условием отбора: такой проект обрабатывается, и
+            -- выкинуть его из выборки значило бы остановить ровно ту работу,
+            -- которую мы и собрались делать за свой счёт (§3).
+            ${companyBillingFreeSql("u")} AS "companyBillingFree"
        FROM projects p
        JOIN users u ON u.id = p.user_id
       WHERE u.is_active

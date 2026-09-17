@@ -11,6 +11,7 @@ export default async function CompanyHomePage() {
     <CompanyToolCards
       companyRole={context.companyRole}
       capabilities={context.capabilities}
+      sections={context.companySections}
     />
   )
 }

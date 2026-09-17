@@ -28,6 +28,55 @@ export const OWN_MACHINES_ONLY_KEY = "ownMachinesOnly"
  */
 export const AUTOMATION_ENABLED_KEY = "automationEnabled"
 
+/**
+ * Набор проданного — docs/COMPANY_SETUP_PANEL_PLAN.md §2. Два ключа, потому что
+ * это две разные поверхности: инструменты рабочего места и разделы консоли.
+ *
+ * Умолчание у обоих — «всё, что есть на установке», и выражено оно ОТСУТСТВИЕМ
+ * ключа, а не пустым списком. Разница принципиальная: пустой список — это
+ * названное «ничего не продано», а отсутствие ключа — «разговора про набор не
+ * было». Считай мы отсутствие пустотой, выкатка этого кода отняла бы всё у всех
+ * компаний разом — ключа у них нет и взяться ему неоткуда.
+ */
+export const COMPANY_TOOLS_KEY = "companyTools"
+export const COMPANY_SECTIONS_KEY = "companySections"
+
+/**
+ * Зеркало чата проектов в YouGile — docs/COMPANY_SETUP_PANEL_PLAN.md §2.6.
+ *
+ * Умолчание — «включено», как у `automationEnabled` и по той же причине:
+ * зеркало у существующих компаний уже работает, и выкатка этого кода не смеет
+ * его отнять. Ключа у них нет и взяться ему неоткуда.
+ *
+ * Выключателя САМОГО чата рядом нет намеренно. Он был написан и снят: чат
+ * проекта есть у всех и продаже не подлежит — это способ связи с нами, а не
+ * часть набора. Переключается только одно — уезжает ли переписка компании в
+ * нашу внутреннюю доску.
+ *
+ * Учётка YouGile при этом одна на всю установку (lib/yougile.ts), поэтому
+ * «YouGile компании» — это НЕ её собственная доска, а только ответ на этот
+ * самый вопрос.
+ */
+export const CHAT_YOUGILE_SYNC_KEY = "chatYouGileSync"
+
+/**
+ * Компания работает за наш счёт — docs/COMPANY_SETUP_PANEL_PLAN.md §3.
+ *
+ * Умолчание ОБРАТНОЕ соседям: отсутствие ключа значит «платит». Здесь так и
+ * надо — забытый ключ должен читаться как «выставить счёт», а не как «работаем
+ * бесплатно». Ошибка в эту сторону видна сразу, в обратную — только по счёту за
+ * внешние сервисы, месяцем позже.
+ *
+ * Заводится он ЗДЕСЬ, а не через `users.billing_exempt`, и это прямой запрет
+ * COMPANY_ACCOUNTS_PLAN §7.6: миграция биллинга проставила `billing_exempt`
+ * всем администраторам сайта, и чтение его у плательщика превратило бы любую
+ * ошибку в выборе плательщика в бесплатную работу молча.
+ *
+ * Читается по компании ВЛАДЕЛЬЦА проекта, не плательщика: платить может кошелёк
+ * другой компании, и чтение по плательщику раздало бы бесплатную работу не тем.
+ */
+export const BILLING_FREE_KEY = "billingFree"
+
 export type CompanyFeatures = {
   /**
    * Обработка только на своих машинах.
@@ -51,6 +100,28 @@ export type CompanyFeatures = {
    * Флаг «только свои машины» рядом — наоборот, их решение (§4, §6).
    */
   automationEnabled: boolean
+  /**
+   * Ключи инструментов кабинета, проданные компании. `null` — «всё, что есть».
+   *
+   * Сужает, но не расширяет: выключенное на установке компания включить не
+   * может. Пересечение с выключателями установки делает `enabledToolKeys`
+   * (lib/features-state.ts), и порядок там именно такой — иначе запись в базе
+   * клиента включала бы код, которого на этой установке может не быть вовсе.
+   */
+  companyTools: string[] | null
+  /** Ключи разделов консоли. `null` — «все». Читатели — гейт и оболочка. */
+  companySections: string[] | null
+  /** Чат компании зеркалится в наш YouGile — §2.6. Сам чат есть всегда. */
+  chatYouGileSync: boolean
+  /**
+   * Работа этой компании идёт за наш счёт — §3.
+   *
+   * Гасит ДОПУСК, а не ленту: списания пишутся как обычно, баланс уходит в
+   * минус, и этот минус — точная цифра нашего вложения с раскладкой по задачам.
+   * Не путать с `users.billing_exempt`: тот вообще не пишет сумму, и вернуться
+   * к платной схеме с ним было бы не с чем — истории нет.
+   */
+  billingFree: boolean
 }
 
 /**
@@ -77,6 +148,76 @@ export function companyAutomationSql(userAlias: string): string {
           )`
 }
 
+/**
+ * Кусок `SELECT` для «эта компания работает за наш счёт» — §3.
+ *
+ * Не `WHERE`, в отличие от соседей: освобождение никого не отсеивает из выборки,
+ * а приезжает колонкой в `listWatchedProjects` и решает уже в `admitItem`.
+ * Выкинуть такой проект из запроса было бы ошибкой — работать он как раз должен.
+ *
+ * Включает только явный `true`, см. BILLING_FREE_KEY: мусор под ключом оставляет
+ * компанию платящей, и это единственное безопасное направление ошибки.
+ *
+ * @param userAlias псевдоним таблицы `users` — колонку `company_id` берём с него.
+ */
+export function companyBillingFreeSql(userAlias: string): string {
+  return `COALESCE(
+            (SELECT c.features->'${BILLING_FREE_KEY}' = 'true'::jsonb
+               FROM companies c WHERE c.id = ${userAlias}.company_id),
+            FALSE
+          )`
+}
+
+/**
+ * Кусок `WHERE` для «зеркало чата этой компании не выключено» — §2.6.
+ *
+ * Отдельный помощник, а не чтение через `readCompanyFeatures`, по той же
+ * причине, что и у `companyAutomationSql` выше: читатель фоновый, работает
+ * пачкой, и тащить строки в JS, чтобы отфильтровать их там, значило бы вычитать
+ * всю таблицу проектов каждые тридцать секунд.
+ *
+ * Выключает только явный `false`, см. CHAT_YOUGILE_SYNC_KEY. Сравнение с jsonb,
+ * а не приведение к boolean: мусор под ключом не должен ронять запрос.
+ *
+ * @param userIdExpr выражение с id владельца проекта. Именно выражение, а не
+ *   псевдоним таблицы `users`: в запросе проектов её нет вовсе, там есть только
+ *   колонка `projects.user_id`.
+ */
+export function companyChatSyncSql(userIdExpr: string): string {
+  return `NOT COALESCE(
+            (SELECT c.features->'${CHAT_YOUGILE_SYNC_KEY}' = 'false'::jsonb
+               FROM users u
+               JOIN companies c ON c.id = u.company_id
+              WHERE u.id = ${userIdExpr}),
+            FALSE
+          )`
+}
+
+/**
+ * Список строк из JSONB или `null`.
+ *
+ * `null` возвращается не только на отсутствие ключа, но и на мусор под ним — по
+ * той же причине, что у соседних флагов: кривое значение не должно молча
+ * отнимать у компании разделы. Пустой список при этом сохраняется как есть — он
+ * осмыслен и означает «не продано ничего».
+ */
+function readKeySet(value: Record<string, unknown>, key: string): string[] | null {
+  const raw = value[key]
+  if (!Array.isArray(raw)) return null
+  return raw.filter((item): item is string => typeof item === "string")
+}
+
+/**
+ * Продан ли компании этот раздел или инструмент.
+ *
+ * Одно место на всех читателей — гейт консоли, оболочку и каталог кабинета:
+ * `null` здесь значит «набор не задан», и ответить на это «нет» было бы ровно
+ * той ошибкой, из-за которой выкатка отняла бы всё у всех разом.
+ */
+export function setAllows(set: string[] | null, key: string): boolean {
+  return set === null || set.includes(key)
+}
+
 export function readCompanyFeatures(raw: unknown): CompanyFeatures {
   const value = (raw ?? {}) as Record<string, unknown>
   return {
@@ -87,5 +228,13 @@ export function readCompanyFeatures(raw: unknown): CompanyFeatures {
     // обработку идти — остановка должна быть чьим-то решением, а не следствием
     // кривого значения, которого никто не заметил.
     automationEnabled: value[AUTOMATION_ENABLED_KEY] !== false,
+    companyTools: readKeySet(value, COMPANY_TOOLS_KEY),
+    companySections: readKeySet(value, COMPANY_SECTIONS_KEY),
+    // И снова выключает только явный `false`: у зеркала то же умолчание, что у
+    // обработки выше, и по той же причине.
+    chatYouGileSync: value[CHAT_YOUGILE_SYNC_KEY] !== false,
+    // Строго `true`, как у «только свои машины»: бесплатная работа должна быть
+    // названа явно, а не получиться из мусора под ключом.
+    billingFree: value[BILLING_FREE_KEY] === true,
   }
 }

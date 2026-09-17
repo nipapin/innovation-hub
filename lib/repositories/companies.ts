@@ -65,6 +65,25 @@ export async function findCompanyByDomain(
   return result.rows[0] ?? null
 }
 
+/**
+ * Настройки компании ЧЕЛОВЕКА — один запрос вместо двух.
+ *
+ * Нужен кабинету (`/api/account/tools`): там на руках только `userId`, а
+ * спросить надо набор проданного его компании. Вне компании человек живёт в
+ * общем разделе — ему возвращается `null`, и набор к нему не применяется вовсе.
+ */
+export async function findCompanyFeaturesForUser(
+  userId: string,
+): Promise<Record<string, unknown> | null> {
+  const result = await query<{ features: Record<string, unknown> }>(
+    `SELECT c.features
+       FROM users u JOIN companies c ON c.id = u.company_id
+      WHERE u.id = $1`,
+    [userId],
+  )
+  return result.rows[0]?.features ?? null
+}
+
 export async function setCompanyBranding(input: {
   companyId: string
   branding: Record<string, unknown>
@@ -97,6 +116,78 @@ export async function patchCompanyFeatures(input: {
     [input.companyId, JSON.stringify(input.patch)],
   )
   return result.rows[0] ?? null
+}
+
+/**
+ * Переименование компании — docs/COMPANY_SETUP_PANEL_PLAN.md §1.
+ *
+ * Название читается отовсюду: сайдбар каждого сотрудника, шапка консоли,
+ * письма, заголовок страницы. Всё это берёт его из одной колонки и подхватит
+ * само — отдельной рассылки не требуется.
+ *
+ * Служебный кошелёк переименовывается ТОЙ ЖЕ транзакцией, потому что имя ему
+ * дали из названия при заведении (`createCompany`), и иначе оно осталось бы
+ * прежним навсегда: в наших списках движения денег компания «Б» с кошельком
+ * «Кошелёк «А»» читается как чужой кошелёк, случайно попавший в выборку.
+ *
+ * Но только если имя ещё ТО САМОЕ, что мы выдали. Кошелёк — обычная строка в
+ * `users`, и переименовать его могли снаружи; затирать чужую правку ради
+ * косметики нельзя, а разойтись с названием ей и так позволено.
+ *
+ * `slug` при этом не трогается вовсе: он уходит в префикс хранилища и в почту
+ * кошелька, и его смена означала бы переезд файлов (план §1.4).
+ */
+export type SetCompanyTitleResult =
+  | { ok: true; company: CompanyRecord }
+  | { ok: false; reason: "not-found" | "stale" }
+
+export async function setCompanyTitle(input: {
+  companyId: string
+  title: string
+  /**
+   * Название, которое видел тот, кто правит. Сверяется под замком.
+   *
+   * Без него переименование — слепая запись. Экран оформления шлёт название на
+   * КАЖДОЕ сохранение, а не только когда его трогали, поэтому вкладка,
+   * открытая до чужого переименования, сохранением логотипа вернула бы старое
+   * имя всей компании — и кошельку заодно, потому что для него оно к тому
+   * моменту снова «то самое». Расхождение здесь означает, что компанию
+   * переименовали, пока экран был открыт, и решать это должен человек.
+   */
+  expectedTitle: string
+}): Promise<SetCompanyTitleResult> {
+  return withTransaction(async (client) => {
+    const current = await client.query<{ title: string; walletUserId: string }>(
+      `SELECT title, wallet_user_id AS "walletUserId"
+         FROM companies WHERE id = $1 FOR UPDATE`,
+      [input.companyId],
+    )
+    const company = current.rows[0]
+    if (!company) return { ok: false, reason: "not-found" }
+    // Под замком, взятым строкой выше: между сверкой и записью никто не влезет.
+    if (company.title !== input.expectedTitle) return { ok: false, reason: "stale" }
+
+    const updated = await client.query<CompanyRecord>(
+      `UPDATE companies SET title = $2, updated_at = NOW()
+        WHERE id = $1
+        RETURNING ${COMPANY_FIELDS}`,
+      [input.companyId, input.title],
+    )
+
+    await client.query(
+      `UPDATE users SET full_name = $2, updated_at = NOW()
+        WHERE id = $1 AND kind = 'company_wallet' AND full_name = $3`,
+      [company.walletUserId, walletName(input.title), walletName(company.title)],
+    )
+
+    const row = updated.rows[0]
+    return row ? { ok: true, company: row } : { ok: false, reason: "not-found" }
+  })
+}
+
+/** Имя служебного кошелька. Одно место на заведение и переименование. */
+function walletName(companyTitle: string): string {
+  return `Кошелёк «${companyTitle}»`
 }
 
 export async function setCompanyDomain(input: {
@@ -145,7 +236,7 @@ export async function createCompany(input: {
       await client.query(
         `INSERT INTO users (id, full_name, email, password_hash, role, auth_provider, kind)
          VALUES ($1, $2, $3, NULL, 'USER', 'local', 'company_wallet')`,
-        [walletId, `Кошелёк «${input.title}»`, walletEmail],
+        [walletId, walletName(input.title), walletEmail],
       )
       const result = await client.query<CompanyRecord>(
         `INSERT INTO companies (id, slug, title, wallet_user_id, created_by)

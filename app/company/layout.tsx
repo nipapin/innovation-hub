@@ -7,7 +7,6 @@ import { isSuperAdmin } from "@/lib/admin-roles"
 import { accentCss, DEFAULT_ACCENT, readBranding } from "@/lib/branding"
 import { getCompanyContext } from "@/lib/company-auth"
 import { findCompanyById, listCompanies } from "@/lib/repositories/companies"
-import { cn } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 
@@ -73,7 +72,16 @@ export default async function CompanyLayout({
       : accentCss(accent, ".company-brand")
 
   return (
-    <div className={cn(ibmPlex.variable, "company-brand")}>
+    /**
+     * Шрифт снаружи, цвет — внутри, и это не косметика.
+     *
+     * `--font-ibm-plex` читает сама оболочка (workspace-shell.tsx:624), поэтому
+     * переменная обязана остаться здесь, над ней. А `.company-brand` уезжает на
+     * корень консоли: пока класс висел тут же, правила акцента накрывали и
+     * оболочку — рабочее место гостя красилось в цвета клиента, хотя
+     * принадлежит не ему.
+     */
+    <div className={ibmPlex.variable}>
       {scopedAccent ? (
         <style dangerouslySetInnerHTML={{ __html: scopedAccent }} />
       ) : null}
@@ -87,12 +95,14 @@ export default async function CompanyLayout({
         companyGuest={isGuest}
       >
         <CompanyShell
+          className="company-brand"
           companyTitle={context.companyTitle}
           companyRole={context.companyRole}
           capabilities={context.capabilities}
           companies={companies}
           currentCompanyId={context.companyId}
           isSiteSuperAdmin={context.isSiteSuperAdmin}
+          sections={context.companySections}
         >
           {children}
         </CompanyShell>

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireAdminApi } from "@/lib/admin-auth"
+import { isProjectChatSyncEnabled } from "@/lib/company-chat-gate"
 import { sendProjectChatMessageSchema } from "@/lib/project-chat-schemas"
 import { syncProjectChatFromYouGile } from "@/lib/project-chat-sync"
 import {
@@ -76,7 +77,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
   //
   // Обратной синхронизацией это не задублируется: отправляем ботом, а
   // syncProjectChatFromYouGile сообщения бота отбрасывает по fromUserId.
-  if (isYouGileConfigured()) {
+  // Зеркало выключено у компании — ответ админа остаётся на сайте и в YouGile
+  // не уезжает (§2.6). Сам чат здесь намеренно НЕ закрыт: это наша сторона
+  // переписки, и она нужна нам читаемой независимо от набора клиента.
+  if (isYouGileConfigured() && (await isProjectChatSyncEnabled(project.ownerId))) {
     try {
       const ownerEmail = (await findUserById(project.ownerId))?.email ?? ""
       const yougileMessageId = await deliverProjectMessageToYouGile({

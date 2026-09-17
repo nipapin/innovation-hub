@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { requireCompanyApiAnyAdmin } from "@/lib/company-auth"
+import { requireCompanyApiSection } from "@/lib/company-auth"
 import { listCompanyAuditEvents } from "@/lib/repositories/admin-audit"
 
 export const runtime = "nodejs"
@@ -15,7 +15,7 @@ const MAX_LIMIT = 100
  * компанию без единственного способа разобраться, кто что сделал.
  */
 export async function GET(request: NextRequest) {
-  const auth = await requireCompanyApiAnyAdmin(request)
+  const auth = await requireCompanyApiSection(request, "audit")
   if (auth instanceof NextResponse) return auth
 
   const params = request.nextUrl.searchParams

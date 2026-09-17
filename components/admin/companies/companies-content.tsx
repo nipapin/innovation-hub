@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { CompanyBrandingPanel } from "@/components/admin/companies/branding-panel"
+import { CompanySetsPanel } from "@/components/admin/companies/sets-panel"
+import { readCompanyFeatures } from "@/lib/company-features"
 import { readBranding } from "@/lib/branding"
 import { slugify } from "@/lib/slug"
 
@@ -47,6 +49,8 @@ type CompanyRow = {
   memberCount: number
   domain: string | null
   branding: Record<string, unknown>
+  /** Мешок настроек компании: отсюда берётся набор проданного (план §2). */
+  features: Record<string, unknown>
 }
 
 type CompanyRole = "member" | "admin" | "owner"
@@ -187,10 +191,14 @@ export function AdminCompanies({
                 className="flex flex-wrap items-center gap-3 px-4 py-3"
               >
                 <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                {/* Само название и открывает настройки — отдельной кнопки
+                    «Управлять» рядом не было смысла держать: она делала ровно
+                    это же. Здесь настоящая <button>, а не строка с onClick,
+                    поэтому доступ с клавиатуры от её удаления не пострадал. */}
                 <button
                   type="button"
                   onClick={() => setSelectedId(company.id)}
-                  className="min-w-0 flex-1 text-left"
+                  className="min-w-0 flex-1 text-left hover:opacity-80"
                 >
                   <span className="block truncate text-sm font-medium text-foreground">
                     {company.title}
@@ -225,13 +233,6 @@ export function AdminCompanies({
                   </Button>
                 ) : null}
                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSelectedId(company.id)}
-                >
-                  {t.companyManage}
-                </Button>
-                <Button
                   variant="ghost"
                   size="sm"
                   disabled={company.memberCount > 0}
@@ -260,6 +261,19 @@ export function AdminCompanies({
             initial={{
               ...readBranding(selected.branding),
               domain: selected.domain,
+            }}
+            onSaved={load}
+          />
+          {/* Набор — отдельной карточкой под оформлением: оформление про то, как
+              компания выглядит, набор про то, что ей продано. */}
+          <CompanySetsPanel
+            key={`sets-${selected.id}`}
+            companyId={selected.id}
+            initial={{
+              tools: readCompanyFeatures(selected.features).companyTools,
+              sections: readCompanyFeatures(selected.features).companySections,
+              chatSync: readCompanyFeatures(selected.features).chatYouGileSync,
+              billingFree: readCompanyFeatures(selected.features).billingFree,
             }}
             onSaved={load}
           />

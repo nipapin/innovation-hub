@@ -15,6 +15,7 @@ import type { PayMeter, PayPair, Wallet } from "@/lib/billing/types"
  * Кого гейт касается:
  *
  *   освобождён от оплаты   →  никогда (админ, демо-аккаунт, партнёр)
+ *   компания за наш счёт   →  никогда, но сумма всё равно спишется (§3)
  *   проект покрыт подарком →  всегда: подарок это конечные деньги
  *   остальные              →  только при включённом рубильнике
  *
@@ -62,6 +63,16 @@ export type AdmissionInput = {
   funds: Funds
   ownerBillingExempt: boolean
   /**
+   * Компания владельца работает за наш счёт
+   * (docs/COMPANY_SETUP_PANEL_PLAN.md §3).
+   *
+   * Открывает допуск наравне с `ownerBillingExempt` и на этом сходство
+   * кончается: наружу, в `exempt`, он НЕ уходит. Там он погасил бы сумму в
+   * ленте, а весь смысл флага — чтобы сумма записалась и баланс компании ушёл в
+   * минус: этот минус и есть наше вложение, до копейки и с историей.
+   */
+  companyBillingFree: boolean
+  /**
    * За владельца платит другой (`users.payer_user_id`). Нужен только для
    * причины остановки: деньги кончились не у него.
    */
@@ -76,6 +87,7 @@ export function admitItem(input: AdmissionInput): Admission {
   )
   const gated =
     !input.ownerBillingExempt &&
+    !input.companyBillingFree &&
     (coveredByGrant || settings.enforceForOwnProjects)
 
   if (input.payUnitProblem || !input.pair) {

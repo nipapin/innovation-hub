@@ -886,6 +886,7 @@ export async function materializeCandidates(input: {
       estimateCents,
       funds,
       ownerBillingExempt: project.ownerBillingExempt,
+      companyBillingFree: project.companyBillingFree,
       ownerHasPayer: project.ownerHasPayer,
     })
 

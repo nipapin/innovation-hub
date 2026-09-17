@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
+import { isProjectChatSyncEnabled } from "@/lib/company-chat-gate"
 import { findProjectByYougileChatId } from "@/lib/repositories/projects"
 import {
   findProjectChatMessageByYougileId,
@@ -142,6 +143,17 @@ export async function POST(request: NextRequest) {
     const project = await findProjectByYougileChatId(chatId)
     if (!project) {
       // Not a project chat we manage (e.g. a chat created outside the site).
+      return NextResponse.json({ ok: true })
+    }
+
+    /**
+     * Зеркало у компании выключено — событие принимаем и выбрасываем (§2.6).
+     *
+     * Именно 200, а не отказ: YouGile повторяет доставку на любой не-2xx, и
+     * отказ здесь превратил бы выключенное зеркало в бесконечные ретраи с их
+     * стороны. Проверка после поиска проекта — до него владельца ещё нет.
+     */
+    if (!(await isProjectChatSyncEnabled(project.userId))) {
       return NextResponse.json({ ok: true })
     }
 

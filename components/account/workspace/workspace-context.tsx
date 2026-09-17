@@ -361,6 +361,12 @@ type WorkspaceValue = {
     count: number
     /** Когда из проекта удаляли в последний раз — подпись на строке. */
     lastDeletedAt: string
+    /**
+     * Самое давнее удаление в этом проекте. Файлы уходили в корзину в разное
+     * время, и сроки у них разные; полоска показывает ближайший — тот файл,
+     * который исчезнет первым. Остальное ещё подождёт.
+     */
+    oldestDeletedAt: string
   }[]
   /** Строка корзины по id файла — из неё видно, что с этим файлом можно делать. */
   trashItemOf: (fileId: string) => TrashItem | null
@@ -1990,7 +1996,13 @@ export function WorkspaceProvider({
   const trashProjects = useMemo(() => {
     const byId = new Map<
       string,
-      { id: string; name: string; count: number; lastDeletedAt: string }
+      {
+        id: string
+        name: string
+        count: number
+        lastDeletedAt: string
+        oldestDeletedAt: string
+      }
     >()
     for (const item of trashItems) {
       // Удалённые проекты в этот список не идут: у них слева своя карточка, со
@@ -2005,12 +2017,16 @@ export function WorkspaceProvider({
         if (item.deletedAt > found.lastDeletedAt) {
           found.lastDeletedAt = item.deletedAt
         }
+        if (item.deletedAt < found.oldestDeletedAt) {
+          found.oldestDeletedAt = item.deletedAt
+        }
       } else {
         byId.set(item.projectId, {
           id: item.projectId,
           name: item.projectName,
           count: 1,
           lastDeletedAt: item.deletedAt,
+          oldestDeletedAt: item.deletedAt,
         })
       }
     }
