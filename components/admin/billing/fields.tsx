@@ -14,6 +14,7 @@ import { HelpSectionButton } from "@/components/help/help-section-button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { HelpTopicId } from "@/lib/help/topics"
+import { readUiPref, writeUiPref } from "@/lib/ui-prefs"
 import { cn } from "@/lib/utils"
 
 /**
@@ -30,6 +31,7 @@ export function Section({
   help,
   collapsible,
   defaultOpen = true,
+  storageKey,
   children,
 }: {
   title: string
@@ -46,10 +48,35 @@ export function Section({
    */
   collapsible?: boolean
   defaultOpen?: boolean
+  /**
+   * Имя куки (`lib/ui-prefs.ts`): свёртка запоминается между заходами. Ставится
+   * секциям, которые сворачивают надолго («пульт» на странице конвейера), а не
+   * на один взгляд. Реестр таких ключей — docs/UI_PREFS.md.
+   *
+   * ВАЖНО: только секциям, которых нет в серверном кадре. `readUiPref` читает
+   * `document.cookie`, а на сервере его нет — секция, отрисованная сервером,
+   * приедет развёрнутой, а при гидратации схлопнется, и React пожалуется на
+   * расхождение. «Пульт» подходит: его страница до ответа API рисует `null`.
+   */
+  storageKey?: string
   children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(defaultOpen)
+  // Читается один раз, ленивым инициализатором: эффектом свёрнутая секция
+  // успела бы моргнуть развёрнутой.
+  const [open, setOpen] = useState(() => {
+    if (!storageKey) return defaultOpen
+    const stored = readUiPref(storageKey)
+    return stored === null ? defaultOpen : stored === "1"
+  })
   const shown = !collapsible || open
+
+  const toggleOpen = () => {
+    setOpen((prev) => {
+      const next = !prev
+      if (storageKey) writeUiPref(storageKey, next ? "1" : "0")
+      return next
+    })
+  }
 
   return (
     <Card className="border-border/60 bg-card">
@@ -58,7 +85,7 @@ export function Section({
           {collapsible ? (
             <button
               type="button"
-              onClick={() => setOpen((prev) => !prev)}
+              onClick={toggleOpen}
               aria-expanded={open}
               className="-ml-1 flex items-center gap-2 rounded px-1 text-left transition-colors hover:text-foreground/80"
             >

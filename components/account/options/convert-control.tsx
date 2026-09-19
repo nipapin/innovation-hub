@@ -40,7 +40,8 @@ import { FieldGroup } from "./modal-fields"
  * в mp4 и в mov выглядит одинаково. Вместо него — карточка результата словами.
  */
 
-const STAGE_MAX = 300
+/** Карточка результата занимает то же место, что превью в соседних модалках. */
+const STAGE_MAX = 480
 
 /** Ряд кнопок-вариантов. Тот же приём, что у заготовок титров. */
 function ChoiceRow<T extends string>({
@@ -97,7 +98,7 @@ function ResultCard({
       style={{ width: STAGE_MAX, height: STAGE_MAX }}
       className="flex shrink-0 flex-col items-center justify-center gap-2 rounded-lg border border-border/60 bg-foreground/[0.03] p-6 text-center"
     >
-      <span className="font-mono text-[28px] font-semibold uppercase text-foreground">
+      <span className="font-mono text-[36px] font-semibold uppercase text-foreground">
         {value.format}
       </span>
       {/* Три рода — три разные карточки. Показывать «кодек · 1080p» у mp3
@@ -191,13 +192,13 @@ export function ConvertControl({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t.cvTitle}</DialogTitle>
             <DialogDescription>{t.cvHint}</DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col gap-5 sm:flex-row">
+          <div className="flex flex-col gap-5 lg:flex-row">
             <ResultCard
               value={draft}
               codec={codec}

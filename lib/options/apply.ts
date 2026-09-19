@@ -7,7 +7,7 @@ import {
   mergeVideoAdjustValue,
   parseVideoAdjustValue,
 } from "./video-adjust"
-import { mergeTitleValue, parseTitleValue } from "./title"
+import { mergeTitleFormats } from "./title"
 import { mergeConvertValue, parseConvertValue } from "./convert"
 import type { ExposedOption, ExposedOptionValue } from "./types"
 
@@ -125,9 +125,10 @@ function coerce(
       if (!asTitle || typeof asTitle !== "object" || Array.isArray(asTitle)) {
         fail(change.path, "expects a JSON object with format blocks.")
       }
-      // Правка ложится во все три формата, чужие поля берутся из файла —
-      // разбор в lib/options/title.ts.
-      return mergeTitleValue(option.value, parseTitleValue(value))
+      // Каждый присланный блок формата сливается со СВОИМ блоком в файле —
+      // так работают оба режима модалки, «одинаково во всех» и по форматам.
+      // Чужие поля берутся из файла — разбор в lib/options/title.ts.
+      return mergeTitleFormats(option.value, value)
     }
 
     case "videoAdjustment": {

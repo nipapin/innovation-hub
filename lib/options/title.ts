@@ -65,7 +65,32 @@ export const TITLE_COLORS = [
   "#7cff6b",
 ] as const
 
+/**
+ * Ширина строки в процентах ширины кадра — `wrapWidth`. 80 % это стандарт
+ * программы, и он же значение по умолчанию.
+ *
+ * Ручкой стал 2026-09-19: размер шрифта один на все форматы, и длину строки
+ * задаёт именно это число — то есть им и решают, во сколько строк ляжет фраза.
+ * Узкая колонка посреди кадра — обычная просьба, а раньше добиться её было
+ * нечем.
+ */
+export const TITLE_WRAP_PERCENT = 80
+
+/** Ходовые ширины — кнопками, как число строк. Остальное ползунком. */
+export const TITLE_WRAPS = [40, 60, 80] as const
+
+/**
+ * Поле от края кадра до якорей «слева» и «справа».
+ *
+ * Держится ОТДЕЛЬНО от `wrapWidth`: раньше оно из него и считалось, но с
+ * ручкой ширины это значило бы, что узкая колонка сама себе отодвигает край —
+ * выбрал 40 %, и «слева» уехало на треть кадра. Поле — про безопасную зону
+ * площадки, ширина строки — про длину фразы, и связывать их незачем.
+ */
+export const TITLE_SAFE_MARGIN = 10
+
 export type TitlePosition = "top" | "middle" | "bottom"
+export type TitleHAlign = "left" | "center" | "right"
 
 /**
  * Положение — две связанные величины (`y` и `vAlign`) с тремя осмысленными
@@ -83,8 +108,44 @@ export const TITLE_POSITIONS: Record<
   bottom: { y: 90, vAlign: "bottom" },
 }
 
+/**
+ * Точка привязки по горизонтали, которую ставит КНОПКА выравнивания.
+ *
+ * Не формула, по которой `x` считается всегда: в файле лежит своё число, и
+ * ползунок под шестерёнкой правит его отдельно (см. `TitleValue.x`). Здесь —
+ * только те три значения, на которые встают кнопки.
+ *
+ * Семантика программы (`buildAss`): `textX = ширина · x/100`, и при `left`
+ * строка НАЧИНАЕТСЯ в этой точке, при `right` — КОНЧАЕТСЯ в ней. Поэтому
+ * якоря стоят на краях безопасного поля и посередине кадра: 10 · 50 · 90.
+ */
+export const TITLE_ANCHOR_X: Record<TitleHAlign, number> = {
+  left: TITLE_SAFE_MARGIN,
+  center: 50,
+  right: 100 - TITLE_SAFE_MARGIN,
+}
+
 export type TitleShadowPreset = "none" | "soft" | "hard" | "glow" | "lift"
 export type TitleBoxPreset = "none" | "translucent" | "solid" | "rounded"
+
+/** Тень — сами значения, а не имя заготовки: иначе «свои» числа автора не показать. */
+export type TitleShadow = {
+  enabled: boolean
+  color: string
+  offsetX: number
+  offsetY: number
+  blur: number
+}
+
+/** Плашка — тоже значения: цвет, прозрачность, отступы и радиус из файла. */
+export type TitleBox = {
+  enabled: boolean
+  color: string
+  opacity: number
+  paddingX: number
+  paddingY: number
+  borderRadius: number
+}
 
 /**
  * Заготовки — это НЕ режимы, а просто несколько значений под одним именем.
@@ -96,10 +157,7 @@ export type TitleBoxPreset = "none" | "translucent" | "solid" | "rounded"
  * Ползунок там, где число одно (обводка, размер); заготовка там, где значений
  * несколько и по отдельности они бессмысленны.
  */
-export const TITLE_SHADOWS: Record<
-  TitleShadowPreset,
-  { enabled: boolean; color: string; offsetX: number; offsetY: number; blur: number }
-> = {
+export const TITLE_SHADOWS: Record<TitleShadowPreset, TitleShadow> = {
   none: { enabled: false, color: "#000000", offsetX: 0, offsetY: 0, blur: 0 },
   soft: { enabled: true, color: "#000000", offsetX: 0, offsetY: 4, blur: 12 },
   hard: { enabled: true, color: "#000000", offsetX: 4, offsetY: 4, blur: 0 },
@@ -108,17 +166,7 @@ export const TITLE_SHADOWS: Record<
   lift: { enabled: true, color: "#000000", offsetX: 0, offsetY: 10, blur: 20 },
 }
 
-export const TITLE_BOXES: Record<
-  TitleBoxPreset,
-  {
-    enabled: boolean
-    color: string
-    opacity: number
-    paddingX: number
-    paddingY: number
-    borderRadius: number
-  }
-> = {
+export const TITLE_BOXES: Record<TitleBoxPreset, TitleBox> = {
   none: { enabled: false, color: "#000000", opacity: 0, paddingX: 0, paddingY: 0, borderRadius: 0 },
   translucent: { enabled: true, color: "#000000", opacity: 0.45, paddingX: 24, paddingY: 12, borderRadius: 0 },
   solid: { enabled: true, color: "#000000", opacity: 1, paddingX: 24, paddingY: 12, borderRadius: 0 },
@@ -126,21 +174,67 @@ export const TITLE_BOXES: Record<
 }
 
 export const TITLE_LIMITS = {
-  /** Размер шрифта в пикселях кадра 1920×1080; в другие форматы едет долей. */
+  /** Размер шрифта в пикселях; ОДИНАКОВ во всех форматах, как в программе. */
   size: { min: 24, max: 160, step: 2 },
   outline: { min: 0, max: 12, step: 1 },
+  /**
+   * Дальше — границы ползунков ТОЧНОЙ настройки (шестерёнка). Кнопка-заготовка
+   * ставит набор значений разом, а эти ползунки правят каждое по отдельности,
+   * когда заготовка не подошла.
+   */
+  /** Якоря — проценты стороны кадра, как `x` и `y` в программе. */
+  anchor: { min: 0, max: 100, step: 1 },
+  /**
+   * Ширина строки. Снизу 20 %: в колонку уже уже не влезает длинное слово, и
+   * фраза начинает рассыпаться по строке на слово, а не переноситься.
+   */
+  wrap: { min: 20, max: 100, step: 1 },
+  /** Смещение тени по осям: в обе стороны, поэтому диапазон знаковый. */
+  shadowOffset: { min: -40, max: 40, step: 1 },
+  shadowBlur: { min: 0, max: 60, step: 1 },
+  /** Прозрачность плашки — доля, а не проценты: так её хранит программа. */
+  boxOpacity: { min: 0, max: 1, step: 0.05 },
+  boxPadding: { min: 0, max: 80, step: 2 },
+  boxRadius: { min: 0, max: 60, step: 2 },
 } as const
 
-/** То, что правит сайт. Одно на все три формата — см. `applyToAll`. */
+/** Число строк: одна, две, три — кнопками, как заготовки тени и плашки. */
+export const TITLE_LINES = [1, 2, 3] as const
+
+/**
+ * То, что правит сайт.
+ *
+ * Все восемь полей относятся к ОДНОМУ формату: модалка пишет их либо во все
+ * три сразу (режим по умолчанию), либо только в выбранный — как синхронизация
+ * в наложении (docs/OVERLAY_CONTROL_PLAN.md §8.1).
+ */
 export type TitleValue = {
   font: string
   size: number
   color: string
+  /** `maxLines`: сколько строк занимает титр. */
+  lines: number
+  /** `wrapWidth`: ширина строки в процентах ширины кадра. */
+  wrapWidth: number
+  /** Вертикальное выравнивание — `vAlign`. */
   position: TitlePosition
+  /** Горизонтальное выравнивание — `hAlign`. */
+  hAlign: TitleHAlign
+  /**
+   * Якоря в процентах стороны кадра — `x` и `y` из файла.
+   *
+   * Хранятся ОТДЕЛЬНО от выравниваний, а не считаются из них: автор графа мог
+   * поставить любые числа, и затирать их якорями кнопок значило бы молча
+   * сдвинуть титр в ролике (docs/TITLE_CONTROL_PLAN.md §4 обещает обратное).
+   * Кнопка ставит пару (якорь + выравнивание) разом, ползунки под шестерёнкой
+   * правят только якорь; не совпал с кнопочным — кнопка не подсвечена.
+   */
+  x: number
+  y: number
   outlineWidth: number
   outlineColor: string
-  shadow: TitleShadowPreset
-  box: TitleBoxPreset
+  shadow: TitleShadow
+  box: TitleBox
 }
 
 function asRecord(node: unknown): Record<string, unknown> | null {
@@ -154,6 +248,10 @@ function num(raw: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
 const HEX = /^#[0-9a-f]{6}$/i
 
 export function defaultTitleValue(): TitleValue {
@@ -161,28 +259,33 @@ export function defaultTitleValue(): TitleValue {
     font: "Arial",
     size: 60,
     color: "#ffffff",
+    // Как в программе: два блока слов на экран — обычное дело для титров.
+    lines: 2,
+    wrapWidth: TITLE_WRAP_PERCENT,
     position: "bottom",
+    hAlign: "center",
+    x: TITLE_ANCHOR_X.center,
+    y: TITLE_POSITIONS.bottom.y,
     outlineWidth: 0,
     outlineColor: "#000000",
-    shadow: "none",
-    box: "none",
+    shadow: { ...TITLE_SHADOWS.none },
+    box: { ...TITLE_BOXES.none },
   }
 }
 
 /**
- * Какая заготовка похожа на то, что лежит в файле.
+ * Какая заготовка совпадает с текущими значениями — для ПОДСВЕТКИ кнопки.
  *
- * Имя заготовки в значении НЕ хранится — там только числа, и автор графа мог
- * поставить любые. Поэтому при открытии подбираем ближайшую: точное совпадение
- * полей даёт её, иначе остаётся первая («нет»), и это честно — показывать
- * «мягкая тень» там, где значения другие, значило бы врать.
+ * Имя заготовки в значении не хранится — там только числа, и автор графа мог
+ * поставить любые. Совпадение ищется точным равенством всех полей; не совпало
+ * ни одно — `null`, и ни одна кнопка не подсвечивается. Подсветить «мягкую»
+ * там, где стоят другие числа, значило бы соврать о том, что увидит клиент.
  */
-function matchPreset<T extends Record<string, unknown>>(
+export function matchTitlePreset<T extends Record<string, unknown>>(
   presets: Record<string, T>,
   current: Record<string, unknown> | null,
-  fallback: string,
-): string {
-  if (!current) return fallback
+): string | null {
+  if (!current) return null
   for (const [name, preset] of Object.entries(presets)) {
     const same = Object.entries(preset).every(([key, value]) => {
       const actual = current[key]
@@ -192,11 +295,14 @@ function matchPreset<T extends Record<string, unknown>>(
     })
     if (same) return name
   }
-  return fallback
+  return null
 }
 
-/** Строка значения → то, что правит сайт. Берём горизонтальный формат за образец. */
-export function parseTitleValue(raw: unknown): TitleValue {
+/** Строка значения → то, что правит сайт. Формат — чей блок читать. */
+export function parseTitleValue(
+  raw: unknown,
+  format: TitleFormat = "landscape",
+): TitleValue {
   const fallback = defaultTitleValue()
   let root: unknown = null
   if (typeof raw === "string" && raw.trim()) {
@@ -211,7 +317,18 @@ export function parseTitleValue(raw: unknown): TitleValue {
   const obj = asRecord(root)
   if (!obj) return fallback
 
-  const block = asRecord(obj.landscape) ?? asRecord(obj.portrait) ?? asRecord(obj.square)
+  // Запрошенный формат — первым; если его блока в файле нет, читаем любой
+  // другой. Размер при этом приводить не надо: он в пикселях и одинаков
+  // во всех форматах — так устроена программа.
+  const order = [format, ...TITLE_FORMATS.filter((item) => item !== format)]
+  let block: Record<string, unknown> | null = null
+  for (const item of order) {
+    const candidate = asRecord(obj[item])
+    if (candidate) {
+      block = candidate
+      break
+    }
+  }
   if (!block) return fallback
 
   const text = asRecord(block.text) ?? {}
@@ -228,22 +345,57 @@ export function parseTitleValue(raw: unknown): TitleValue {
   const vAlign = position.vAlign
   const place: TitlePosition =
     vAlign === "top" ? "top" : vAlign === "middle" ? "middle" : "bottom"
+  const hAlignRaw = position.hAlign
+  const hAlign: TitleHAlign =
+    hAlignRaw === "left" ? "left" : hAlignRaw === "right" ? "right" : "center"
+  // Якоря автора берём КАК ЕСТЬ. Нет их в файле — становимся на якоря того
+  // выравнивания, которое прочитали, и кнопки честно подсветятся.
+  const x = clamp(num(position.x, TITLE_ANCHOR_X[hAlign]), 0, 100)
+  const y = clamp(num(position.y, TITLE_POSITIONS[place].y), 0, 100)
+
+  const shadowRaw = asRecord(block.shadow) ?? {}
+  const boxRaw = asRecord(block.background) ?? {}
+  const hexOr = (raw: unknown, fallbackHex: string) =>
+    typeof raw === "string" && HEX.test(raw) ? raw : fallbackHex
 
   return {
     font,
     size: Math.round(num(text.size, fallback.size)),
-    color: typeof text.color === "string" && HEX.test(text.color) ? text.color : fallback.color,
+    color: hexOr(text.color, fallback.color),
+    // `Math.max(1, …)` — как у программы: ноль строк смысла не имеет.
+    lines: Math.max(1, Math.round(num(text.maxLines, fallback.lines))),
+    wrapWidth: clamp(
+      Math.round(num(text.wrapWidth, fallback.wrapWidth)),
+      TITLE_LIMITS.wrap.min,
+      TITLE_LIMITS.wrap.max,
+    ),
     position: place,
+    hAlign,
+    x,
+    y,
     outlineWidth:
       outline.enabled === true
         ? Math.round(num(outline.width, fallback.outlineWidth))
         : 0,
-    outlineColor:
-      typeof outline.color === "string" && HEX.test(outline.color)
-        ? outline.color
-        : fallback.outlineColor,
-    shadow: matchPreset(TITLE_SHADOWS, asRecord(block.shadow), "none") as TitleShadowPreset,
-    box: matchPreset(TITLE_BOXES, asRecord(block.background), "none") as TitleBoxPreset,
+    outlineColor: hexOr(outline.color, fallback.outlineColor),
+    // Тень и плашка читаются КАК ЕСТЬ: значения автора могут не совпасть ни с
+    // одной заготовкой, и тогда не подсвечивается ни одна кнопка — это честнее,
+    // чем показать ближайшую (см. matchTitlePreset).
+    shadow: {
+      enabled: shadowRaw.enabled === true,
+      color: hexOr(shadowRaw.color, fallback.shadow.color),
+      offsetX: Math.round(num(shadowRaw.offsetX, 0)),
+      offsetY: Math.round(num(shadowRaw.offsetY, 0)),
+      blur: Math.round(num(shadowRaw.blur, 0)),
+    },
+    box: {
+      enabled: boxRaw.enabled === true,
+      color: hexOr(boxRaw.color, fallback.box.color),
+      opacity: num(boxRaw.opacity, 0),
+      paddingX: Math.round(num(boxRaw.paddingX, 0)),
+      paddingY: Math.round(num(boxRaw.paddingY, 0)),
+      borderRadius: Math.round(num(boxRaw.borderRadius, 0)),
+    },
   }
 }
 
@@ -281,26 +433,27 @@ export function titleFontNames(raw: unknown): string[] {
 }
 
 /**
- * Размер под формат: доля от ширины кадра, а не то же число.
- *
- * Шестьдесят пикселей в кадре 1920 — это 3,1 % ширины; те же шестьдесят в кадре
- * 1080 занимают уже 5,5 %, то есть титр в вертикальном ролике оказался бы заметно
- * крупнее. Настраивают один раз, а выглядеть должно одинаково.
+ * Размер под формат НЕ пересчитывается — и это не экономия, а модель программы:
+ * кегль один на все форматы в пикселях, а длину строки в каждом кадре держит
+ * `wrapWidth` (проценты ширины кадра). Прежний пересчёт долей менял размер от
+ * формата к формату, и один и тот же титр собирался из трёх разных кеглей.
  */
-export function sizeForFormat(size: number, format: TitleFormat): number {
-  const ratio = TITLE_FRAME[format].width / TITLE_FRAME.landscape.width
-  return Math.round(size * ratio)
-}
 
 /**
  * Слияние правки клиента в ТЕКУЩЕЕ значение из файла.
  *
- * Правка ложится во ВСЕ ТРИ формата сразу: клиент настраивает один раз, а какой
- * ролик придёт на вход — заранее неизвестно. Всё, чего сайт не знает (анимация,
- * перенос строк, число строк, `encode`), берётся из файла и возвращается на
- * место — слияние на сервере, не доверие браузеру.
+ * По умолчанию правка ложится во ВСЕ ТРИ формата — так работает режим
+ * «одинаково во всех»: какой ролик придёт на вход, заранее неизвестно.
+ * Передан формат — пишем только его: модалка со снятой синхронизацией
+ * настраивает каждый формат по отдельности. Всё, чего сайт не знает
+ * (анимация, перенос строк, число строк, `encode`), берётся из файла и
+ * возвращается на место — слияние на сервере, не доверие браузеру.
  */
-export function mergeTitleValue(currentRaw: unknown, incoming: TitleValue): string {
+export function mergeTitleValue(
+  currentRaw: unknown,
+  incoming: TitleValue,
+  onlyFormat?: TitleFormat,
+): string {
   let root: Record<string, unknown> = {}
   if (typeof currentRaw === "string" && currentRaw.trim()) {
     try {
@@ -314,7 +467,8 @@ export function mergeTitleValue(currentRaw: unknown, incoming: TitleValue): stri
   }
 
   const place = TITLE_POSITIONS[incoming.position]
-  for (const format of TITLE_FORMATS) {
+  const targets = onlyFormat ? [onlyFormat] : TITLE_FORMATS
+  for (const format of targets) {
     const block = asRecord(root[format]) ?? {}
     const text = asRecord(block.text) ?? {}
     const position = asRecord(block.position) ?? {}
@@ -326,16 +480,19 @@ export function mergeTitleValue(currentRaw: unknown, incoming: TitleValue): stri
       text: {
         ...text,
         font: incoming.font,
-        size: sizeForFormat(incoming.size, format),
+        size: incoming.size,
         color: incoming.color,
+        wrapWidth: incoming.wrapWidth,
+        maxLines: incoming.lines,
       },
       position: {
         ...position,
-        // `x` и горизонтальное выравнивание не трогаем: титр всегда по центру
-        // ширины, и трогать это клиенту незачем.
-        x: num(position.x, 50),
-        hAlign: typeof position.hAlign === "string" ? position.hAlign : "center",
-        y: place.y,
+        // Якоря пишем ТЕ, что в черновике, а не пересчитанные из выравниваний:
+        // кнопка ставит пару (якорь + выравнивание) сама, а нетронутые якоря
+        // автора обязаны доехать обратно нетронутыми — §4 плана.
+        x: incoming.x,
+        hAlign: incoming.hAlign,
+        y: incoming.y,
         vAlign: place.vAlign,
       },
       outline: {
@@ -344,11 +501,50 @@ export function mergeTitleValue(currentRaw: unknown, incoming: TitleValue): stri
         width: incoming.outlineWidth,
         color: incoming.outlineColor,
       },
-      shadow: { ...(asRecord(block.shadow) ?? {}), ...TITLE_SHADOWS[incoming.shadow] },
-      background: { ...(asRecord(block.background) ?? {}), ...TITLE_BOXES[incoming.box] },
+      shadow: { ...(asRecord(block.shadow) ?? {}), ...incoming.shadow },
+      background: { ...(asRecord(block.background) ?? {}), ...incoming.box },
     }
   }
   return JSON.stringify(root)
+}
+
+/**
+ * Слияние на СЕРВЕРЕ: клиент присылает значение целиком, в форме графа —
+ * три блока, по одному на формат.
+ *
+ * Каждый присланный блок сливается со СВОИМ блоком в файле, а не пишется во
+ * все три: иначе правка одного формата со снятой синхронизацией затирала бы
+ * остальные значениями горизонтального. Блока в присланном нет — формат не
+ * трогаем. Старый клиент, приславший три одинаковых блока, получает ровно
+ * прежний результат.
+ */
+export function mergeTitleFormats(
+  currentRaw: unknown,
+  incomingRaw: unknown,
+): string {
+  let root: unknown = null
+  if (typeof incomingRaw === "string" && incomingRaw.trim()) {
+    try {
+      root = JSON.parse(incomingRaw)
+    } catch {
+      root = null
+    }
+  } else if (incomingRaw && typeof incomingRaw === "object") {
+    root = incomingRaw
+  }
+  const obj = asRecord(root)
+
+  let merged =
+    typeof currentRaw === "string"
+      ? currentRaw
+      : JSON.stringify(currentRaw ?? {})
+  if (!obj) return merged
+
+  for (const format of TITLE_FORMATS) {
+    if (!asRecord(obj[format])) continue
+    merged = mergeTitleValue(merged, parseTitleValue(obj, format), format)
+  }
+  return merged
 }
 
 /** Панграмма: в ней все буквы — сразу видно, как шрифт справляется с кириллицей. */

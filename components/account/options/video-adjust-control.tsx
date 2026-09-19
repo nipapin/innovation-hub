@@ -42,8 +42,8 @@ import { cn } from "@/lib/utils"
  * показывает его ровно так же — размытие и цветокор здесь не «похожие», а те же.
  */
 
-/** Наибольшая сторона превью на экране. */
-const STAGE_MAX = 300
+/** Наибольшая сторона превью на экране — столько же, сколько у наложения и титров. */
+const STAGE_MAX = 480
 
 /**
  * Образец вместо кадра: цветные плашки, переход и мелкая деталь.
@@ -224,7 +224,7 @@ export function VideoAdjustControl({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t.vaTitle}</DialogTitle>
             <DialogDescription>{t.vaHint}</DialogDescription>
@@ -255,7 +255,7 @@ export function VideoAdjustControl({
             </span>
           </div>
 
-          <div className="flex flex-col gap-5 sm:flex-row">
+          <div className="flex flex-col gap-5 lg:flex-row">
             <Preview value={draft} orientation={orientation} />
 
             <div className="min-w-0 flex-1 space-y-5">

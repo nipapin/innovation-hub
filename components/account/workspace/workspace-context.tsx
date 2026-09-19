@@ -26,6 +26,7 @@ import {
   isUploadCancelled,
   uploadProjectFileDirect,
 } from "@/lib/project-direct-upload"
+import { readUiPref, writeUiPref } from "@/lib/ui-prefs"
 import {
   TRASH_RETENTION_DAYS,
   findChildByName,
@@ -66,6 +67,7 @@ import type {
 const DENSITY_KEY = "ffworks-ws-density"
 const CHAT_POLL_INTERVAL_MS = 6000
 const VIEW_KEY = "ffworks-ws-view"
+const BOTTOM_TAB_KEY = "ui-ws-bottom-tab"
 const DELTA_INTERVAL_MS = 4000
 
 /**
@@ -268,7 +270,8 @@ type WorkspaceValue = {
   view: ViewMode
   setView: (v: ViewMode) => void
   bottomTab: BottomTab
-  setBottomTab: (tab: BottomTab) => void
+  /** `remember: false` — закладку поставила ссылка, а не человек: не запоминаем. */
+  setBottomTab: (tab: BottomTab, remember?: boolean) => void
 
   // окно быстрого просмотра
   /** Открыто ли модальное окно превью. Показывает `selectedFile`. */
@@ -702,7 +705,23 @@ export function WorkspaceProvider({
 
   const [density, setDensityState] = useState<Density>("full")
   const [view, setViewState] = useState<ViewMode>("list")
-  const [bottomTab, setBottomTab] = useState<BottomTab>("desc")
+  const [bottomTab, setBottomTabState] = useState<BottomTab>("desc")
+
+  /**
+   * Выбранная закладка нижней панели переживает перезаход: открыл «Настройки» —
+   * при следующем визите они и открыты, а не «Описание» по умолчанию. Запись
+   * живёт в сеттере, а не в местах вызова (docs/UI_PREFS.md), — иначе часть
+   * путей сохраняла бы, часть нет.
+   *
+   * Но запоминается ВЫБОР человека, а не то, куда его привела ссылка. Переход
+   * «сразу в чат» (`?chat=1` из админских «Чатов») ставит закладку сам, и без
+   * `remember: false` один такой переход навсегда открывал бы рабочую область
+   * на переписке — вместе с опросом сообщений раз в шесть секунд.
+   */
+  const setBottomTab = useCallback((tab: BottomTab, remember = true) => {
+    setBottomTabState(tab)
+    if (remember) writeUiPref(BOTTOM_TAB_KEY, tab)
+  }, [])
 
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
@@ -785,6 +804,10 @@ export function WorkspaceProvider({
     if (d === "full" || d === "simple") setDensityState(d)
     const v = window.localStorage.getItem(VIEW_KEY)
     if (v === "list" || v === "grid" || v === "columns") setViewState(v)
+    const bt = readUiPref(BOTTOM_TAB_KEY)
+    if (bt === "preview" || bt === "desc" || bt === "settings" || bt === "chat") {
+      setBottomTabState(bt)
+    }
   }, [])
 
   const setDensity = useCallback((d: Density) => {
@@ -1069,7 +1092,8 @@ export function WorkspaceProvider({
     }
     if (!selectedId || chatLinkDone.current === selectedId) return
     chatLinkDone.current = selectedId
-    setBottomTab("chat")
+    // Не запоминаем: сюда привела ссылка, а не выбор закладки.
+    setBottomTab("chat", false)
   }, [deepLinkChat, selectedId])
 
   useEffect(() => {

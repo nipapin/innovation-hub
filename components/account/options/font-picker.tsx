@@ -35,6 +35,13 @@ import { cn } from "@/lib/utils"
  * видно в превью после выбора.
  */
 
+/**
+ * Сколько пикселей считать «строкой», когда браузер меряет прокрутку строками.
+ * Три щелчка Firefox (deltaY 3) дают около сотни точек — столько же, сколько
+ * один щелчок в Chrome.
+ */
+const WHEEL_LINE_PX = 32
+
 export type LibraryFont = {
   family: string
   group: FontGroup
@@ -222,6 +229,37 @@ export function FontPicker({
   const [open, setOpen] = useState(false)
   const [script, setScript] = useState<FontScript | "all">("all")
 
+  /**
+   * Колёсико над списком прокручиваем сами.
+   *
+   * Модальный диалог под поповером глушит wheel (react-remove-scroll считает
+   * портал «снаружи» и отменяет событие), поэтому нативной прокрутки здесь нет.
+   * Слушатель именно нативный и непассивный: React вешает `onWheel` пассивно —
+   * `preventDefault` оттуда не работает, и там, где диалог событие всё-таки
+   * пропустит, наша прокрутка сложилась бы с нативной.
+   */
+  const listRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const node = listRef.current
+    if (!node) return
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      // `deltaY` — пиксели далеко не везде: Firefox отдаёт строки (deltaMode 1,
+      // ±3 за щелчок), при deltaMode 2 — экраны. Без перевода в пиксели список
+      // полз бы по три точки за щелчок.
+      const step =
+        event.deltaMode === 1
+          ? WHEEL_LINE_PX
+          : event.deltaMode === 2
+            ? node.clientHeight
+            : 1
+      node.scrollTop += event.deltaY * step
+    }
+    node.addEventListener("wheel", onWheel, { passive: false })
+    return () => node.removeEventListener("wheel", onWheel)
+    // Список живёт только пока открыт поповер — до этого узла попросту нет.
+  }, [open])
+
   const groupLabels: Record<FontGroup, string> = {
     sans: t.fontGroupSans,
     narrow: t.fontGroupNarrow,
@@ -321,7 +359,10 @@ export function FontPicker({
             ))}
           </div>
 
-          <CommandList className="max-h-[320px]">
+          {/* Список высокий — шрифт выбирают ГЛАЗАМИ, и чем больше лиц видно
+              сразу, тем меньше листать. Прокрутка колёсиком — своя, см. эффект
+              выше. */}
+          <CommandList ref={listRef} className="max-h-[min(560px,55vh)]">
             <CommandEmpty>{t.fontNothingFound}</CommandEmpty>
 
             {projectFonts.length > 0 ? (

@@ -54,19 +54,29 @@ export function SliderField({
   )
 }
 
-/** Заголовок группы настроек: «Кадр», «Фон», «Положение». */
+/**
+ * Заголовок группы настроек: «Кадр», «Фон», «Положение».
+ *
+ * `action` — кнопка у правого края строки заголовка (шестерёнка точной
+ * настройки в титрах). Группа без неё выглядит как раньше.
+ */
 export function FieldGroup({
   title,
+  action,
   children,
 }: {
   title: string
+  action?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <div className="space-y-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {title}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          {title}
+        </p>
+        {action}
+      </div>
       {children}
     </div>
   )

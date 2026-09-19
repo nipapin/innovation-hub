@@ -40,11 +40,12 @@ import { FieldGroup, SliderField } from "./modal-fields"
 /**
  * Наибольшая сторона рамки на экране. Внутри всё считается в пикселях заготовки.
  *
- * Столько же, сколько у смены формата: обе модалки лежат в одном списке, и
- * превью разного размера читалось бы как разные экраны. Плюс в диалоге шириной
- * 768 пикселей 420 не оставляли колонке настроек места.
+ * Столько же, сколько у смены формата и титров: все модалки лежат в одном
+ * списке, и превью разного размера читалось бы как разные экраны. Под такую
+ * рамку диалог расширен до max-w-5xl — в прежние 768 пикселей она вставала
+ * только ценой всей колонки настроек.
  */
-const STAGE_MAX = 300
+const STAGE_MAX = 480
 
 /** Прилипание к центру — в ЭКРАННЫХ пикселях (§8.2). */
 const SNAP_PX = 6
@@ -345,7 +346,7 @@ export function OverlayControl({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t.overlayTitle}</DialogTitle>
             <DialogDescription>{t.overlayHint}</DialogDescription>
@@ -384,7 +385,7 @@ export function OverlayControl({
             </label>
           </div>
 
-          <div className="flex flex-col gap-5 sm:flex-row">
+          <div className="flex flex-col gap-5 lg:flex-row">
             <FormatStage
               geometry={current}
               referenceUrl={referenceUrl}

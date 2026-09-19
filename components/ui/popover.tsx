@@ -28,4 +28,31 @@ const PopoverContent = React.forwardRef<
 ))
 PopoverContent.displayName = PopoverPrimitive.Content.displayName
 
-export { Popover, PopoverTrigger, PopoverContent }
+/**
+ * Уголок, показывающий, из какой кнопки выехало окно.
+ *
+ * Радиксу его положение считать самому: он ставит уголок над якорем, а не по
+ * центру окна, — иначе при `align="end"` он указывал бы в пустоту. Ставится
+ * ВНУТРИ `PopoverContent`, последним элементом.
+ *
+ * Цвет — рамки, а не фона окна, и размер вдвое больше радиксовых 10×5. Так
+ * пришлось: фон поповера (`--popover`) в тёмной теме светлее фона страницы
+ * всего на несколько единиц, и уголок «своего» цвета попросту не виден —
+ * проверено на модалке титров. Цветом рамки он читается как её продолжение,
+ * сошедшееся в точку.
+ */
+const PopoverArrow = React.forwardRef<
+  React.ElementRef<typeof PopoverPrimitive.Arrow>,
+  React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Arrow>
+>(({ className, width = 12, height = 6, ...props }, ref) => (
+  <PopoverPrimitive.Arrow
+    ref={ref}
+    width={width}
+    height={height}
+    className={cn('fill-border', className)}
+    {...props}
+  />
+))
+PopoverArrow.displayName = PopoverPrimitive.Arrow.displayName
+
+export { Popover, PopoverTrigger, PopoverContent, PopoverArrow }
