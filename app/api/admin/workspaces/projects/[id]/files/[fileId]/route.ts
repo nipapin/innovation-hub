@@ -1,4 +1,5 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3"
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { NextResponse, type NextRequest } from "next/server"
 import { requireAdminApi } from "@/lib/admin-auth"
 import { findFileById } from "@/lib/repositories/project-files"
@@ -12,6 +13,8 @@ import {
 } from "@/lib/storage/write-path"
 
 export const runtime = "nodejs"
+
+const PREVIEW_URL_TTL_SECONDS = 3600
 
 type RouteContext = {
   params: Promise<{ id: string; fileId: string }>
@@ -83,18 +86,46 @@ export async function GET(request: NextRequest, context: RouteContext) {
     contentType = file.contentType || "application/octet-stream"
   }
 
+  // `?inline=1` — запрос медиа от панели превью. Тем же редиректом на presigned
+  // URL, что и в кабинете: у роута нет Range, поэтому проксированное видео
+  // грузится целиком и не перематывается (см. кабинетский двойник).
+  const inline = request.nextUrl.searchParams.has("inline")
+
   try {
-    const response = await getS3Client().send(
-      new GetObjectCommand({ Bucket: getS3Bucket(), Key: key }),
-    )
+    const command = new GetObjectCommand({
+      Bucket: getS3Bucket(),
+      Key: key,
+      ...(inline
+        ? {
+            ResponseContentType: contentType,
+            ResponseContentDisposition: `inline; filename="${encodeURIComponent(name)}"`,
+          }
+        : {}),
+    })
+
+    if (inline) {
+      const signedUrl = await getSignedUrl(getS3Client(), command, {
+        expiresIn: PREVIEW_URL_TTL_SECONDS,
+      })
+      const redirect = NextResponse.redirect(signedUrl, { status: 307 })
+      redirect.headers.set(
+        "Cache-Control",
+        `private, max-age=${Math.floor(PREVIEW_URL_TTL_SECONDS / 2)}, must-revalidate`,
+      )
+      return redirect
+    }
+
+    const response = await getS3Client().send(command)
     const body = response.Body
     if (!body) {
       return NextResponse.json({ message: "Empty object." }, { status: 404 })
     }
-    const bytes = await body.transformToByteArray()
-    return new NextResponse(Buffer.from(bytes), {
+    return new Response(body.transformToWebStream() as unknown as ReadableStream, {
       headers: {
         "Content-Type": contentType || response.ContentType || "application/octet-stream",
+        ...(response.ContentLength
+          ? { "Content-Length": String(response.ContentLength) }
+          : {}),
         // inline, а не attachment: панель превью показывает файл на месте,
         // а не скачивает его при каждом выборе в списке.
         "Content-Disposition": `inline; filename="${encodeURIComponent(name)}"`,

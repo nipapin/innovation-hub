@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { fileIcon, fileIconClass, fmtDate, fmtSize } from "./format"
 import type { DriveFile } from "./types"
+import { VideoPreview } from "./video-preview"
 import { useWorkspace } from "./workspace-context"
 
 /**
@@ -38,11 +39,16 @@ function PreviewMedia({
   const Icon = fileIcon(file)
   const kind = file.mimeType.split("/")[0]
 
+  // `inline=1` переводит роут файла на редирект к хранилищу вместо отдачи тела
+  // через Next. Без этого медиа приходит одним куском, без Range: видео грузится
+  // целиком прежде чем показать первый кадр и не перематывается вперёд.
+  const mediaUrl = `${url}?inline=1`
+
   if (kind === "image") {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={url}
+        src={mediaUrl}
         alt={file.name}
         className={cn("h-full w-auto max-w-full object-contain", className)}
       />
@@ -50,22 +56,14 @@ function PreviewMedia({
   }
 
   if (kind === "video") {
-    return (
-      <video
-        src={url}
-        controls
-        playsInline
-        preload="metadata"
-        className={cn("h-full w-auto max-w-full object-contain", className)}
-      />
-    )
+    return <VideoPreview src={mediaUrl} className={className} />
   }
 
   if (kind === "audio") {
     return (
       <div className="flex flex-col items-center gap-3 px-4">
         <Icon className={cn("h-10 w-10", fileIconClass(file))} />
-        <audio src={url} controls className="w-[min(420px,100%)]" />
+        <audio src={mediaUrl} controls className="w-[min(420px,100%)]" />
       </div>
     )
   }

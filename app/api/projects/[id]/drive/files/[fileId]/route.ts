@@ -1,4 +1,5 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3"
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { NextResponse, type NextRequest } from "next/server"
 import { requireUserApi } from "@/lib/admin-auth"
 import { findFileById } from "@/lib/repositories/project-files"
@@ -11,6 +12,8 @@ import { getS3Client, isS3Configured } from "@/lib/s3-client"
 import { writeFileDelete, writeRename, StorageWriteError } from "@/lib/storage/write-path"
 
 export const runtime = "nodejs"
+
+const PREVIEW_URL_TTL_SECONDS = 3600
 
 type RouteContext = {
   params: Promise<{ id: string; fileId: string }>
@@ -62,19 +65,59 @@ export async function GET(request: NextRequest, context: RouteContext) {
     )
   }
 
+  // `?inline=1` — запрос от панели превью, и отвечаем на него редиректом на
+  // presigned URL, как это делает /api/media. Проксировать медиа через Next
+  // нельзя: роут отдаёт тело одним куском, без `Accept-Ranges` и 206, поэтому
+  // браузер обязан скачать файл целиком прежде чем показать первый кадр, а
+  // перемотка вперёд по незагруженному невозможна в принципе. У хранилища Range
+  // есть из коробки.
+  //
+  // Скачивание и чтение dialog.json инструментами остаются на прежнем пути
+  // намеренно: presigned URL — чужой источник, и CORS закрыл бы чтение тела
+  // через fetch(), а `attachment` для скачивания задаётся только здесь.
+  const inline = request.nextUrl.searchParams.has("inline")
+  const contentType =
+    file.contentType || "application/octet-stream"
+
   try {
-    const response = await getS3Client().send(
-      new GetObjectCommand({ Bucket: getS3Bucket(), Key: file.s3Key }),
-    )
+    const command = new GetObjectCommand({
+      Bucket: getS3Bucket(),
+      Key: file.s3Key,
+      ...(inline
+        ? {
+            ResponseContentType: contentType,
+            ResponseContentDisposition: `inline; filename="${encodeURIComponent(file.name)}"`,
+          }
+        : {}),
+    })
+
+    if (inline) {
+      const signedUrl = await getSignedUrl(getS3Client(), command, {
+        expiresIn: PREVIEW_URL_TTL_SECONDS,
+      })
+      const redirect = NextResponse.redirect(signedUrl, { status: 307 })
+      // Половина срока жизни ссылки: пока браузер держит редирект в кэше,
+      // ссылка под ним заведомо ещё действует.
+      redirect.headers.set(
+        "Cache-Control",
+        `private, max-age=${Math.floor(PREVIEW_URL_TTL_SECONDS / 2)}, must-revalidate`,
+      )
+      return redirect
+    }
+
+    const response = await getS3Client().send(command)
     const body = response.Body
     if (!body) {
       return NextResponse.json({ message: "Empty object." }, { status: 404 })
     }
-    const bytes = await body.transformToByteArray()
-    return new NextResponse(Buffer.from(bytes), {
+    // Потоком, а не transformToByteArray: скачивание большого файла иначе
+    // целиком оседает в памяти сервера.
+    return new Response(body.transformToWebStream() as unknown as ReadableStream, {
       headers: {
-        "Content-Type":
-          file.contentType || response.ContentType || "application/octet-stream",
+        "Content-Type": contentType || response.ContentType || "application/octet-stream",
+        ...(response.ContentLength
+          ? { "Content-Length": String(response.ContentLength) }
+          : {}),
         "Content-Disposition": `attachment; filename="${encodeURIComponent(file.name)}"`,
         "Cache-Control": "private, no-store",
       },
