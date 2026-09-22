@@ -178,6 +178,14 @@ export function LoginForm({
           </form>
         </Form>
         <p className="mt-4 text-center text-sm text-muted-foreground">
+          <Link
+            href="/forgot-password"
+            className="font-medium text-primary hover:underline"
+          >
+            Forgot your password?
+          </Link>
+        </p>
+        <p className="mt-2 text-center text-sm text-muted-foreground">
           Do not have an account?{" "}
           <Link href="/register" className="font-medium text-primary hover:underline">
             Register

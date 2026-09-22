@@ -27,5 +27,31 @@ export const registerSchema = z
     path: ["confirmPassword"],
   })
 
+/** Запрос ссылки на сброс. Только адрес — всё остальное решает сервер. */
+export const forgotPasswordSchema = z.object({
+  email: z.string().email("Enter a valid email address.").max(254),
+})
+
+/**
+ * Смена пароля по токену из письма.
+ *
+ * Токен в теле запроса, а не только в адресе страницы: из адресной строки он
+ * утекает в заголовок Referer и в историю браузера, а форма отправляет его
+ * POST-ом. В ссылке он всё равно есть — иначе страницу нечем открыть, — но
+ * дальше по нему не путешествует.
+ */
+export const resetPasswordSchema = z
+  .object({
+    token: z.string().min(1, "Reset link is invalid."),
+    password: passwordSchema,
+    confirmPassword: z.string().min(8, "Confirm your password.").max(72),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match.",
+    path: ["confirmPassword"],
+  })
+
 export type LoginInput = z.infer<typeof loginSchema>
 export type RegisterInput = z.infer<typeof registerSchema>
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>

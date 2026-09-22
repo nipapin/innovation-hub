@@ -32,10 +32,18 @@ export function Section({
   collapsible,
   defaultOpen = true,
   storageKey,
+  actions,
   children,
 }: {
   title: string
   description?: string
+  /**
+   * Кнопка этой секции. Ставится, когда секция сохраняется сама: одна кнопка
+   * на всю страницу не говорит, ЧТО именно уедет, а у «Тестового периода» цена
+   * ошибки разная — сумма подарка меняет будущие выдачи, а состав набора
+   * возвращает кнопку всем, кто период уже проходил.
+   */
+  actions?: React.ReactNode
   /**
    * Статья про эту секцию. Ставится, только когда статья у секции своя:
    * кнопка на ту же статью, что открывает заголовок страницы, обещает
@@ -82,6 +90,14 @@ export function Section({
     <Card className="border-border/60 bg-card">
       <CardHeader className="gap-1.5">
         <CardTitle className="flex items-center gap-2.5 text-base font-semibold">
+          {/* Кнопка прижата вправо той же строкой, что и заголовок: она
+              относится к секции целиком, и снизу её пришлось бы искать под
+              таблицей произвольной длины. */}
+          {actions ? (
+            <span className="order-last ml-auto flex shrink-0 items-center gap-2">
+              {actions}
+            </span>
+          ) : null}
           {collapsible ? (
             <button
               type="button"

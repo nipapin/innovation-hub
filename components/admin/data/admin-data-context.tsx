@@ -355,6 +355,12 @@ export function AdminDataProvider({
         role: draft.role,
         isActive: draft.isActive,
       }
+      // Компания уходит только при заведении: смена компании у существующего —
+      // это перевод со своими проверками, и он живёт в разделе «Компании».
+      if (!isEdit && draft.companyId) {
+        payload.companyId = draft.companyId
+        payload.companyRole = draft.companyRole
+      }
       if (draft.password.length > 0) {
         payload.password = draft.password
       } else if (!isEdit) {

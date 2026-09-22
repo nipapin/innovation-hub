@@ -171,6 +171,32 @@ export function projectInviteWithPasswordHtml(input: {
 }
 
 /**
+ * Сброс пароля.
+ *
+ * Единственное письмо без временного пароля внутри: пароль человек задаёт сам
+ * на странице по ссылке. Писать его сюда было бы шагом назад — ровно из-за
+ * пароля в письме приглашение нельзя переотправить, не заведя новый.
+ */
+export function passwordResetHtml(input: {
+  userName: string
+  resetUrl: string
+  expiresInMinutes: number
+  brand: MailBrand
+}): string {
+  const inner = `<tr>
+    <td style="padding:32px 32px 8px;font-family:${FONT};color:#0f172a;">
+      <p style="margin:0 0 6px;font-size:13px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;color:#64748b;">Password reset</p>
+      <h1 style="margin:0 0 20px;font-size:24px;line-height:30px;font-weight:700;letter-spacing:-0.4px;">${escapeHtml(input.brand.name)}</h1>
+      <p style="margin:0;font-size:16px;line-height:24px;color:#334155;">Hi ${escapeHtml(input.userName)},</p>
+      <p style="margin:12px 0 0;font-size:16px;line-height:24px;color:#334155;">We received a request to reset your password. Choose a new one using the button below.</p>
+      ${ctaButton(input.resetUrl, "Choose a new password")}
+      <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#64748b;">This link works once and expires in ${input.expiresInMinutes} minutes. If you didn’t request a reset, you can ignore this email — your current password keeps working.</p>
+    </td>
+  </tr>`
+  return wrapEmail(inner, input.brand)
+}
+
+/**
  * Приглашение в компанию — без проекта.
  *
  * Отдельный шаблон, а не ветка проектного: тот весь построен вокруг названия

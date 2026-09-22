@@ -394,7 +394,6 @@ export const dict = {
 		trialProvisioning: 'Проекты копируются, это займёт несколько секунд',
 		trialResume: 'Повторить',
 		trialResumeStarted: 'Продолжаем копировать проекты',
-		billingTrialResetFrom: 'Набор обновлён',
 		billingTrialResetFromAt: 'Последнее обновление: {date}',
 		billingTrialResetFromNever: 'Набор ни разу не обновляли',
 		billingTrialResetFromHint:
@@ -694,6 +693,14 @@ export const dict = {
 		billingTemplateCost: 'Факт. секунда',
 		billingTemplateCostHint: 'Медиана фактических списаний. Размер подарка назначается из неё, а не из ставки: ставка — только наша часть цены.',
 		billingTemplateNoCost: 'нет данных',
+		billingTemplatesSave: 'Обновить набор',
+		billingTemplatesSaving: 'Обновляем…',
+		billingTemplatesSaved: 'Набор обновлён',
+		billingTemplatesSaveTitle: 'Обновить пробный набор?',
+		billingTemplatesSaveDesc:
+			'Новый состав вступит в силу для будущих активаций, и набор будет отмечен обновлённым: всем, кто уже прошёл период, кнопка вернётся — сам период при этом не выдаётся, брать новый набор они решают сами. Действующие периоды не трогаются.',
+		billingTemplatesPending: 'Состав изменён, но ещё не сохранён',
+		billingTrialSaved: 'Тестовый период сохранён',
 		billingActivationsTitle: 'Активации',
 		billingActivationsDesc:
 			'Кто взял тестовый период. Дата регистрации стоит рядом с датой активации намеренно: серия однотипных аккаунтов видна глазом.',
@@ -2329,7 +2336,6 @@ export const dict = {
 		trialProvisioning: 'Copying projects, this takes a few seconds',
 		trialResume: 'Retry',
 		trialResumeStarted: 'Resuming the copy',
-		billingTrialResetFrom: 'Set renewed',
 		billingTrialResetFromAt: 'Last renewed: {date}',
 		billingTrialResetFromNever: 'The set has never been renewed',
 		billingTrialResetFromHint:
@@ -2631,6 +2637,14 @@ export const dict = {
 		billingTemplateCostHint:
 			'Median of actual charges. The gift amount is derived from it, not from the rate: the rate is only our share of the price.',
 		billingTemplateNoCost: 'no data',
+		billingTemplatesSave: 'Renew set',
+		billingTemplatesSaving: 'Renewing…',
+		billingTemplatesSaved: 'Set renewed',
+		billingTemplatesSaveTitle: 'Renew the trial set?',
+		billingTemplatesSaveDesc:
+			'The new composition takes effect for future activations, and the set is marked as renewed: everyone who already finished a trial gets the button back — no trial is issued, taking the new set is their decision. Running trials are left alone.',
+		billingTemplatesPending: 'The set has been changed but not saved yet',
+		billingTrialSaved: 'Trial period saved',
 		billingActivationsTitle: 'Activations',
 		billingActivationsDesc:
 			'Who took the trial. The registration date sits next to the activation date on purpose: a series of lookalike accounts becomes visible.',

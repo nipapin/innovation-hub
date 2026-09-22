@@ -429,6 +429,24 @@ CREATE INDEX IF NOT EXISTS project_members_invited_by_idx
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- Сброс пароля по ссылке из письма. См. db/migrations/2026-09-22-password-resets.sql.
+--
+-- Хранится хэш токена, а не сам токен, — как в machine_tokens: сырой токен
+-- живёт только в ссылке внутри письма. used_at вместо удаления строки, чтобы
+-- повторный переход по уже сработавшей ссылке отличался от выдуманной.
+CREATE TABLE IF NOT EXISTS password_resets (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash  TEXT NOT NULL UNIQUE,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  used_at     TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS password_resets_user_idx
+  ON password_resets (user_id)
+  WHERE used_at IS NULL;
+
 -- ===== Конвейер: сканер и очередь задач =====
 
 -- Состояние сканера. Основная линия — событийная: любая запись в хранилище уже

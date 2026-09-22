@@ -6,6 +6,7 @@ import { findUserById } from "@/lib/repositories/users"
 import {
   INSTALLATION_BRAND,
   companyWelcomeWithPasswordHtml,
+  passwordResetHtml,
   projectAccessGrantedHtml,
   projectInviteWithPasswordHtml,
   shareRoleCopy,
@@ -59,6 +60,22 @@ function fromAddress(): string {
   )
 }
 
+/**
+ * Адрес для писем, на которые отвечать некуда и не нужно.
+ *
+ * Отдельно от `fromAddress()` по смыслу, а не ради красоты: приглашение и
+ * доступ к проекту приходят от человека, и ответ на такое письмо — нормальная
+ * реакция, поэтому они уходят с ящика, который кто-то читает. Сброс пароля
+ * отвечать не предполагает вовсе, и ответ на него уехал бы в общий ящик с
+ * куском переписки о доступе к аккаунту.
+ *
+ * Падает обратно на `RESEND_FROM`: установка, где второй ящик не заведён,
+ * продолжает слать всё с одного адреса, а не спотыкается на пустой переменной.
+ */
+function noreplyAddress(): string {
+  return process.env.RESEND_FROM_NOREPLY?.trim() || fromAddress()
+}
+
 export type MailResult =
   | { ok: true; id?: string }
   | { ok: false; error: string }
@@ -68,6 +85,8 @@ async function sendMail(input: {
   subject: string
   html: string
   text: string
+  /** Чем подписан конверт. Пусто — обычный ящик отправки. */
+  from?: string
 }): Promise<MailResult> {
   const resend = getResend()
   if (!resend) {
@@ -76,7 +95,7 @@ async function sendMail(input: {
   }
   try {
     const result = await resend.emails.send({
-      from: fromAddress(),
+      from: input.from ?? fromAddress(),
       to: input.to,
       subject: input.subject,
       html: input.html,
@@ -166,6 +185,42 @@ export async function sendProjectInviteWithPasswordEmail(input: {
     brand,
   })
   return sendMail({ to: input.to, subject, html, text })
+}
+
+/**
+ * Ссылка на сброс пароля.
+ *
+ * Подписано установкой, а не компанией человека: письмо отправляется ДО входа,
+ * по одному лишь адресу, и определять компанию здесь значило бы подтверждать
+ * незалогиненному отправителю, что такой аккаунт есть и где он состоит.
+ */
+export async function sendPasswordResetEmail(input: {
+  to: string
+  userName: string
+  token: string
+  expiresInMinutes: number
+}): Promise<MailResult> {
+  const site = siteBase()
+  const resetUrl = `${site}/reset-password?token=${encodeURIComponent(input.token)}`
+  const brand = INSTALLATION_BRAND
+  const subject = `Reset your ${brand.name} password`
+  const text = [
+    `Hi ${input.userName},`,
+    ``,
+    `We received a request to reset your password.`,
+    ``,
+    `Choose a new password: ${resetUrl}`,
+    ``,
+    `This link works once and expires in ${input.expiresInMinutes} minutes.`,
+    `If you didn't request a reset, you can ignore this email.`,
+  ].join("\n")
+  const html = passwordResetHtml({
+    userName: input.userName,
+    resetUrl,
+    expiresInMinutes: input.expiresInMinutes,
+    brand,
+  })
+  return sendMail({ to: input.to, subject, html, text, from: noreplyAddress() })
 }
 
 /**

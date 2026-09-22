@@ -74,6 +74,7 @@ origin (localhost и прод).
 | `APP_PUBLIC_URL` | база ссылок в письмах и вебхуках. На Vercel — фолбэк на `VERCEL_URL` |
 | `NEXT_PUBLIC_CONTACT_EMAIL`, `NEXT_PUBLIC_CONTACT_TELEGRAM` | блок контактов на `/about`; без них блок не рисуется |
 | `RESEND_API_KEY`, `RESEND_FROM` | письма. Без ключа отправка **пропускается** с предупреждением |
+| `RESEND_FROM_NOREPLY` | адрес для писем без ответа (сброс пароля). Пусто — шлём с `RESEND_FROM` |
 | `FEATURE_SUGGESTION_MAX_FILES` (5), `FEATURE_SUGGESTION_UPLOAD_MAX_BYTES` (25 МБ), `FEATURE_SUGGESTION_PRESIGN_SEC` (7 дней) | вложения заявок |
 
 ### YouGile

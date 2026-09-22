@@ -28,13 +28,21 @@ import type { AdminUser } from "@/components/admin/admin-types"
 
 type Mode = "create" | "edit"
 
+export type CompanyRole = "member" | "admin" | "owner"
+
 export type UserDraft = {
   fullName: string
   email: string
   password: string
   role: UserRole
   isActive: boolean
+  /** Пусто — общий раздел. Только при заведении: перевод живёт в «Компаниях». */
+  companyId: string
+  companyRole: CompanyRole
 }
+
+/** Значение пункта «Общий раздел»: Radix Select не принимает пустую строку. */
+const NO_COMPANY = "__none__"
 
 const emptyDraft: UserDraft = {
   fullName: "",
@@ -42,7 +50,11 @@ const emptyDraft: UserDraft = {
   password: "",
   role: "USER",
   isActive: true,
+  companyId: "",
+  companyRole: "member",
 }
+
+type CompanyOption = { id: string; title: string }
 
 type Props = {
   open: boolean
@@ -68,6 +80,7 @@ export function AdminUserDialog({
   const [draft, setDraft] = useState<UserDraft>(emptyDraft)
   const [submitting, setSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [companies, setCompanies] = useState<CompanyOption[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -79,11 +92,42 @@ export function AdminUserDialog({
         password: "",
         role: initialUser.role,
         isActive: initialUser.isActive,
+        companyId: "",
+        companyRole: "member",
       })
     } else {
       setDraft(emptyDraft)
     }
   }, [open, mode, initialUser])
+
+  /**
+   * Список компаний грузим при открытии на заведение.
+   *
+   * 403 — нормальный ответ: у администратора без тега «Компании» этого выбора
+   * просто нет, и селектор не показывается. Ошибку показываем только когда
+   * доступ есть, а список не пришёл.
+   */
+  useEffect(() => {
+    if (!open || mode !== "create") return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/companies", { cache: "no-store" })
+        if (res.status === 403) return
+        if (!res.ok) {
+          toast.error(t.companyLoadError)
+          return
+        }
+        const rows = (await res.json()) as CompanyOption[]
+        if (!cancelled) setCompanies(rows)
+      } catch {
+        if (!cancelled) toast.error(t.companyLoadError)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, mode, t])
 
   const titleText = mode === "create" ? t.newPerson : t.editPerson
   const submitText = mode === "create" ? t.createAccount : t.saveChanges
@@ -233,6 +277,66 @@ export function AdminUserDialog({
                 </p>
               ) : null}
             </div>
+
+            {mode === "create" && companies.length > 0 ? (
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="user-company">{t.company}</Label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Select
+                    value={draft.companyId || NO_COMPANY}
+                    onValueChange={(value) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        companyId: value === NO_COMPANY ? "" : value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger
+                      id="user-company"
+                      className="h-10 rounded-xl border-border/70 bg-card/40 text-sm"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_COMPANY}>{t.companyNone}</SelectItem>
+                      {companies.map((company) => (
+                        <SelectItem key={company.id} value={company.id}>
+                          {company.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={draft.companyRole}
+                    onValueChange={(value) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        companyRole: value as CompanyRole,
+                      }))
+                    }
+                    disabled={!draft.companyId}
+                  >
+                    <SelectTrigger
+                      aria-label={t.companyRoleLabel}
+                      className="h-10 rounded-xl border-border/70 bg-card/40 text-sm"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="member">{t.member}</SelectItem>
+                      <SelectItem value="admin">{t.admin}</SelectItem>
+                      <SelectItem value="owner">{t.superadmin}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {draft.companyId ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    {t.companyHint}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="space-y-1.5">
               <Label htmlFor="user-active">{t.status}</Label>

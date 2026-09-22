@@ -93,6 +93,17 @@ export const userCreateSchema = z.object({
     .max(72, "Password must be at most 72 characters."),
   role: z.enum(USER_ROLES).default("USER"),
   isActive: z.boolean().default(true),
+  /**
+   * Куда зачислить сразу при заведении. NULL/пусто — общий раздел, как было до
+   * этого поля: человек создаётся без компании.
+   *
+   * Появилось потому, что «завести» и «перевести в компанию» были двумя шагами,
+   * и между ними человек существовал ничьим. Перевод вдобавок умеет отказать
+   * (кошелёк, открытые списания), и узнавать об этом после создания аккаунта —
+   * поздно.
+   */
+  companyId: z.string().min(1).nullable().optional(),
+  companyRole: z.enum(["member", "admin", "owner"]).default("member"),
 })
 
 /** Update lets admins rename, change email, optionally rotate the password,
