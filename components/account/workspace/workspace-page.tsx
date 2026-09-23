@@ -4,6 +4,7 @@ import { ToolsWorkspace } from "@/components/account/tools/tools-workspace"
 import { ArchiveDialog } from "./archive-dialog"
 import { ClipboardPanel } from "./clipboard-panel"
 import { WorkspaceContextMenu } from "./context-menu"
+import { ElementDialog } from "./element/element-dialog"
 import { PreviewDialog } from "./file-preview"
 import { FullMode } from "./full-mode"
 import { MobileWorkspace } from "./mobile-view"
@@ -59,14 +60,20 @@ function WorkspaceLayout() {
       <ArchiveDialog />
       <PreviewDialog />
       <ShareDialog />
+      <ElementDialog />
       <WorkspaceDialogs />
     </div>
   )
 }
 
-export function WorkspacePageClient() {
+export function WorkspacePageClient({
+  elementEnabled = false,
+}: {
+  /** Флаг `workspace.element`: читает его серверная страница, см. её комментарий. */
+  elementEnabled?: boolean
+}) {
   return (
-    <WorkspaceProvider>
+    <WorkspaceProvider elementEnabled={elementEnabled}>
       <WorkspaceLayout />
     </WorkspaceProvider>
   )

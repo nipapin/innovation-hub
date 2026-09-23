@@ -15,6 +15,7 @@ import {
 import type { ExposedOptionChange } from "@/lib/options/apply"
 import type { SkippedOption } from "@/lib/options/extract"
 import type { ExposedOption, ExposedOptionValue } from "@/lib/options/types"
+import { CHECK_FOLDER_PLUGIN } from "@/lib/tools/element/site-form"
 import { cn } from "@/lib/utils"
 import { formatOptionValue, OPTION_CONTROLS } from "./option-controls"
 import { socialControlFor } from "./social-controls"
@@ -74,13 +75,30 @@ function isDirty(option: ExposedOption, draft: ExposedOptionValue | undefined) {
 
 export function ExposedOptionsList({
   projectId,
-  options,
+  options: allOptions,
   fileTypes,
   onSave,
   skipped,
   className,
 }: Props) {
   const { t } = useI18n()
+
+  /**
+   * Свойства ноды `checkFolder` сюда не попадают.
+   *
+   * У неё есть свой интерфейс — диалог сборки элемента, который рисует и шаблон
+   * имени папки, и требования к её содержимому (docs/TOOLS_FOLDER_ASSEMBLY_PLAN.md).
+   * Показать их ещё и здесь значит завести второе поле для того же значения:
+   * правки разъедутся, а человек не поймёт, какое из двух главнее.
+   *
+   * Отсев на показе, а не при извлечении: в `options.json` свойства остаются на
+   * месте и продолжают читаться обработкой, а PATCH трогает только то, что
+   * человек правил в этом списке.
+   */
+  const options = useMemo(
+    () => allOptions.filter((o) => o.nodePlugin !== CHECK_FOLDER_PLUGIN),
+    [allOptions],
+  )
   const [draft, setDraft] = useState<Record<string, ExposedOptionValue>>(() =>
     buildDraft(options),
   )

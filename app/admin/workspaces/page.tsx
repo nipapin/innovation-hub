@@ -1,5 +1,6 @@
 import { requireCapabilityPage } from "@/lib/admin-page-guard"
 import { WorkspacesContent } from "@/components/admin/workspaces/workspaces-content"
+import { isEnabled } from "@/lib/features-state"
 
 export const dynamic = "force-dynamic"
 
@@ -12,5 +13,13 @@ export const dynamic = "force-dynamic"
 export default async function AdminWorkspacesPage() {
   await requireCapabilityPage("projects.access")
 
-  return <WorkspacesContent />
+  /**
+   * Сборка элемента нужна и здесь: админ помогает с чужими папками с того же
+   * рабочего места, и собирать элемент в чужом `IN` ему приходится ровно так
+   * же. Флаг читается на сервере и уезжает пропсом — состояние выключателей
+   * лежит в базе, а модуль, который её читает, тянет `pg`.
+   */
+  const elementEnabled = await isEnabled("workspace.element")
+
+  return <WorkspacesContent elementEnabled={elementEnabled} />
 }

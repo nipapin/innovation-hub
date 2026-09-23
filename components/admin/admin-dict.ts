@@ -611,13 +611,13 @@ export const adminDict = {
     pipelineSweepNowTitle:
       "Пройти по папкам IN всех проектов и добрать то, по чему задачи ещё не было. Следующий обход по расписанию: {when}.",
     pipelineSweepNeedRunning: "Обход подчинён слежению — сначала запустите его.",
-    pipelineQuarantined: "исходник в папке ошибок",
+    pipelineQuarantined: "исходник помечен дефисом",
     pipelineQuarantinedTitle:
-      "Файл унесён из IN в папку ошибок проекта — обход его больше не увидит. Чтобы прогнать заново, верните его в IN.",
-    pipelineTaskRequeue: "Вернуть в IN",
+      "Файл остался в IN, но помечен дефисом в начале имени — ни обход, ни события его больше не возьмут. Чтобы прогнать заново, снимите пометку.",
+    pipelineTaskRequeue: "Снять пометку",
     pipelineTaskRequeueTitle:
-      "Вернуть исходник из папки ошибок в IN. Конвейер увидит его событием и заведёт новую задачу.",
-    pipelineTaskRequeued: "Файл возвращён в IN.",
+      "Убрать дефис из начала имени. Конвейер увидит переименование событием и заведёт новую задачу.",
+    pipelineTaskRequeued: "Пометка снята — файл снова в работе.",
 
     // токены доступа и машины под ними
     tokenScoped: "привязан к проекту",
@@ -771,6 +771,9 @@ export const adminDict = {
     featureToolVoiceOver: "Озвучка",
     featureToolVoiceOverDesc:
       "Инструмент кабинета: генерация реплик. Уже добавленные экземпляры сохраняются.",
+    featureWorkspaceElement: "Сборка элемента",
+    featureWorkspaceElementDesc:
+      "Кнопка «Новый элемент» в папке IN: форма, собирающая папку по требованиям графа. Уже собранные папки остаются и обрабатываются.",
   },
   en: {
     all: "All",
@@ -1365,13 +1368,13 @@ export const adminDict = {
     pipelineSweepNowTitle:
       "Walk the IN folders of every project and pick up whatever never had a task. Next scheduled sweep: {when}.",
     pipelineSweepNeedRunning: "The sweep follows watching — start it first.",
-    pipelineQuarantined: "source in the errors folder",
+    pipelineQuarantined: "source marked with a dash",
     pipelineQuarantinedTitle:
-      "The file was taken out of IN into the project's errors folder — the sweep no longer sees it. To run it again, move it back to IN.",
-    pipelineTaskRequeue: "Move back to IN",
+      "The file stayed in IN but its name was prefixed with a dash — neither the sweep nor events will pick it up. To run it again, remove the mark.",
+    pipelineTaskRequeue: "Remove the mark",
     pipelineTaskRequeueTitle:
-      "Move the source back from the errors folder to IN. The pipeline picks it up by event and creates a new task.",
-    pipelineTaskRequeued: "File moved back to IN.",
+      "Strip the leading dash from the name. The pipeline sees the rename as an event and creates a new task.",
+    pipelineTaskRequeued: "Mark removed — the file is back in play.",
 
     // access tokens and their machines
     tokenScoped: "scoped to a project",
@@ -1525,6 +1528,9 @@ export const adminDict = {
     featureToolVoiceOver: "Voice-over",
     featureToolVoiceOverDesc:
       "Workspace tool: line generation. Existing instances are kept.",
+    featureWorkspaceElement: "Element assembly",
+    featureWorkspaceElementDesc:
+      "The “New element” button in the IN folder: a form that assembles a folder from the graph's requirements. Folders already assembled are kept and still processed.",
   },
 } as const
 

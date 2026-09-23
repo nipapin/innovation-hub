@@ -21,6 +21,7 @@ import {
   Scissors,
   Settings2,
   Share2,
+  SquarePen,
   Trash2,
   Upload,
   type LucideIcon,
@@ -150,7 +151,28 @@ export function WorkspaceContextMenu() {
             } as MenuEntry,
           ]
         : []),
-      ...(many || !can.renameItem
+      /*
+        «Править элемент» — для папки элемента в IN. Вторая точка входа наравне
+        с иконкой на строке: меню здесь привычнее, а иконку при наведении
+        находят не все.
+      */
+      ...(many || !can.renameItem || !ws.isElementFolder(file)
+        ? []
+        : [
+            {
+              icon: SquarePen,
+              label: t.elementEdit,
+              onClick: () => ws.openElementDialog(file),
+            } as MenuEntry,
+          ]),
+      /*
+        Внутри элемента переименования нет: имена там держит инструмент, и
+        правка мимо него рвёт связь слота с файлом (план §9). Прячем пункт, а не
+        выключаем: выключенная строка обещает, что где-то есть способ её
+        включить. Файл, лежащий прямо в IN, это не касается — он обычный
+        одиночный исходник.
+      */
+      ...(many || !can.renameItem || ws.isInsideElement(file)
         ? []
         : [
             {

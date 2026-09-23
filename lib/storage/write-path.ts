@@ -812,6 +812,236 @@ export async function writeRename(input: {
 }
 
 /**
+ * Переименование пачкой — одной транзакцией и без промежуточных состояний.
+ *
+ * Нужно перенумерации слотов в папке элемента: номер там это позиция, а не
+ * идентификатор, поэтому удаление второго из трёх и перетаскивание мышью
+ * двигают сразу несколько файлов (docs/TOOLS_FOLDER_ASSEMBLY_PLAN.md §6.1).
+ * Поштучный `writeRename` для этого не годится по двум причинам, и вторая
+ * важнее первой:
+ *
+ *  1. пачка из десяти файлов — десять запросов и десять транзакций;
+ *  2. ПЕРЕСТАНОВКА ДВУХ СОСЕДЕЙ НЕВЫПОЛНИМА поштучно. `01` ↔ `02` — это цикл:
+ *     любое первое переименование упирается в занятое имя, и обмен пришлось бы
+ *     делать через видимое человеку третье имя.
+ *
+ * Отсюда две фазы: сначала все строки уезжают на временные имена, потом встают
+ * на окончательные. Уникальный индекс каталога проверяется на каждом операторе,
+ * и обойти его внутри транзакции иначе нечем. Временные имена не видит никто:
+ * транзакция либо доезжает целиком, либо откатывается.
+ *
+ * В журнал уходит РОВНО ОДНО `move`-событие на файл — то же, что при обычном
+ * переименовании. Клиент не должен видеть, что внутри была пересадка.
+ */
+export async function writeRenameBatch(input: {
+  storageOwnerId: string
+  projectId: string
+  items: Array<{ fileId: string; name?: string; folderPath?: string }>
+  eventId?: string
+  actor?: StorageActor | null
+}): Promise<ProjectFileRecord[]> {
+  if (input.items.length === 0) return []
+
+  const seenIds = new Set<string>()
+  for (const item of input.items) {
+    if (seenIds.has(item.fileId)) {
+      throw new StorageWriteError("The same file listed twice in the batch.", 400)
+    }
+    seenIds.add(item.fileId)
+  }
+
+  return withTransaction(async (client) => {
+    const found = await client.query<ProjectFileRecord>(
+      `SELECT ${FILE_FIELDS}
+         FROM project_files
+        WHERE project_id = $1 AND deleted_at IS NULL AND id = ANY($2::uuid[])`,
+      [input.projectId, input.items.map((item) => item.fileId)],
+    )
+    const byId = new Map(found.rows.map((row) => [row.id, row]))
+
+    type Plan = {
+      existing: ProjectFileRecord
+      name: string
+      folderPath: string
+      /** Путь поддерева до и после — только у папок. */
+      oldPrefix: string | null
+      newPrefix: string | null
+      tempName: string
+    }
+
+    const plans: Plan[] = []
+    const targets = new Set<string>()
+
+    for (const item of input.items) {
+      const existing = byId.get(item.fileId)
+      if (!existing) {
+        throw new StorageWriteError(`File ${item.fileId} not found.`, 404)
+      }
+
+      const name =
+        item.name !== undefined ? validateLogicalName(item.name) : existing.name
+      const folderPath = (item.folderPath ?? existing.folderPath).replace(
+        /^\/+|\/+$/g,
+        "",
+      )
+      assertLogicalPath(folderPath, name)
+      assertSidecarPlaceIsStable(existing, "rename")
+      if (isCanonicalSidecar(folderPath, name)) {
+        throw new StorageWriteError(
+          `"${name}" in "${OPTIONS_FOLDER_NAME}" is reserved for project automation.`,
+          403,
+        )
+      }
+
+      // Цель, занятая дважды внутри самой пачки, — ошибка вызывающего, и поймать
+      // её надо здесь: до базы такая пачка дойдёт как отказ уникального индекса
+      // уже во второй фазе, когда сказать, кто с кем столкнулся, будет нечем.
+      const key = `${folderPath.toLowerCase()} ${name.toLowerCase()}`
+      if (targets.has(key)) {
+        throw new StorageWriteError(
+          `Two files in the batch would take the name "${name}".`,
+          409,
+        )
+      }
+      targets.add(key)
+
+      const oldPrefix = existing.isFolder
+        ? folderPrefix(existing.folderPath, existing.name)
+        : null
+      const newPrefix = existing.isFolder ? folderPrefix(folderPath, name) : null
+      if (oldPrefix && isMoveIntoSelf(oldPrefix, folderPath)) {
+        throw new StorageWriteError(
+          "Cannot move a folder into itself or a descendant.",
+          409,
+        )
+      }
+
+      plans.push({
+        existing,
+        name,
+        folderPath,
+        oldPrefix,
+        newPrefix,
+        tempName: `.rename-${randomUUID()}`,
+      })
+    }
+
+    // Занято ли место кем-то ВНЕ пачки. Участники друг друга не смущают: они
+    // как раз и разъезжаются по новым местам этой же транзакцией.
+    for (const plan of plans) {
+      const taken = await client.query<{ id: string }>(
+        `SELECT id
+           FROM project_files
+          WHERE project_id = $1
+            AND lower(folder_path) = lower($2)
+            AND lower(name) = lower($3)
+            AND deleted_at IS NULL
+            AND NOT (id = ANY($4::uuid[]))
+          LIMIT 1`,
+        [input.projectId, plan.folderPath, plan.name, [...seenIds]],
+      )
+      if (taken.rows.length > 0) {
+        throw new StorageWriteError(
+          `A file or folder named "${plan.name}" already exists.`,
+          409,
+        )
+      }
+    }
+
+    // Фаза 1: все на временные имена. Поддерево папки уезжает вместе с ней,
+    // иначе на второй фазе пути детей столкнулись бы ровно так же, как имена.
+    for (const plan of plans) {
+      await client.query(
+        `UPDATE project_files SET name = $2, updated_at = NOW() WHERE id = $1`,
+        [plan.existing.id, plan.tempName],
+      )
+      if (plan.oldPrefix) {
+        const tempPrefix = folderPrefix(plan.existing.folderPath, plan.tempName)
+        await client.query(
+          `UPDATE project_files
+              SET folder_path = CASE
+                    WHEN folder_path = $2 THEN $3
+                    ELSE $3 || substr(folder_path, length($2) + 1)
+                  END,
+                  updated_at = NOW()
+            WHERE project_id = $1
+              AND (folder_path = $2 OR folder_path LIKE $2 || '/%')`,
+          [input.projectId, plan.oldPrefix, tempPrefix],
+        )
+        plan.oldPrefix = tempPrefix
+      }
+    }
+
+    // Фаза 2: окончательные имена и один `move` на файл.
+    const out: ProjectFileRecord[] = []
+    for (const plan of plans) {
+      if (plan.oldPrefix && plan.newPrefix) {
+        await client.query(
+          `UPDATE project_files
+              SET folder_path = CASE
+                    WHEN folder_path = $2 THEN $3
+                    ELSE $3 || substr(folder_path, length($2) + 1)
+                  END,
+                  updated_at = NOW()
+            WHERE project_id = $1
+              AND (folder_path = $2 OR folder_path LIKE $2 || '/%')`,
+          [input.projectId, plan.oldPrefix, plan.newPrefix],
+        )
+      }
+
+      const updated = await client.query<ProjectFileRecord>(
+        `UPDATE project_files
+            SET name = $3, folder_path = $4, updated_at = NOW()
+          WHERE id = $1 AND project_id = $2
+          RETURNING ${FILE_FIELDS}`,
+        [plan.existing.id, input.projectId, plan.name, plan.folderPath],
+      )
+      const file = updated.rows[0]
+      if (!file) {
+        throw new StorageWriteError(`File ${plan.existing.id} not found.`, 404)
+      }
+
+      const key =
+        plan.existing.s3Key ??
+        logicalKeyForFile({
+          storageOwnerId: input.storageOwnerId,
+          projectId: input.projectId,
+          folderPath: plan.existing.folderPath,
+          name: plan.existing.name,
+        })
+
+      const seq = await journal(client, {
+        projectId: input.projectId,
+        key,
+        op: "move",
+        size: file.isFolder ? 0 : file.sizeBytes,
+        // Событие на файл, а не на пачку: применять их клиент будет поштучно.
+        eventId: input.eventId ? `${input.eventId}:${file.id}` : null,
+        actor: input.actor,
+        payload: {
+          fileId: file.id,
+          isFolder: plan.existing.isFolder,
+          name: file.name,
+          folderPath: file.folderPath,
+          from: {
+            folderPath: plan.existing.folderPath,
+            name: plan.existing.name,
+          },
+          to: { folderPath: file.folderPath, name: file.name },
+        },
+      })
+      await client.query(
+        `UPDATE project_files SET last_seq = $2 WHERE id = $1`,
+        [file.id, seq],
+      )
+      out.push(file)
+    }
+
+    return out
+  })
+}
+
+/**
  * Приводит каталог в соответствие с только что записанным сайдкаром.
  *
  * Сайдкары попадают в бакет по фиксированному ключу, минуя presign/notify,

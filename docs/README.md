@@ -85,6 +85,7 @@
 | [PROJECT_OPTIONS_PANEL.md](./PROJECT_OPTIONS_PANEL.md) | что клиент правит сам — выполнен |
 | [TOOLS_SRT_EDITOR_PLAN.md](./TOOLS_SRT_EDITOR_PLAN.md) | раздел «Инструменты» — выполнен частично |
 | [TOOLS_VOICEOVER_PLAN.md](./TOOLS_VOICEOVER_PLAN.md) | инструмент озвучки — выполнен, кроме провайдера синтеза 🟡 |
+| [TOOLS_FOLDER_ASSEMBLY_PLAN.md](./TOOLS_FOLDER_ASSEMBLY_PLAN.md) | сборка элемента в `IN` по требованиям ноды `checkFolder` — реализовано ✅, карта кода в [reference/09-tools.md](./reference/09-tools.md) часть V. Содержит **канонический текст** двух форматов, общих с десктопом: грамматика имён в папке элемента и разметка текста `<фрагмент>[Bold, #FF3B30, x1.5, "тег"]` |
 | [SOCIAL_POSTING_PLAN.md](./SOCIAL_POSTING_PLAN.md) | автопостинг — не реализовано ⬜ |
 | [BILLING_AND_TRIAL_PLAN.md](./BILLING_AND_TRIAL_PLAN.md) | баланс, тарификация, тестовый период — общий план к обсуждению ⬜ |
 | [VENDOR_SERVICES_PLAN.md](./VENDOR_SERVICES_PLAN.md) | внешние сервисы: ключи на сайте, валюты, себестоимость по потреблению — замысел ⬜ |

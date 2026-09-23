@@ -11,7 +11,7 @@ import {
   type NumericConfig,
 } from "./numeric-format"
 import { socialTokenInfo } from "@/lib/social/types"
-import { nodeIdForPath, nodeOrderMap } from "./graph-order"
+import { nodeIdForPath, nodeOrderMap, nodePluginForPath } from "./graph-order"
 
 /**
  * `options.json` → список настроек для вкладки клиента.
@@ -235,6 +235,10 @@ export function readExposedOption(
     path: [...path, "controlProps"],
     // Соседи по ноде — те, у кого совпадает путь до списка `properties`.
     siblingKey: path.slice(0, -1).join("."),
+    // Плагин ноды известен только обходу графа — он один видит корень.
+    // Проставляется в readExposedOptions ниже; запись (apply.ts) разбирает
+    // свойство в одиночку, и для неё поле остаётся пустым.
+    nodePlugin: null,
     // Ссылку подставит слой хранилища: здесь нет ни ключей, ни файлов.
     referenceUrl: null,
     key,
@@ -342,7 +346,14 @@ export function readExposedOptions(root: unknown): {
   const options: ExposedOption[] = []
   const skipped: SkippedOption[] = []
   collect(root, [], options, skipped)
-  return { options: orderByGraph(root, options), skipped }
+  // Плагин ноды дописываем здесь: `collect` идёт по путям, а корень графа есть
+  // только тут. По нему интерфейс решает, не показана ли эта нода уже своим,
+  // отдельным способом.
+  const withPlugin = options.map((option) => ({
+    ...option,
+    nodePlugin: nodePluginForPath(root, option.path),
+  }))
+  return { options: orderByGraph(root, withPlugin), skipped }
 }
 
 /**

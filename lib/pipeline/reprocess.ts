@@ -90,7 +90,8 @@ export async function reprocessItem(input: {
       : null
   if (!entry) return { ok: false, reason: "no-source" }
 
-  if (entry.isFolder && isHeldBack(entry.name)) {
+  // И папка, и файл (см. isHeldBack): дефис в имени — явный отказ брать в работу.
+  if (isHeldBack(entry.name)) {
     return { ok: false, reason: "folder-not-ready" }
   }
 

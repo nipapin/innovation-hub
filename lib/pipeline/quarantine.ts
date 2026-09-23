@@ -1,56 +1,45 @@
 import { query } from "@/lib/db"
 import { StorageWriteError } from "@/lib/storage/errors"
-import { writeEnsureFolderPath, writeRename } from "@/lib/storage/write-path"
+import { writeRename } from "@/lib/storage/write-path"
 
 /**
- * Папка ошибок проекта: куда уезжает исходник, обработка которого упала.
+ * Карантин исходника упавшей задачи: дефис в начало имени, на месте в IN.
  *
- * Перенесено из ручной практики на десктопе, и не ради красоты. Пока файл лежит
- * в IN, он для конвейера мёртв: обход берёт только элементы, по которым задачи не
- * было вообще (lib/pipeline/sweep.ts), а задача была — упавшая. Событийная линия
- * его тоже не подберёт, второго события по нему не будет. Файл невидим, и понять
- * это можно только запросом к базе.
+ * Нужен потому, что пока файл лежит в IN непомеченным, он для конвейера мёртв:
+ * обход берёт только элементы, по которым задачи не было вообще
+ * (lib/pipeline/sweep.ts), а задача была — упавшая. Событийная линия его тоже не
+ * подберёт, второго события по нему не будет. Файл невидим, и понять это можно
+ * только запросом к базе.
  *
- * Перенос чинит ровно это: файла в IN больше нет, значит его отсутствие в
- * очереди перестаёт быть загадкой, а в дереве проекта видно, что с ним случилось
- * и когда. Обратная дорога — перенос назад в IN: это `move`-событие с ключом
- * внутри IN, и событийная линия заводит новую задачу за секунды (упавшая старая
- * не мешает: уникальный индекс держится только на живых статусах).
+ * ДО 2026-09-23 это чинилось переносом в папку ошибок проекта
+ * (`errors (MM.DD-HH.mm)`). От переноса отказались в пользу переименования —
+ * решение общее с десктопом (fs.manager.tauri, `markSkippedWithDash` в
+ * processItem.ts), и причины у него три:
  *
- * Папка ОДНА на проект, и её имя несёт метку последней ошибки. Не по папке на
- * дату: разбор проблемных файлов — работа, которую делают пачкой и не каждый
- * день, и десяток папок в корне мешает больше, чем помогает точная дата у
- * каждого файла. Случилась новая ошибка — папка переименовывается на метку
- * этой ошибки, а лежащие в ней файлы остаются на месте.
+ * - дефис уже был языком «не брать в работу» для папок, и заводить рядом второй
+ *   язык для файлов значило держать два механизма под одну задачу;
+ * - перенос двигал запись каталога впустую: `s3Key` от папки не зависит, байты
+ *   и так не едут, а у человека исходник пропадал из IN;
+ * - обратная дорога становилась несимметричной — папку «возвращали» снятием
+ *   дефиса, а файл переносом.
  *
- * Имя — общий канон с десктоп-клиентом (fs.manager.tauri, `move_to_errors`):
- * `errors (MM.DD-HH.mm)`. До унификации сайт создавал `Errors (YYYY-MM-DD)` —
- * такие папки опознаются как легаси и при первой же ошибке переименовываются
- * в канон, вторую рядом не заводим.
+ * Теперь дорога одна: снять `-` с имени. Это `move`-событие с ключом внутри IN,
+ * и событийная линия заводит новую задачу за секунды (упавшая старая не мешает:
+ * уникальный индекс держится только на живых статусах).
+ *
+ * Обе линии сборки обязаны считать дефис отказом и для файлов — см. `isHeldBack`
+ * в lib/pipeline/scan.ts. Без этого пометка не значит ничего: задача заводится
+ * снова тем же событием, которым мы её и пометили.
  */
 
-/** Канон: `errors (09.17-16.40)`. */
-const ERRORS_FOLDER_RE = /^errors \(\d{2}\.\d{2}-\d{2}\.\d{2}\)$/i
-
-/** Легаси-формат сайта до унификации с десктопом: `Errors (2026-09-02)`. */
-const ERRORS_FOLDER_LEGACY_RE = /^Errors \(\d{4}-\d{2}-\d{2}\)$/i
-
-/**
- * Метка в имени — локальная для сервера, а не UTC.
- *
- * Имя папки читает человек, и «вчера» у него своё. Формат тот же, что пишет
- * десктоп: месяц.день-час.минута, — чтобы обе системы, переименовывая одну и
- * ту же папку, давали ей одно и то же имя.
- */
-export function errorsFolderName(at: Date = new Date()): string {
-  const p = (n: number) => String(n).padStart(2, "0")
-  const date = `${p(at.getMonth() + 1)}.${p(at.getDate())}`
-  const time = `${p(at.getHours())}.${p(at.getMinutes())}`
-  return `errors (${date}-${time})`
+/** Имя, помеченное как «в обработку не брать». */
+function isDashed(name: string): boolean {
+  return name.startsWith("-")
 }
 
-export function isErrorsFolderName(name: string): boolean {
-  return ERRORS_FOLDER_RE.test(name) || ERRORS_FOLDER_LEGACY_RE.test(name)
+/** Снять пометку: ведущие дефисы и пробелы после них. */
+function undash(name: string): string {
+  return name.replace(/^-+\s*/, "")
 }
 
 type SourceRow = {
@@ -133,29 +122,6 @@ async function findSourceRow(task: TaskRow): Promise<SourceRow | null> {
   return byName.rows[0] ?? null
 }
 
-/** Папка ошибок проекта, если она уже есть. */
-async function findErrorsFolder(
-  projectId: string,
-): Promise<{ id: string; name: string } | null> {
-  const result = await query<{ id: string; name: string }>(
-    `SELECT id, name
-       FROM project_files
-      WHERE project_id = $1
-        AND folder_path = ''
-        AND is_folder = TRUE
-        AND deleted_at IS NULL
-        -- Без учёта регистра, префикс "errors" + скобка: покрывает и канон
-        -- errors (MM.DD-HH.mm), и легаси Errors (YYYY-MM-DD), и папку,
-        -- которую переименовал человек. Вторую рядом не заводим — мы её
-        -- просто переименуем обратно к канону.
-        AND name ~* '^errors \\('
-      ORDER BY name DESC
-      LIMIT 1`,
-    [projectId],
-  )
-  return result.rows[0] ?? null
-}
-
 /**
  * Свободное имя в папке назначения.
  *
@@ -201,10 +167,10 @@ export type QuarantineResult =
   | { ok: false; reason: "no-task" | "no-source" | "not-in-in" | "already" }
 
 /**
- * Унести исходник упавшей задачи из IN в папку ошибок.
+ * Пометить исходник упавшей задачи дефисом, не вынимая его из IN.
  *
- * Идемпотентна и молчалива: файла нет, его уже унесли, человек сам переложил его
- * куда-то ещё — все эти случаи возвращают отказ с причиной, а не исключение.
+ * Идемпотентна и молчалива: файла нет, его уже пометили, человек сам переложил
+ * его куда-то ещё — все эти случаи возвращают отказ с причиной, а не исключение.
  * Зовётся из хвоста падения задачи, и уронить это падение она права не имеет.
  */
 export async function quarantineTaskSource(
@@ -216,8 +182,9 @@ export async function quarantineTaskSource(
   const source = await findSourceRow(task)
   if (!source) return { ok: false, reason: "no-source" }
 
-  // Уже в папке ошибок — значит перенос состоялся, отметку просто закрепляем.
-  if (isErrorsFolderName(source.folderPath.split("/")[0] ?? "")) {
+  // Уже помечен — нами в прошлый раз или десктопом, который делает то же самое
+  // своим `markSkippedWithDash`. Отметку просто закрепляем.
+  if (isDashed(source.name)) {
     await stampQuarantine(taskId)
     return { ok: false, reason: "already" }
   }
@@ -225,40 +192,24 @@ export async function quarantineTaskSource(
   // Не в IN — файл трогал человек. Его решение старше нашего.
   if (source.folderPath !== "IN") return { ok: false, reason: "not-in-in" }
 
-  const wanted = errorsFolderName()
-  const existing = await findErrorsFolder(task.projectId)
-
-  if (existing && existing.name !== wanted) {
-    // Дата в имени всегда последняя: папка одна, и она про «когда сломалось в
-    // последний раз», а не про историю. Лежащие внутри файлы едут с ней.
-    await writeRename({
-      storageOwnerId: task.storageOwnerId,
-      projectId: task.projectId,
-      fileId: existing.id,
-      name: wanted,
-      actor: PIPELINE_ACTOR,
-    })
-  } else if (!existing) {
-    await writeEnsureFolderPath({
-      storageOwnerId: task.storageOwnerId,
-      projectId: task.projectId,
-      folderPath: wanted,
-      actor: PIPELINE_ACTOR,
-    })
-  }
-
-  const name = await freeName(task.projectId, wanted, source.name, source.id)
+  // Столкновение имён штатно: человек перезалил `video.mp4` вместо упавшего, и
+  // тот тоже упал — `-video.mp4` уже занято.
+  const name = await freeName(
+    task.projectId,
+    "IN",
+    `-${source.name}`,
+    source.id,
+  )
   await writeRename({
     storageOwnerId: task.storageOwnerId,
     projectId: task.projectId,
     fileId: source.id,
     name,
-    folderPath: wanted,
     actor: PIPELINE_ACTOR,
   })
 
   await stampQuarantine(taskId)
-  return { ok: true, folderPath: wanted, name }
+  return { ok: true, folderPath: "IN", name }
 }
 
 async function stampQuarantine(taskId: string): Promise<void> {
@@ -273,10 +224,10 @@ export type RestoreResult =
   | { ok: false; reason: "no-task" | "no-source" | "not-quarantined" }
 
 /**
- * Вернуть исходник из папки ошибок обратно в IN.
+ * Снять пометку с исходника — вернуть его в работу.
  *
  * Задачу не трогаем: она остаётся упавшей, это история. Новую заведёт событийная
- * линия — перенос в IN журналируется как `move` с ключом внутри IN, а такое
+ * линия — переименование журналируется как `move` с ключом внутри IN, а такое
  * событие сканер как раз и ждёт. Обход бы не помог: для него ключ «известен».
  */
 export async function restoreTaskSource(taskId: string): Promise<RestoreResult> {
@@ -285,12 +236,19 @@ export async function restoreTaskSource(taskId: string): Promise<RestoreResult> 
 
   const source = await findSourceRow(task)
   if (!source) return { ok: false, reason: "no-source" }
-  if (source.folderPath === "IN") {
+  if (!isDashed(source.name)) {
     await query(`UPDATE tasks SET quarantined_at = NULL WHERE id = $1`, [taskId])
     return { ok: false, reason: "not-quarantined" }
   }
 
-  const name = await freeName(task.projectId, "IN", source.name, source.id)
+  // Снятый дефис возвращает исходное имя — а оно может быть занято тем, что
+  // человек залил взамен упавшего. Тогда берём соседнее свободное.
+  const name = await freeName(
+    task.projectId,
+    "IN",
+    undash(source.name),
+    source.id,
+  )
   await writeRename({
     storageOwnerId: task.storageOwnerId,
     projectId: task.projectId,

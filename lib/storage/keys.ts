@@ -7,6 +7,20 @@ export const OPTIONS_FILE_NAME = "options.json"
 export const DESCRIPTION_FILE_NAME = "description.md"
 
 /**
+ * Скомпилированное описание формы сборки элемента в `IN` — его пишет десктоп при
+ * сохранении графа, если в нём есть нода `checkFolder`
+ * (`src/NODE_WIN/utils/syncSiteFormSidecar.ts` в fs.manager.tauri).
+ *
+ * Отдельный файл, а не ключ в `options.json`, намеренно: `options.json` — это граф,
+ * и читать из него форму значило бы знать внутреннее устройство редактора нод.
+ * Здесь лежит готовый ответ «какую форму показать», версионированный полем `version`.
+ *
+ * Файла нет = проект не собирается папками, кнопку «+ Новый элемент» не показываем.
+ * Подробно — docs/TOOLS_FOLDER_ASSEMBLY_PLAN.md.
+ */
+export const SITE_FORM_FILE_NAME = "onSiteFolderCheckForm.json"
+
+/**
  * Папка, куда сайт кладёт файлы, выбранные клиентом в настройках проекта
  * (свойство `pathNavigator` с `exposedToSite`).
  *
@@ -35,6 +49,23 @@ export const CANONICAL_SIDECAR_NAMES = [
   OPTIONS_FILE_NAME,
   DESCRIPTION_FILE_NAME,
 ] as const
+
+/**
+ * Почему формы (`onSiteFolderCheckForm.json`) в этом списке НЕТ.
+ *
+ * Список — это запрет: такой файл нельзя залить обычным путём, только через
+ * `PUT /sidecars`. Для трёх сайдкаров выше это верно — их пишет сайт, и второй
+ * канал записи развёл бы копии по разным ключам.
+ *
+ * Форму же пишет не сайт, а программа, и пишет она её ОБЫЧНОЙ СИНХРОНИЗАЦИЕЙ
+ * папки: отдельных команд у неё для этого нет. Внеси форму в список — и каждая
+ * синхронизация получала бы 409, а залитые байты удалялись бы как сиротские,
+ * то есть файл просто перестал бы доезжать.
+ *
+ * Поэтому форма — обычный файл проекта, и ищут её ПО ИМЕНИ в каталоге
+ * (`app/api/storage/v1/sidecars/route.ts`), а не по фиксированному ключу:
+ * физический ключ у неё тот, что выдала заливка, с uuid.
+ */
 
 function normalizeFolderPath(folderPath: string): string {
   return folderPath.replace(/^\/+|\/+$/g, "")

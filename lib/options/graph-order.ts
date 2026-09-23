@@ -99,3 +99,31 @@ export function nodeIdForPath(root: unknown, path: string[]): string | null {
   if (!Number.isInteger(index)) return null
   return nodeId(nodes[index])
 }
+
+/**
+ * Плагин ноды, которой принадлежит свойство: `data.pluginId`.
+ *
+ * Нужен ровно затем, чтобы отличить свойства одной ноды от всех остальных —
+ * например, не показывать в «Настройках» проекта то, что уже показано своим
+ * интерфейсом (сборка элемента рисует требования ноды `checkFolder` сама).
+ * Показывать одно и то же в двух местах хуже, чем не показывать нигде: правки
+ * разъезжаются, а человек не знает, какое из двух полей главнее.
+ *
+ * Индекс берём из пути, как `nodeIdForPath`, и по той же причине: путь строится
+ * обходом того же массива, и второй способ добраться до ноды означал бы второй
+ * ответ на один вопрос.
+ */
+export function nodePluginForPath(root: unknown, path: string[]): string | null {
+  if (path.length < 2 || path[0] !== "nodes") return null
+  if (!root || typeof root !== "object") return null
+  const nodes = (root as Graph).nodes
+  if (!Array.isArray(nodes)) return null
+  const index = Number.parseInt(path[1]!, 10)
+  if (!Number.isInteger(index)) return null
+  const node = nodes[index]
+  if (!node || typeof node !== "object" || Array.isArray(node)) return null
+  const data = (node as Record<string, unknown>).data
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null
+  const plugin = (data as Record<string, unknown>).pluginId
+  return typeof plugin === "string" && plugin ? plugin : null
+}

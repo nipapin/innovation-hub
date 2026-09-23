@@ -12,6 +12,7 @@
     "color:check": "node scripts/color-check.mjs",
     "md:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/description-format-check.mts",
     "dialog:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/lib/register-ts.mjs scripts/check-dialog-logic.mts",
+    "element:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/lib/register-ts.mjs scripts/element-check.mts",
     "admin:check": "node scripts/admin-nav-check.mjs",
     "help:check": "node scripts/help-check.mjs",
   "company:check": "node scripts/company-check.mjs",

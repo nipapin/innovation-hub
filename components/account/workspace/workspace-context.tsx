@@ -26,7 +26,13 @@ import {
   isUploadCancelled,
   uploadProjectFileDirect,
 } from "@/lib/project-direct-upload"
+import {
+  parseSiteFormBody,
+  type SiteForm,
+  type SiteFormError,
+} from "@/lib/tools/element/site-form"
 import { readUiPref, writeUiPref } from "@/lib/ui-prefs"
+import { looksLikeElement } from "./element/tree"
 import {
   TRASH_RETENTION_DAYS,
   findChildByName,
@@ -452,6 +458,45 @@ type WorkspaceValue = {
   confirm: ConfirmRequest | null
   setConfirm: (r: ConfirmRequest | null) => void
 
+  // сборка элемента в папке IN — docs/TOOLS_FOLDER_ASSEMBLY_PLAN.md
+  /**
+   * Включена ли сборка на этой установке (флаг `workspace.element`).
+   *
+   * Приходит пропсом от страницы, а не читается здесь: состояние выключателей
+   * живёт в базе, а модуль, который её читает, серверный — импортировать его в
+   * клиентский компонент значило бы утащить `pg` в бандл.
+   */
+  elementEnabled: boolean
+  /**
+   * Форма сборки выбранного проекта (`options/onSiteFolderCheckForm.json`).
+   *
+   * `null` — проект не собирается папками: ноды `checkFolder` в графе нет либо
+   * она выключена, и десктоп в этом случае файл удаляет. Нет файла — нет и
+   * кнопки «Новый элемент»: собирать не по чему.
+   */
+  elementForm: SiteForm | null
+  /** Почему форму не прочитали: чужая версия, дубли имён, битый файл. */
+  elementFormError: SiteFormError | null
+  /**
+   * Папка, открытая в диалоге. `folder: null` — создаём новый элемент, папки
+   * ещё нет. Само `null` — диалог закрыт.
+   */
+  elementTarget: { folder: DriveFile | null } | null
+  openElementDialog: (folder?: DriveFile | null) => void
+  closeElementDialog: () => void
+  /**
+   * Папка верхнего уровня `IN`, содержимое которой разбирается формой. По этому
+   * признаку показывается иконка «Править» и пункт меню; отдельной метки в
+   * хранилище нет намеренно (план §3).
+   */
+  isElementFolder: (file: DriveFile) => boolean
+  /**
+   * Лежит ли элемент внутри папки элемента — на любой глубине, включая саму
+   * папку. По этому признаку прячется «Переименовать»: имена внутри держит
+   * инструмент, и переименование мимо него рвёт связь слота с файлом (план §9).
+   */
+  isInsideElement: (file: DriveFile) => boolean
+
   notImplemented: () => void
 }
 
@@ -558,6 +603,7 @@ async function uploadViaXhr(
 export function WorkspaceProvider({
   children,
   source = CABINET_SOURCE,
+  elementEnabled = false,
 }: {
   children: React.ReactNode
   /**
@@ -565,6 +611,12 @@ export function WorkspaceProvider({
    * /account/projects работает как раньше; админский «Конвейер» передаёт свой.
    */
   source?: WorkspaceSource
+  /**
+   * Включена ли сборка элемента (флаг `workspace.element`). По умолчанию
+   * выключена: значение знает только серверная страница, и зона, которая его не
+   * передала, не должна получить кнопку по умолчанию.
+   */
+  elementEnabled?: boolean
 }) {
   const { t, lang } = useI18n()
   const router = useRouter()
@@ -2410,6 +2462,131 @@ export function WorkspaceProvider({
     [clipboard],
   )
 
+  // ---------- сборка элемента в папке IN ----------
+
+  const [elementForm, setElementForm] = useState<SiteForm | null>(null)
+  const [elementFormError, setElementFormError] = useState<SiteFormError | null>(
+    null,
+  )
+  const [elementTarget, setElementTarget] = useState<{
+    folder: DriveFile | null
+  } | null>(null)
+
+  /**
+   * Форма сборки выбранного проекта.
+   *
+   * Читается сайдкаром, а не из `options.json`: там граф, и доставать форму
+   * оттуда значило бы завести второго читателя модели нод, который ломается
+   * молча при любой правке редактора (план §4.1).
+   *
+   * 404 — обычное дело, а не сбой: проект просто не собирается папками. Поэтому
+   * тишина и пустая форма, без тоста.
+   */
+  useEffect(() => {
+    if (!elementEnabled || !selectedId) {
+      setElementForm(null)
+      setElementFormError(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/storage/v1/sidecars?projectId=${encodeURIComponent(
+            selectedId,
+          )}&name=on-site-folder-check-form`,
+        )
+        if (!res.ok) {
+          // 404 — обычное дело: проект не собирается папками. Всё остальное
+          // (403, 500) кончается тем же — кнопки нет, — и раньше эти случаи
+          // были неотличимы вообще ничем. Сообщение в консоли не меняет
+          // поведения, но снимает главный вопрос диагностики: «его правда нет
+          // или нам его не отдали?».
+          if (res.status !== 404) {
+            console.warn(
+              "[element] assembly form not read:",
+              res.status,
+              res.statusText,
+            )
+          }
+          if (!cancelled) {
+            setElementForm(null)
+            setElementFormError(null)
+          }
+          return
+        }
+        const data = (await res.json()) as { body?: string }
+        const parsed = parseSiteFormBody(data.body ?? "")
+        if (cancelled) return
+        if (parsed.ok) {
+          setElementForm(parsed.form)
+          setElementFormError(null)
+        } else {
+          // Форма есть, но прочитать её нечем. Кнопку в этом случае всё равно
+          // показываем: молча спрятать её значит оставить человека без
+          // объяснения, почему папки больше не собираются. Объяснение он
+          // получит в диалоге — там же, где и отказ открыться.
+          setElementForm(null)
+          setElementFormError(parsed.error)
+        }
+      } catch (error) {
+        // Сеть отвалилась или ответ не разобрался. Молчать нельзя по той же
+        // причине: снаружи это выглядит как «кнопки просто нет».
+        console.warn("[element] assembly form request failed:", error)
+        if (!cancelled) {
+          setElementForm(null)
+          setElementFormError(null)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [elementEnabled, selectedId])
+
+  const isElementFolder = useCallback(
+    (file: DriveFile) => {
+      if (!elementEnabled || !file.isFolder) return false
+      // Единица работы конвейера — элемент ВЕРХНЕГО уровня IN; глубже папок
+      // элемента не бывает, и предлагать там правку нечему.
+      if (folderPathOf(rootFiles, file.id) !== "IN") return false
+      if (!elementForm) return false
+      return looksLikeElement(elementForm.rows, file)
+    },
+    [elementEnabled, elementForm, rootFiles],
+  )
+
+  /**
+   * Запрет переименования внутри элемента.
+   *
+   * Считаем по пути, а не по метке: путь `IN/-Ролик/01 Сцена` говорит, что
+   * второй сегмент — папка верхнего уровня IN, и если она элемент, то всё под
+   * ней тоже. Файл, лежащий ПРЯМО в `IN`, под запрет не попадает: это обычный
+   * одиночный исходник, и инструмент к нему отношения не имеет.
+   */
+  const isInsideElement = useCallback(
+    (file: DriveFile) => {
+      if (!elementEnabled || !elementForm) return false
+      if (isElementFolder(file)) return true
+      const path = folderPathOf(rootFiles, file.id)
+      if (!path) return false
+      const segments = path.split("/").filter(Boolean)
+      if (segments[0] !== "IN" || segments.length < 2) return false
+      const top = findChildByName(rootFiles, "IN")
+      const holder = (top?.children ?? []).find(
+        (child) => child.isFolder && child.name === segments[1],
+      )
+      return holder ? isElementFolder(holder) : false
+    },
+    [elementEnabled, elementForm, isElementFolder, rootFiles],
+  )
+
+  const openElementDialog = useCallback((folder: DriveFile | null = null) => {
+    setElementTarget({ folder })
+  }, [])
+
+  const closeElementDialog = useCallback(() => setElementTarget(null), [])
+
   const value: WorkspaceValue = {
     t,
     lang,
@@ -2442,6 +2619,14 @@ export function WorkspaceProvider({
     inFolder,
     outFolder,
     inStatusOf,
+    elementEnabled,
+    elementForm,
+    elementFormError,
+    elementTarget,
+    openElementDialog,
+    closeElementDialog,
+    isElementFolder,
+    isInsideElement,
     exposedOptions,
     skippedOptions,
     fileTypes,

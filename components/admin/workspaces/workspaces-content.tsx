@@ -10,6 +10,7 @@ import { AdminWorkArea } from "@/components/admin/shared/admin-work-area"
 import { ArchiveDialog } from "@/components/account/workspace/archive-dialog"
 import { ClipboardPanel } from "@/components/account/workspace/clipboard-panel"
 import { WorkspaceContextMenu } from "@/components/account/workspace/context-menu"
+import { ElementDialog } from "@/components/account/workspace/element/element-dialog"
 import { PreviewDialog } from "@/components/account/workspace/file-preview"
 import { ProjectsColumn } from "@/components/account/workspace/projects-column"
 import { ShareDialog } from "@/components/account/workspace/share-dialog"
@@ -89,6 +90,9 @@ function WorkspacesLayout({
       <ArchiveDialog />
       <PreviewDialog />
       <ShareDialog />
+      {/* Диалог монтируется рядом с остальными: без него кнопка «Новый
+          элемент» в IN была бы кнопкой, которой нечего открыть. */}
+      <ElementDialog />
       <TransferDialog
         users={users}
         currentOwnerId={selectedUserId}
@@ -99,7 +103,12 @@ function WorkspacesLayout({
   )
 }
 
-export function WorkspacesContent() {
+export function WorkspacesContent({
+  elementEnabled = false,
+}: {
+  /** Флаг `workspace.element`: читает его серверная страница, см. её комментарий. */
+  elementEnabled?: boolean
+}) {
   const t = useAdminI18n()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -170,7 +179,7 @@ export function WorkspacesContent() {
     users.find((user) => user.id === selectedUserId)?.email ?? null
 
   return (
-    <WorkspaceProvider source={source}>
+    <WorkspaceProvider source={source} elementEnabled={elementEnabled}>
       <WorkspacesLayout
         users={users}
         companies={companies}

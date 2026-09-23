@@ -12,11 +12,19 @@ import {
   projectDescriptionKey,
   projectFolderStateKey,
   projectOptionsKey,
+  projectSiteFormKey,
   ProjectStorageError,
   siteUpdatedBy,
   updateProjectExposedOptions,
 } from "@/lib/project-storage"
 import { exposedOptionChangeSchema } from "@/lib/project-schemas"
+import { findFileByName } from "@/lib/repositories/project-files"
+import {
+  DESCRIPTION_FILE_NAME,
+  FOLDER_STATE_FILE_NAME,
+  OPTIONS_FOLDER_NAME,
+  SITE_FORM_FILE_NAME,
+} from "@/lib/storage/keys"
 import {
   StorageWriteError,
   writeSidecarPut,
@@ -38,7 +46,53 @@ function sidecarKey(
   if (name === "description") {
     return projectDescriptionKey(storageOwnerId, projectId)
   }
+  if (name === "on-site-folder-check-form") {
+    return projectSiteFormKey(storageOwnerId, projectId)
+  }
   return null
+}
+
+/** Имя сайдкара → логическое имя файла в папке `options`. */
+function sidecarFileName(name: string): string | null {
+  if (name === "folder-state") return FOLDER_STATE_FILE_NAME
+  if (name === "options") return OPTIONS_FILE_NAME
+  if (name === "description") return DESCRIPTION_FILE_NAME
+  if (name === "on-site-folder-check-form") return SITE_FORM_FILE_NAME
+  return null
+}
+
+/**
+ * Сайдкар, лежащий по физическому ключу `{uuid}-{имя}`.
+ *
+ * Так выглядит ЛЮБОЙ файл, попавший в проект обычной заливкой: presign минтит
+ * ключ с uuid, чтобы два файла с одним именем не затирали друг друга. Именно
+ * этим путём программа доставляет форму сборки — она синхронизирует папку
+ * целиком и отдельных команд записи не шлёт.
+ *
+ * Поэтому искать такой файл надо ПО ИМЕНИ, а не по фиксированному адресу: имя
+ * в каталоге уникально по индексу, а ключ у каждой заливки свой. Второго
+ * источника правды это не заводит — строка в каталоге одна.
+ *
+ * Перекладывать байты на канонический ключ здесь не пытаемся: запись на чтении
+ * — это молчаливая правка чужого проекта.
+ */
+async function readLegacySidecar(
+  projectId: string,
+  name: string,
+  canonicalKey: string,
+): Promise<{ key: string; object: Awaited<ReturnType<typeof getObjectTextWithMeta>> } | null> {
+  const fileName = sidecarFileName(name)
+  if (!fileName) return null
+
+  const row = await findFileByName({
+    projectId,
+    folderPath: OPTIONS_FOLDER_NAME,
+    name: fileName,
+  })
+  if (!row?.s3Key || row.s3Key === canonicalKey) return null
+
+  const object = await getObjectTextWithMeta(row.s3Key)
+  return object ? { key: row.s3Key, object } : null
 }
 
 const putSchema = z.discriminatedUnion("kind", [
@@ -56,14 +110,20 @@ const putSchema = z.discriminatedUnion("kind", [
     kind: z.literal("raw"),
     projectId: z.string().min(1),
     // description — развёрнутое описание проекта в markdown (options/description.md).
-    // Десктоп читает и пишет его тем же путём, что folderState и options.
-    sidecar: z.enum(["folder-state", "options", "description"]),
+    // on-site-folder-check-form — форма сборки элемента в IN, артефакт графа
+    // (options/onSiteFolderCheckForm.json).
+    // Десктоп читает и пишет их тем же путём, что folderState и options.
+    sidecar: z.enum(["folder-state", "options", "description", "on-site-folder-check-form"]),
     body: z.string().min(1),
     ifMatch: z.string().optional(),
   }),
 ])
 
-/** GET /api/storage/v1/sidecars?projectId=&name=folder-state|options|description */
+/**
+ * GET /api/storage/v1/sidecars?projectId=&name=…
+ *
+ * Имена: `folder-state`, `options`, `description`, `on-site-folder-check-form`.
+ */
 export async function GET(request: NextRequest) {
   const auth = await requireStorageApi(request)
   if (auth instanceof NextResponse) return auth
@@ -85,15 +145,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Unknown sidecar." }, { status: 400 })
   }
 
-  const object = await getObjectTextWithMeta(key)
+  let objectKey = key
+  let object = await getObjectTextWithMeta(key)
+  if (object == null) {
+    const legacy = await readLegacySidecar(access.projectId, name, key)
+    if (legacy?.object) {
+      objectKey = legacy.key
+      object = legacy.object
+    }
+  }
   if (object == null) {
     return NextResponse.json({ message: "Not found." }, { status: 404 })
   }
   // etag отдаётся вместе с телом: он и есть версия, которую клиент возвращает в
   // `ifMatch` при записи. Без него сравнить облачную копию с локальной и
   // перезаписать её без риска затереть чужую правку нечем.
+  //
+  // `key` отдаём тот, откуда РЕАЛЬНО прочитали: клиент, собравшийся писать,
+  // должен видеть настоящее положение файла, а не то, где он обязан лежать.
   return NextResponse.json({
-    key,
+    key: objectKey,
     body: object.body,
     etag: object.etag,
     sizeBytes: object.sizeBytes,

@@ -18,6 +18,7 @@ import {
   isServiceCatalogRow,
   OPTIONS_FILE_NAME,
   OPTIONS_FOLDER_NAME,
+  SITE_FORM_FILE_NAME,
 } from "@/lib/storage/keys"
 import { readFileTypeDictionary } from "@/lib/repositories/automation-settings"
 import { findFontEntry } from "@/lib/fonts/catalog"
@@ -196,6 +197,21 @@ export function projectDescriptionKey(
     storageOwnerId,
     projectId,
     `${OPTIONS_FOLDER_NAME}/${DESCRIPTION_FILE_NAME}`,
+  )
+}
+
+/**
+ * Форма сборки элемента в `IN` — артефакт, скомпилированный десктопом из графа.
+ * Файла нет = проект не собирается папками. См. docs/TOOLS_FOLDER_ASSEMBLY_PLAN.md.
+ */
+export function projectSiteFormKey(
+  storageOwnerId: string,
+  projectId: string,
+): string {
+  return buildProjectObjectKey(
+    storageOwnerId,
+    projectId,
+    `${OPTIONS_FOLDER_NAME}/${SITE_FORM_FILE_NAME}`,
   )
 }
 

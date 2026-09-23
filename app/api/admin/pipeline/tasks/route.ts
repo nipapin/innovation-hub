@@ -88,9 +88,9 @@ export async function POST(request: NextRequest) {
   if (!restored.ok) {
     const message =
       restored.reason === "no-source"
-        ? "Source file is gone — nothing to move back."
+        ? "Source file is gone — nothing to restore."
         : restored.reason === "not-quarantined"
-          ? "Source is already in IN."
+          ? "Source is not marked — nothing to restore."
           : "Task not found."
     return NextResponse.json(
       { message },

@@ -136,6 +136,19 @@ export const FEATURES = [
     labelKey: "featureToolSrtEditor",
     descriptionKey: "featureToolSrtEditorDesc",
   },
+  // Сборка элемента в папке IN — не карточка каталога, а диалог рабочей области
+  // (docs/TOOLS_FOLDER_ASSEMBLY_PLAN.md §2), поэтому `subsystem`, а не `tool`:
+  // ключа в lib/tools/registry.ts у него нет и экземпляров в user_tools не
+  // заводится. Гасит кнопку «Новый элемент» и правку уже собранных папок;
+  // сами папки в IN остаются на месте и обрабатываются как прежде.
+  {
+    key: "workspace.element",
+    kind: "subsystem",
+    group: "tools",
+    source: "runtime",
+    labelKey: "featureWorkspaceElement",
+    descriptionKey: "featureWorkspaceElementDesc",
+  },
   {
     key: "tool.voice-over",
     kind: "tool",

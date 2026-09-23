@@ -7,6 +7,8 @@ import {
   CircleCheck,
   Clock,
   Loader2,
+  Plus,
+  SquarePen,
   Upload,
 } from "lucide-react"
 
@@ -261,6 +263,163 @@ function InMark({ file, className }: { file: DriveFile; className?: string }) {
   )
 }
 
+/**
+ * «Править элемент» на строке папки в `IN`.
+ *
+ * `span`, а не `button`: строка файла сама по себе кнопка, а кнопка внутри
+ * кнопки — недопустимая разметка, и браузеры разбирают её кто во что горазд.
+ * Появляется по наведению на строку; то же действие есть в контекстном меню —
+ * иконку при наведении находят не все.
+ */
+function ElementEditMark({
+  file,
+  className,
+}: {
+  file: DriveFile
+  className?: string
+}) {
+  const { t, isElementFolder, openElementDialog, can } = useWorkspace()
+  if (!can.renameItem || !isElementFolder(file)) return null
+
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      title={t.elementEdit}
+      aria-label={t.elementEdit}
+      onClick={(e) => {
+        e.stopPropagation()
+        openElementDialog(file)
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return
+        e.stopPropagation()
+        e.preventDefault()
+        openElementDialog(file)
+      }}
+      className={cn(
+        "flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-ws-4",
+        "opacity-0 transition-opacity hover:bg-foreground/[0.07] hover:text-ws-1",
+        "group-hover:opacity-100 focus-visible:opacity-100",
+        className,
+      )}
+    >
+      <SquarePen className="h-[15px] w-[15px]" />
+    </span>
+  )
+}
+
+/**
+ * Можно ли добавить элемент в эту папку.
+ *
+ * Отдельно от самой кнопки, потому что ответ нужен ДО отрисовки списка: пустая
+ * папка `IN` показывает не «папка пуста», а сразу кнопку, и решать это надо
+ * там, где выбирается ветка разметки.
+ *
+ * Кнопка есть, только если граф работает с папками: форма приезжает из
+ * `options/onSiteFolderCheckForm.json`, и нет файла — нет и кнопки, собирать не
+ * по чему (план §4.1). Форму не прочитали — кнопку всё равно показываем:
+ * объяснение, почему папки больше не собираются, человек получит в диалоге, а
+ * не в тишине.
+ */
+function useCanAddElement(target: UploadTarget): boolean {
+  const { elementForm, elementFormError, can } = useWorkspace()
+  if (target.folderPath !== "IN") return false
+  if (!can.createFolder) return false
+  return Boolean(elementForm || elementFormError)
+}
+
+/**
+ * «Новый элемент» — такой же ячейкой, как всё остальное в этой области.
+ *
+ * Вид плиткой — значит плитка, список — значит строка, колонки — строка
+ * колонки. Полоса во всю ширину внизу, какой кнопка была сначала, выпадала из
+ * ряда: она читалась как подпись к области, а не как ещё один элемент, который
+ * можно завести. Геометрия поэтому повторяет `FileCard` и `FileRow` — вплоть до
+ * скруглений и отступов, — а отличает кнопку только пунктир.
+ */
+function NewElementCell({
+  target,
+  shape,
+  size = "roomy",
+}: {
+  target: UploadTarget
+  shape: "row" | "card" | "column"
+  size?: Size
+}) {
+  const { t, openElementDialog } = useWorkspace()
+  const roomy = size === "roomy"
+
+  const frame =
+    "select-none border border-dashed border-foreground/20 text-left text-ws-3 transition-colors hover:border-foreground/40 hover:bg-foreground/[0.04] hover:text-ws-1"
+
+  if (shape === "column") {
+    return (
+      <button
+        type="button"
+        onClick={() => openElementDialog(null)}
+        className={cn(
+          "mb-0.5 flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-2",
+          frame,
+        )}
+      >
+        <Plus className="h-[18px] w-[18px] shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-[14px]">{t.elementNew}</span>
+      </button>
+    )
+  }
+
+  if (shape === "card") {
+    return (
+      <button
+        type="button"
+        onClick={() => openElementDialog(null)}
+        className={cn(
+          frame,
+          roomy
+            ? "flex items-center gap-3 rounded-2xl p-[18px]"
+            : "flex flex-col gap-2 rounded-[11px] p-3",
+        )}
+      >
+        <span
+          className={cn(
+            "flex shrink-0 items-center justify-center rounded-xl bg-foreground/[0.04]",
+            roomy ? "h-12 w-12" : "h-9 w-9",
+          )}
+        >
+          <Plus className={cn(roomy ? "h-[26px] w-[26px]" : "h-5 w-5")} />
+        </span>
+        <span className={cn("min-w-0 truncate", roomy ? "text-[16.5px]" : "text-[13px]")}>
+          {t.elementNew}
+        </span>
+      </button>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => openElementDialog(null)}
+      className={cn(
+        "flex w-full items-center",
+        frame,
+        roomy ? "gap-3.5 rounded-[14px] p-[13px]" : "gap-3 rounded-[10px] px-[11px] py-[9px]",
+      )}
+    >
+      {roomy ? (
+        <span className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-xl border border-dashed border-foreground/20">
+          <Plus className="h-6 w-6" />
+        </span>
+      ) : (
+        <Plus className="h-5 w-5 shrink-0" />
+      )}
+      <span className={cn("min-w-0 flex-1 truncate", roomy ? "text-[16.5px]" : "text-[13.5px]")}>
+        {t.elementNew}
+      </span>
+    </button>
+  )
+}
+
 function FileRow({
   file,
   size,
@@ -291,7 +450,7 @@ function FileRow({
       onDoubleClick={onPreview}
       onContextMenu={onContext}
       className={cn(
-        "flex w-full select-none items-center border text-left transition-opacity hover:bg-foreground/5",
+        "group flex w-full select-none items-center border text-left transition-opacity hover:bg-foreground/5",
         isCut(file.id) && "opacity-45",
         roomy
           ? "gap-3.5 rounded-[14px] p-[13px]"
@@ -342,6 +501,7 @@ function FileRow({
           {fileMeta(file, t, lang)}
         </span>
       </span>
+      <ElementEditMark file={file} />
       <InMark file={file} />
       {file.isFolder ? (
         <ChevronRight
@@ -434,6 +594,7 @@ function FileCard({
         </span>
       </span>
       <InMark file={file} className="absolute right-2 top-2" />
+      <ElementEditMark file={file} className="absolute right-2 bottom-2" />
     </button>
   )
 }
@@ -465,6 +626,7 @@ function FileColumn({
   const ws = useWorkspace()
   const { openMenu, menu, uploadProgress } = ws
   const drop = useDropZone(colTarget)
+  const canAddElement = useCanAddElement(colTarget)
 
   // Меню открыто на этой колонке — подсвечиваем, чтобы было видно,
   // где именно произойдёт действие.
@@ -484,7 +646,7 @@ function FileColumn({
       )}
     >
       <div className="h-full overflow-y-auto p-2">
-        {list.length === 0 ? (
+        {list.length === 0 && !canAddElement ? (
           <p className="px-2 py-4 text-[12px] text-ws-5">{emptyMessage}</p>
         ) : (
           list.map((f) => {
@@ -519,7 +681,7 @@ function FileColumn({
                   }
                 }}
                 className={cn(
-                  "mb-0.5 flex w-full select-none items-center gap-2.5 rounded-[7px] px-2.5 py-2 text-left transition-opacity hover:bg-foreground/5",
+                  "group mb-0.5 flex w-full select-none items-center gap-2.5 rounded-[7px] px-2.5 py-2 text-left transition-opacity hover:bg-foreground/5",
                   ws.isCut(f.id) && "opacity-45",
                   isMenuTarget
                     ? "bg-ws-accent/[0.18] text-ws-1 ring-1 ring-ws-accent/55"
@@ -530,6 +692,7 @@ function FileColumn({
               >
                 <Icon className={cn("h-[18px] w-[18px] shrink-0", fileIconClass(f))} />
                 <span className="min-w-0 flex-1 truncate text-[14px]">{f.name}</span>
+                <ElementEditMark file={f} />
                 <InMark file={f} />
                 {f.isFolder ? (
                   <ChevronRight className="h-4 w-4 shrink-0 text-ws-4" />
@@ -538,6 +701,9 @@ function FileColumn({
             )
           })
         )}
+        {canAddElement ? (
+          <NewElementCell target={colTarget} shape="column" size={size} />
+        ) : null}
       </div>
       {drop.active ? <DropHint target={colTarget} size={size} /> : null}
       {ringHere ? <UploadRing size={size} /> : null}
@@ -646,6 +812,7 @@ export function FileBrowser({
   const emptyMessage = !driveAvailable ? t.driveUnavailable : t.emptyFolder
 
   const drop = useDropZone(target)
+  const canAddElement = useCanAddElement(target)
   // Меню открыто в этой области — подсвечиваем, чтобы было видно,
   // где произойдёт действие. Правило одинаковое для всех видов.
   const menuHere = menu?.target?.folderPath === target.folderPath
@@ -727,7 +894,9 @@ export function FileBrowser({
           <div className="flex justify-center py-16 text-ws-4">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && !canAddElement ? (
+          /* Пустая папка `IN` со сборкой показывает не эту подпись, а саму
+             кнопку: действие объясняет себя лучше, чем текст про него. */
           <div className="flex min-h-[140px] flex-1 items-center justify-center px-6 text-center text-[12.5px] text-ws-5">
             {emptyMessage}
           </div>
@@ -751,6 +920,9 @@ export function FileBrowser({
                 onContext={(e) => openMenu("file", e, { file: f, target })}
               />
             ))}
+            {canAddElement ? (
+              <NewElementCell target={target} shape="card" size={size} />
+            ) : null}
           </div>
         ) : (
           <div
@@ -767,6 +939,9 @@ export function FileBrowser({
                 onContext={(e) => openMenu("file", e, { file: f, target })}
               />
             ))}
+            {canAddElement ? (
+              <NewElementCell target={target} shape="row" size={size} />
+            ) : null}
           </div>
         )}
       </div>
