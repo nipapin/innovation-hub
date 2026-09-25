@@ -313,7 +313,7 @@ Content-Type, который прислал браузер.
 | Модуль | Где применяется | Что разрешает |
 | --- | --- | --- |
 | `lib/s3-upload-policy.ts` | медиа витрины | 7 типов: jpeg, png, webp, gif, mp4, webm, quicktime. Лимит `ADMIN_UPLOAD_MAX_BYTES`, по умолчанию 250 МБ |
-| `lib/project-upload-policy.ts` | файлы проектов | те же + аудио, текст, markdown, csv, json, pdf, zip, `application/octet-stream` |
+| `lib/project-upload-policy.ts` | файлы проектов | те же + аудио (mpeg, wav, ogg, webm, mp4/m4a, aac, opus, flac), текст, markdown, csv, субтитры (`text/vtt`, `application/x-subrip`), json, pdf, zip, `application/octet-stream` |
 | `lib/public-upload-policy.ts` | вложения заявок | реэкспорт первого + свои лимиты: 25 МБ, до 5 файлов |
 
 `safeBaseFileName()` чистит имя: только буквы, цифры, `.`, `_`, `-`; схлопывает

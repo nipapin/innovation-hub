@@ -112,6 +112,24 @@ export function ElementTextEditor({
    */
   const [usedColors, setUsedColors] = useState<string[]>([])
 
+  /**
+   * Открыто нативное окно выбора цвета.
+   *
+   * Нужен, потому что это окно — не часть страницы: браузер рисует его средствами
+   * системы, и при его открытии документ теряет фокус. Радикс видит ровно то же,
+   * что при клике мимо попапа, и закрывает попап вместе с самим полем — выбрать
+   * цвет становится нечем.
+   *
+   * Отличаем одно от другого по `document.hasFocus()`: пока крутят нативное окно,
+   * фокуса у документа нет, а при настоящем клике мимо попапа — есть. Поэтому
+   * закрытие подавляется только на время выбора и обычное поведение остаётся.
+   */
+  const nativePickRef = useRef(false)
+
+  /** Уход наружу вызван открытым нативным окном, а не кликом мимо попапа. */
+  const isNativePicking = () =>
+    nativePickRef.current && typeof document !== "undefined" && !document.hasFocus()
+
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
 
@@ -196,11 +214,21 @@ export function ElementTextEditor({
     ещё не готов», и хук после него менял бы их порядок между рендерами.
   */
 
-  /** Поставить цвет, не запоминая его: так ведёт себя нативный выбор, пока его крутят. */
+  /**
+   * Поставить цвет, не запоминая его: так ведёт себя нативный выбор, пока его крутят.
+   *
+   * БЕЗ `.focus()`, в отличие от `pickColor`. Здесь команда идёт на каждое
+   * движение в нативном окне, а `.focus()` уводит фокус браузера в полотно —
+   * наружу от попапа, который лежит в портале. Радикс видит уход наружу и
+   * закрывает попап вместе с полем выбора, то есть каждая правка цвета убивала
+   * бы сам инструмент правки. Выделению фокус не нужен: оно хранится в состоянии
+   * редактора и переживает потерю фокуса, а вернуть каретку есть кому — это
+   * делает `pickColor`, когда выбор завершают.
+   */
   const applyColor = (raw: string) => {
     const color = normalizeColor(raw)
     if (!color) return
-    editor.chain().focus().setMark(MARK_COLOR, { color }).run()
+    editor.chain().setMark(MARK_COLOR, { color }).run()
   }
 
   /** Запомнить цвет в ряду «уже использованные» — по окончании выбора. */
@@ -294,7 +322,15 @@ export function ElementTextEditor({
           onClick={() => editor.chain().focus().toggleItalic().run()}
         />
 
-        <Popover open={colorOpen} onOpenChange={setColorOpen}>
+        <Popover
+          open={colorOpen}
+          onOpenChange={(next) => {
+            // Последний рубеж: любой путь к закрытию во время нативного выбора
+            // игнорируем, каким бы событием радикс его ни вызвал.
+            if (!next && isNativePicking()) return
+            setColorOpen(next)
+          }}
+        >
           <PopoverTrigger asChild>
             <button
               type="button"
@@ -307,6 +343,12 @@ export function ElementTextEditor({
           </PopoverTrigger>
           <PopoverContent
             align="start"
+            onInteractOutside={(e) => {
+              if (isNativePicking()) e.preventDefault()
+            }}
+            onFocusOutside={(e) => {
+              if (isNativePicking()) e.preventDefault()
+            }}
             className="w-[232px] border-border/60 bg-ws-raised p-2"
           >
             {usedColors.length > 0 ? (
@@ -339,8 +381,14 @@ export function ElementTextEditor({
                 value={activeColor}
                 title={t.elementTextColorPick}
                 aria-label={t.elementTextColorPick}
+                onPointerDown={() => {
+                  nativePickRef.current = true
+                }}
                 onChange={(e) => applyColor(e.target.value)}
-                onBlur={(e) => rememberColor(e.target.value)}
+                onBlur={(e) => {
+                  rememberColor(e.target.value)
+                  nativePickRef.current = false
+                }}
                 className="h-7 w-9 shrink-0 cursor-pointer rounded border border-border/60 bg-transparent"
               />
               <Input

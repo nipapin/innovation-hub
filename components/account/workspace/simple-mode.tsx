@@ -567,7 +567,10 @@ export function AllProjectsPage() {
   const isTrash = projectTab === "trash"
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    // Шапка уезжает вместе со списком, а не стоит закреплённой: заголовок с
+    // подписью и поиском занимает много высоты, и держать его на виду всё время
+    // прокрутки незачем — он нужен при входе на страницу, а дальше мешает.
+    <div className="scrollbar-elegant flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="flex-none border-b border-foreground/[0.07] px-6 pb-6 pt-8 md:px-12 md:pt-11">
         <div className="mx-auto max-w-[1120px]">
           <div className="flex items-center gap-3">
@@ -616,7 +619,7 @@ export function AllProjectsPage() {
         </div>
       </div>
 
-      <div className="scrollbar-elegant min-h-0 flex-1 overflow-y-auto px-6 py-7 md:px-12">
+      <div className="flex-none px-6 py-7 md:px-12">
         <div className="mx-auto flex max-w-[1120px] flex-col gap-6">
           {isTrash ? (
             <p className="max-w-[620px] text-[13.5px] leading-relaxed text-ws-4">

@@ -25,6 +25,7 @@ export const CABINET_SOURCE: WorkspaceSource = {
     `/api/storage/v1/tree?projectId=${encodeURIComponent(projectId)}`,
   projectUrl: (projectId) => `/api/projects/${projectId}`,
   folderUrl: (projectId) => `/api/projects/${projectId}/drive`,
+  foldersBatchUrl: () => "/api/storage/v1/mkdir",
   fileUrl: (projectId, fileId) =>
     `/api/projects/${projectId}/drive/files/${fileId}`,
   uploadUrl: (projectId, params) =>

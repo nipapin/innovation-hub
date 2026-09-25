@@ -8,6 +8,8 @@ import { toast } from "sonner"
 import { HelpPageButton } from "@/components/help/help-page-button"
 import { useI18n } from "@/components/account/i18n"
 import {
+  companyToolsInArea,
+  findCompanyArea,
   isCompanyToolActive,
   visibleCompanyTools,
 } from "@/components/company/nav-config"
@@ -69,7 +71,15 @@ export function CompanyShell({
   const pathname = usePathname() ?? ""
   const router = useRouter()
   const [exiting, setExiting] = useState(false)
-  const tools = visibleCompanyTools(companyRole, capabilities, sections)
+  /**
+   * Колонка показывает разделы ТОЙ области, где человек сейчас, — как вторая
+   * колонка админки. На главной консоли области ещё нет, и там показываются все
+   * доступные разделы: это и есть её содержимое.
+   */
+  const area = findCompanyArea(pathname)
+  const tools = area
+    ? companyToolsInArea(area.key, companyRole, capabilities, sections)
+    : visibleCompanyTools(companyRole, capabilities, sections)
 
   const switchCompany = async (companyId: string) => {
     await fetch("/api/company/scope", {

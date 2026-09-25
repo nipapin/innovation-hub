@@ -1,5 +1,8 @@
 import {
+  Captions,
+  FileJson,
   FileText,
+  FileType,
   Folder,
   Image as ImageIcon,
   Music,
@@ -9,6 +12,7 @@ import {
 
 import type { Dictionary } from "@/components/account/i18n"
 import { TRASH_RETENTION_DAYS } from "@/lib/storage/trash-policy"
+import { previewKind } from "./preview-kind"
 import type { DriveFile, Project, ProjectGift } from "./types"
 
 export { TRASH_RETENTION_DAYS }
@@ -105,23 +109,53 @@ export function flattenTree(items: DriveFile[]): FlatEntry[] {
   return out
 }
 
+/**
+ * Иконка и её цвет считаются по тому же виду файла, что и само превью
+ * (`preview-kind.ts`), а не по префиксу MIME.
+ *
+ * Иначе список и превью расходились бы ровно там, где это заметнее всего:
+ * у субтитров тип теряется при загрузке, и `.srt` с общей иконкой «документ»
+ * стоял бы рядом с превью, которое показывает разобранные реплики.
+ */
 export function fileIcon(f: DriveFile): LucideIcon {
   if (f.isFolder) return Folder
-  const ct = f.mimeType
-  if (ct.startsWith("image/")) return ImageIcon
-  if (ct.startsWith("video/")) return Video
-  if (ct.startsWith("audio/")) return Music
-  return FileText
+  switch (previewKind(f)) {
+    case "image":
+      return ImageIcon
+    case "video":
+      return Video
+    case "audio":
+      return Music
+    case "subtitles":
+      return Captions
+    case "json":
+      return FileJson
+    case "pdf":
+      return FileType
+    default:
+      return FileText
+  }
 }
 
 /** Цвет иконки по типу файла — только токены, см. docs/UI_TOKENS.md. */
 export function fileIconClass(f: DriveFile) {
   if (f.isFolder) return "text-ws-2"
-  const ct = f.mimeType
-  if (ct.startsWith("image/")) return "text-ws-out"
-  if (ct.startsWith("video/")) return "text-ws-accent"
-  if (ct.startsWith("audio/")) return "text-warning"
-  return "text-ws-3"
+  switch (previewKind(f)) {
+    case "image":
+      return "text-ws-out"
+    case "video":
+      return "text-ws-accent"
+    case "audio":
+      return "text-warning"
+    case "subtitles":
+      return "text-chart-2"
+    case "json":
+      return "text-chart-3"
+    case "pdf":
+      return "text-chart-5"
+    default:
+      return "text-ws-3"
+  }
 }
 
 export function folderSize(f: DriveFile): number {

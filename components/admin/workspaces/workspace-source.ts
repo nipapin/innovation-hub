@@ -74,6 +74,9 @@ export function createWorkspaceSource({
     projectUrl: (projectId) => `/api/admin/workspaces/projects/${projectId}`,
     folderUrl: (projectId) =>
       `/api/admin/workspaces/projects/${projectId}/drive`,
+    // Пачка папок — общим v1-роутом, как курсор дерева и архив: тела здесь
+    // наши, а не кабинетные, и переходник не нужен.
+    foldersBatchUrl: () => "/api/storage/v1/mkdir",
     fileUrl: (projectId, fileId) =>
       `/api/admin/workspaces/projects/${projectId}/files/${encodeURIComponent(fileId)}`,
     // Байты идут мимо Next, как в кабинете: presign → PUT в R2 → notify.

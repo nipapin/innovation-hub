@@ -76,6 +76,13 @@ export function ElementDialog() {
   const [textLoading, setTextLoading] = useState(false)
   /** Структуру заводим один раз на открытие, а не на каждое перечитывание дерева. */
   const structureRef = useRef<string | null>(null)
+  /**
+   * Имя, которое папка получит, когда её заведут. Пока она не создана, это
+   * единственное, что от элемента существует.
+   */
+  const [plannedName, setPlannedName] = useState<string | null>(null)
+  /** Обещание создания: не даёт двум одновременным заливкам завести две папки. */
+  const creatingRef = useRef<Promise<string> | null>(null)
 
   const inFolder = ws.inFolder
   /** Узел папки элемента в свежем дереве: он пересоздаётся на каждое перечитывание. */
@@ -90,70 +97,99 @@ export function ElementDialog() {
   )
 
   const refresh = useCallback(async () => {
-    ws.refreshDrive()
+    // С `await`: перенумерация и удаление строк перерисовывают форму из списка
+    // файлов, и без ожидания она успевала бы отрисоваться по старому списку.
+    await ws.refreshDrive()
   }, [ws])
 
-  // Открытие: либо правим существующую папку, либо заводим новую.
+  // Открытие: либо правим существующую папку, либо придумываем имя для новой.
   useEffect(() => {
     if (!open) {
       setFolderName(null)
+      setPlannedName(null)
       setExtraSlots({})
       setAckFailed(false)
       setText(null)
       setRenaming(false)
       structureRef.current = null
+      creatingRef.current = null
       return
     }
     if (elementTarget?.folder) {
       setFolderName(elementTarget.folder.name)
       return
     }
-    if (!elementForm || !ws.selectedId || folderName) return
+    if (!elementForm || plannedName) return
 
     /**
-     * Новая папка заводится сразу, а не по кнопке «сохранить»: слоты кладут
-     * файлы в хранилище по мере того, как их приносят, и класть их некуда,
-     * пока папки нет. Дефис в имени держит инструмент — до «Запустить» обе
-     * линии сборки такую папку пропускают.
+     * Имя придумываем сразу, а ПАПКУ НЕ ЗАВОДИМ.
+     *
+     * Открыть окно и передумать — обычное дело, и в `IN` не должно оставаться
+     * пустых папок, которых человек не создавал осознанно: обе линии сборки их
+     * пропускают, но глаза они мозолят, и удалять их приходится руками.
+     * Поэтому до первого файла существует только имя в шапке — его можно
+     * менять, — а папка появляется в хранилище с первым же действием,
+     * которое что-то в неё кладёт (`ensureFolder`).
      */
-    const taken = (inFolder?.children ?? []).map((child) => child.name)
     const base = applyNameMasks(nameTemplateOf(elementForm))
-    const name = freeElementName(taken, elementFolderName(base || t.elementTitleNew))
-
-    setBusy(true)
-    void (async () => {
-      try {
-        const res = await fetch(ws.source.folderUrl(ws.selectedId!), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, folderPath: "IN" }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          toast.error(data.message ?? "Failed")
-          closeElementDialog()
-          return
-        }
-        setFolderName(name)
-        await refresh()
-      } finally {
-        setBusy(false)
-      }
-    })()
+    setPlannedName(elementFolderName(base || t.elementTitleNew))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, elementTarget, elementForm])
 
+  /**
+   * Завести папку элемента, если её ещё нет.
+   *
+   * Свободное имя подбирается ЗДЕСЬ, а не при открытии: между открытием окна и
+   * первым файлом в `IN` могла появиться папка с тем же именем — шаблон даёт
+   * одинаковые имена внутри минуты.
+   *
+   * Обещание держится в ref, чтобы два слота, начатые разом, не завели две
+   * папки: второй дождётся того же запроса, что и первый.
+   */
+  const ensureFolder = useCallback(async (): Promise<string> => {
+    if (folderName) return folderName
+    if (creatingRef.current) return creatingRef.current
+    if (!ws.selectedId) throw new Error("No project selected")
+
+    const projectId = ws.selectedId
+    const taken = (inFolder?.children ?? []).map((child) => child.name)
+    const name = freeElementName(
+      taken,
+      plannedName ?? elementFolderName(t.elementTitleNew),
+    )
+
+    const creating = (async () => {
+      const res = await fetch(ws.source.folderUrl(projectId), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, folderPath: "IN" }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        creatingRef.current = null
+        throw new Error(data.message ?? "Failed")
+      }
+      setFolderName(name)
+      setPlannedName(name)
+      return name
+    })()
+
+    creatingRef.current = creating
+    return creating
+  }, [folderName, plannedName, inFolder, ws.selectedId, ws.source, t])
+
   const io = useMemo(
     () =>
-      ws.selectedId && folderName
+      ws.selectedId
         ? createElementIO({
             projectId: ws.selectedId,
-            folderPath: `IN/${folderName}`,
+            ensureFolderPath: async () => `IN/${await ensureFolder()}`,
             fileUrl: ws.source.fileUrl,
             folderUrl: ws.source.folderUrl,
+            foldersBatchUrl: ws.source.foldersBatchUrl,
           })
         : null,
-    [ws.selectedId, folderName, ws.source],
+    [ws.selectedId, ws.source, ensureFolder],
   )
 
   /**
@@ -174,11 +210,10 @@ export function ElementDialog() {
     setBusy(true)
     void (async () => {
       try {
-        // По одной и по порядку: родителя надо завести раньше ребёнка, иначе
-        // второй mkdir уйдёт в несуществующий путь.
-        for (const item of missing) {
-          await io.makeFolder(item)
-        }
+        // Одной пачкой и в том же порядке: родителя надо завести раньше
+        // ребёнка. Раньше на каждую папку уходил свой сетевой круг, и окно
+        // сборки открывалось дольше, чем читало дерево.
+        await io.makeFolders(missing)
         await refresh()
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed")
@@ -250,9 +285,16 @@ export function ElementDialog() {
   const commitName = useCallback(async () => {
     setRenaming(false)
     const next = nameDraft.trim()
-    if (!folder || !ws.selectedId || !next || next === elementDisplayName(folder.name)) {
+    if (!next) return
+
+    // Папки ещё нет — меняем только имя, которое она получит при создании.
+    // Переименовывать нечего, и ходить за этим в сеть незачем.
+    if (!folder) {
+      setPlannedName(elementFolderName(next))
       return
     }
+
+    if (!ws.selectedId || next === elementDisplayName(folder.name)) return
     const taken = (inFolder?.children ?? [])
       .filter((child) => child.id !== folder.id)
       .map((child) => child.name)
@@ -310,7 +352,9 @@ export function ElementDialog() {
     }
   }, [folder, ws.selectedId, t, closeElementDialog, refresh])
 
-  const title = folder ? elementDisplayName(folder.name) : t.elementTitleNew
+  /** В шапке — имя папки, а пока её нет, то имя, которое она получит. */
+  const title =
+    elementDisplayName(folder?.name ?? plannedName ?? "") || t.elementTitleNew
 
   /** Отказ открыться: чинить это надо в графе или обновлением программы. */
   const formError = elementFormError
@@ -351,8 +395,11 @@ export function ElementDialog() {
                 <DialogTitle
                   title={t.elementNameEdit}
                   onDoubleClick={() => {
-                    if (!folder) return
-                    setNameDraft(elementDisplayName(folder.name))
+                    // Имя правится и до создания папки: пока её нет, правится
+                    // то имя, которое она получит.
+                    setNameDraft(
+                      elementDisplayName(folder?.name ?? plannedName ?? ""),
+                    )
                     setRenaming(true)
                   }}
                   className="min-w-0 flex-1 cursor-text truncate text-[16px] font-semibold text-ws-1 decoration-foreground/30 hover:underline hover:decoration-dotted hover:underline-offset-4"

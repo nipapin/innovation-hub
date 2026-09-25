@@ -308,6 +308,119 @@ export async function writeFolderCreate(input: {
 }
 
 /**
+ * Завести несколько папок одной транзакцией.
+ *
+ * Зачем: структура элемента — это несколько вложенных папок сразу, и заводились
+ * они по одной отдельными запросами. Дорого там не SQL, а то, что на каждую
+ * папку приходился свой сетевой круг и своя транзакция; на структуре из десятка
+ * папок окно сборки открывалось заметно дольше, чем читало дерево.
+ *
+ * Порядок items важен и не сортируется здесь: родителя надо завести раньше
+ * ребёнка, и знает об этом вызывающий (см. `missingFolders` в
+ * lib/tools/element/slots.ts — он уже отдаёт сверху вниз).
+ *
+ * Транзакция одна на всю пачку: либо структура появляется целиком, либо не
+ * появляется вовсе. Наполовину заведённая структура хуже незаведённой — по ней
+ * не видно, докуда дошло, а повтор упёрся бы в занятые имена.
+ */
+export async function writeFolderCreateBatch(input: {
+  storageOwnerId: string
+  projectId: string
+  items: readonly { folderPath: string; name: string }[]
+  eventId?: string
+  actor?: StorageActor | null
+}): Promise<ProjectFileRecord[]> {
+  if (input.items.length === 0) return []
+
+  const planned = input.items.map((item) => {
+    const name = validateLogicalName(item.name)
+    const folderPath = item.folderPath.replace(/^\/+|\/+$/g, "")
+    assertLogicalPath(folderPath, name)
+    return { name, folderPath }
+  })
+
+  /*
+    Дубли внутри самой пачки ловим до транзакции: `assertNameFree` их не увидит,
+    потому что строки соседа в каталоге ещё нет — она появится на следующем шаге
+    того же цикла. Без этой проверки пачка с двумя одинаковыми именами прошла бы
+    и оставила в каталоге две неразличимые папки.
+  */
+  const seen = new Set<string>()
+  for (const item of planned) {
+    const key = `${item.folderPath.toLowerCase()}/${item.name.toLowerCase()}`
+    if (seen.has(key)) {
+      throw new StorageWriteError(
+        `Two folders in the batch would take the name "${item.name}".`,
+        409,
+      )
+    }
+    seen.add(key)
+  }
+
+  return withTransaction(async (client) => {
+    const created: ProjectFileRecord[] = []
+
+    for (const [index, item] of planned.entries()) {
+      await assertNameFree(client, {
+        projectId: input.projectId,
+        folderPath: item.folderPath,
+        name: item.name,
+      })
+
+      const id = randomUUID()
+      const key = logicalKeyForFile({
+        storageOwnerId: input.storageOwnerId,
+        projectId: input.projectId,
+        folderPath: item.folderPath,
+        name: item.name,
+      })
+
+      const result = await client.query<ProjectFileRecord>(
+        `INSERT INTO project_files (
+            id, project_id, folder_path, name, is_folder, s3_key, size_bytes,
+            content_type, uploaded_by
+         )
+         VALUES ($1, $2, $3, $4, TRUE, NULL, 0, '', $5)
+         RETURNING ${FILE_FIELDS}`,
+        [
+          id,
+          input.projectId,
+          item.folderPath,
+          item.name,
+          uploaderIdOf(input.actor),
+        ],
+      )
+      const file = result.rows[0]!
+
+      // Событие на папку, а не на пачку: применять их клиент будет поштучно,
+      // как и у пакетного переименования.
+      const seq = await journal(client, {
+        projectId: input.projectId,
+        key,
+        op: "put",
+        size: 0,
+        eventId: input.eventId ? `${input.eventId}:mkdir:${index}` : null,
+        actor: input.actor,
+        payload: {
+          fileId: file.id,
+          name: item.name,
+          folderPath: item.folderPath,
+          isFolder: true,
+        },
+      })
+      await client.query(`UPDATE project_files SET last_seq = $2 WHERE id = $1`, [
+        file.id,
+        seq,
+      ])
+
+      created.push(file)
+    }
+
+    return created
+  })
+}
+
+/**
  * Ensure every segment of `folderPath` exists (a/b/c). Returns the deepest folder row.
  * Creates missing parents; returns the last existing/created folder, or null for root.
  */
@@ -854,7 +967,7 @@ export async function writeRenameBatch(input: {
     const found = await client.query<ProjectFileRecord>(
       `SELECT ${FILE_FIELDS}
          FROM project_files
-        WHERE project_id = $1 AND deleted_at IS NULL AND id = ANY($2::uuid[])`,
+        WHERE project_id = $1 AND deleted_at IS NULL AND id = ANY($2::text[])`,
       [input.projectId, input.items.map((item) => item.fileId)],
     )
     const byId = new Map(found.rows.map((row) => [row.id, row]))
@@ -936,7 +1049,11 @@ export async function writeRenameBatch(input: {
             AND lower(folder_path) = lower($2)
             AND lower(name) = lower($3)
             AND deleted_at IS NULL
-            AND NOT (id = ANY($4::uuid[]))
+            -- Приведение к text[], а не к uuid[]: колонка id объявлена TEXT, и
+            -- Postgres отказывается сравнивать text с uuid (operator does not
+            -- exist). Прежний каст делал пакетное переименование нерабочим
+            -- всегда, то есть любую перестановку слотов в папке элемента.
+            AND NOT (id = ANY($4::text[]))
           LIMIT 1`,
         [input.projectId, plan.folderPath, plan.name, [...seenIds]],
       )

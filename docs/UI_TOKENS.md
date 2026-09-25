@@ -127,8 +127,10 @@
 | `--chart-5` | `344 88% 63%` | `text-chart-5` | розовый |
 
 Соответствие для иконок типов файлов задано в `components/account/workspace/format.ts`
-(`fileIconClass`): папка → `text-ws-2`, изображение → `text-ws-out`, видео → `text-ws-accent`,
-аудио → `text-warning`, прочее → `text-ws-3`.
+(`fileIconClass`), а сам вид файла считает `preview-kind.ts`: папка → `text-ws-2`,
+изображение → `text-ws-out`, видео → `text-ws-accent`, аудио → `text-warning`,
+субтитры → `text-chart-2`, JSON → `text-chart-3`, PDF → `text-chart-5`,
+прочее → `text-ws-3`.
 
 ### 2.7. Как получать оттенки
 

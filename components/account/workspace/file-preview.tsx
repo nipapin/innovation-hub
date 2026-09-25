@@ -13,18 +13,23 @@ import { tf } from "@/components/account/i18n"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { fileIcon, fileIconClass, fmtDate, fmtSize } from "./format"
+import { isTextual, previewKind } from "./preview-kind"
+import { TextPreview } from "./text-preview"
 import type { DriveFile } from "./types"
 import { VideoPreview } from "./video-preview"
 import { useWorkspace } from "./workspace-context"
 
 /**
- * Само превью: картинка, видео, аудио или иконка типа.
+ * Само превью: картинка, видео, аудио, PDF, текст или иконка типа.
  *
  * Размер целиком задаёт контейнер: `h-full` тянет медиа на всю его высоту (в том
  * числе увеличивает мелкое), ширина считается из пропорции и упирается в
  * `max-w-full`, а `object-contain` не даёт содержимому выйти за границы. Рамки
  * фиксированной пропорции здесь нет намеренно: в прежней правой колонке рамка
  * 16:10 превращала вертикальное видео в спичку между двух чёрных полей.
+ *
+ * Вид файла считает `preview-kind.ts`, а не префикс MIME: у субтитров тип
+ * теряется при загрузке, и по нему их не отличить от архива.
  */
 function PreviewMedia({
   file,
@@ -37,12 +42,31 @@ function PreviewMedia({
 }) {
   const { t } = useWorkspace()
   const Icon = fileIcon(file)
-  const kind = file.mimeType.split("/")[0]
+  const kind = previewKind(file)
 
   // `inline=1` переводит роут файла на редирект к хранилищу вместо отдачи тела
   // через Next. Без этого медиа приходит одним куском, без Range: видео грузится
   // целиком прежде чем показать первый кадр и не перематывается вперёд.
   const mediaUrl = `${url}?inline=1`
+
+  if (isTextual(kind)) {
+    return (
+      <TextPreview file={file} url={url} kind={kind} className={className} />
+    )
+  }
+
+  // Встроенный просмотрщик браузера. Отдельного плеера здесь нет намеренно:
+  // рисовать страницы самим — это внешняя библиотека на полмегабайта ради того,
+  // что браузер умеет сам.
+  if (kind === "pdf") {
+    return (
+      <iframe
+        src={mediaUrl}
+        title={file.name}
+        className={cn("h-full w-full border-0 bg-ws-well", className)}
+      />
+    )
+  }
 
   if (kind === "image") {
     return (

@@ -16,9 +16,19 @@ const PROJECT_ALLOWED = new Set([
   "audio/x-wav",
   "audio/ogg",
   "audio/webm",
+  // Браузер играет их сам, без библиотек, поэтому и превью у них полноценное.
+  "audio/mp4",
+  "audio/aac",
+  "audio/x-m4a",
+  "audio/opus",
+  "audio/flac",
   "text/plain",
   "text/markdown",
   "text/csv",
+  // Субтитры. Без этих двух строк `.srt` и `.vtt` приезжают как
+  // `application/octet-stream`, и превью не может отличить их от архива.
+  "text/vtt",
+  "application/x-subrip",
   "application/json",
   "application/pdf",
   "application/zip",
@@ -47,8 +57,18 @@ export function resolveProjectContentType(file: {
   if (lower.endsWith(".mov")) return "video/quicktime"
   if (lower.endsWith(".mp3")) return "audio/mpeg"
   if (lower.endsWith(".wav")) return "audio/wav"
-  if (lower.endsWith(".ogg")) return "audio/ogg"
-  if (lower.endsWith(".txt") || lower.endsWith(".md")) return "text/plain"
+  if (lower.endsWith(".ogg") || lower.endsWith(".oga")) return "audio/ogg"
+  if (lower.endsWith(".m4a")) return "audio/x-m4a"
+  if (lower.endsWith(".aac")) return "audio/aac"
+  if (lower.endsWith(".opus")) return "audio/opus"
+  if (lower.endsWith(".flac")) return "audio/flac"
+  if (lower.endsWith(".txt")) return "text/plain"
+  // Markdown своим типом, а не `text/plain`: по нему превью решает, разбирать
+  // разметку или показать буквами.
+  if (lower.endsWith(".md") || lower.endsWith(".markdown"))
+    return "text/markdown"
+  if (lower.endsWith(".vtt")) return "text/vtt"
+  if (lower.endsWith(".srt")) return "application/x-subrip"
   if (lower.endsWith(".csv")) return "text/csv"
   if (lower.endsWith(".json")) return "application/json"
   if (lower.endsWith(".pdf")) return "application/pdf"

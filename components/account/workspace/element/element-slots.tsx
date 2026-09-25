@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { Plus, Square, X } from "lucide-react"
+import { Eye, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { tf, useI18n, type Dictionary } from "@/components/account/i18n"
@@ -25,6 +25,7 @@ import {
   mimeFits,
   type SiteForm,
 } from "@/lib/tools/element/site-form"
+import { slotFileName } from "@/lib/tools/element/names"
 import { canAdd, canRemove, subfolderName, type Group, type Slot } from "@/lib/tools/element/slots"
 import { cn } from "@/lib/utils"
 import type { DriveFile } from "../types"
@@ -34,10 +35,16 @@ import { nodeAtPath } from "./tree"
 /**
  * Форма слотов: строки требований разворачиваются в поля, а поля — в файлы.
  *
- * Строка устроена так же, как в макете: подчёркнутое поле с названием, круглая
- * кнопка просмотра, квадратная — убрать, и «выбрать файл». Пока файл не
+ * Строка устроена так: подчёркнутое поле с названием, глаз — посмотреть,
+ * корзина — убрать строку вместе с файлом, и «выбрать файл». Пока файл не
  * принесли, в поле стоит ТИП («видео»), потому что это и есть вопрос к
  * человеку — что сюда положить; как только файл лёг, там его имя.
+ *
+ * Отдельной кнопки «убрать файл» нет намеренно. Слот — это место, а не
+ * содержимое: новый файл встаёт поверх старого (см. `accept`), так что пустой
+ * слот не нужен никому, кроме как перед удалением самой строки. Две кнопки с
+ * почти одинаковым значком стояли рядом и различались только тем, исчезнет
+ * строка или нет, — угадать это по виду было нельзя.
  *
  * Компонент рекурсивный, потому что рекурсивна сама модель: подпапка содержит
  * те же группы, что и корень.
@@ -79,6 +86,7 @@ function FileSlot({
   onChanged,
   onPreview,
   onOpenText,
+  onRemoveRow,
 }: {
   io: ElementIO
   form: SiteForm
@@ -92,6 +100,8 @@ function FileSlot({
   onChanged: () => Promise<void>
   onPreview: (node: DriveFile) => void
   onOpenText: () => void
+  /** Убрать строку целиком; null — строку требует граф, и убирать её нельзя. */
+  onRemoveRow: (() => void) | null
 }) {
   const { t } = useI18n()
   const [over, setOver] = useState<null | "ok" | "bad">(null)
@@ -116,14 +126,29 @@ function FileSlot({
     onBusy(true)
     setPercent(0)
     try {
+      const previous = slot.file?.name ?? null
       await io.putFile({
         dir,
         index: slot.index,
         label: slot.label,
         file,
-        replaces: slot.file?.name ?? null,
+        replaces: previous,
         onProgress: setPercent,
       })
+      /*
+        Убрать предыдущий файл, если новый лёг под ДРУГИМ именем.
+
+        Имя слота несёт в себе исходное имя файла, поэтому замена совпадает по
+        имени только тогда, когда принесли файл, названный так же, — лишь в этом
+        случае заливка идёт перезаписью поверх (`overwrite` в element-io.ts).
+        Во всех остальных в папке остаются оба, и старый уезжает в «лишние»:
+        нода посчитает его, и условие состава не сойдётся.
+
+        Порядок важен: сначала удачная заливка, потом удаление. Наоборот слот
+        остался бы пустым, если заливка упадёт.
+      */
+      const fresh = slotFileName(slot.index, slot.label, file.name)
+      if (node && previous && previous !== fresh) await io.remove(node.id)
       await onChanged()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Upload failed")
@@ -159,19 +184,6 @@ function FileSlot({
       const file = e.dataTransfer.files[0]
       if (file) void accept(file)
     },
-  }
-
-  const remove = () => {
-    if (!node) return
-    onBusy(true)
-    void (async () => {
-      try {
-        await io.remove(node.id)
-        await onChanged()
-      } finally {
-        onBusy(false)
-      }
-    })()
   }
 
   return (
@@ -211,29 +223,35 @@ function FileSlot({
         ) : null}
       </div>
 
-      {/* Просмотр — круглая кнопка, как в макете. */}
+      {/* Посмотреть. */}
       <button
         type="button"
         title={t.elementPreview}
         aria-label={t.elementPreview}
         disabled={!node}
         onClick={() => node && onPreview(node)}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-foreground/20 text-ws-4 hover:border-foreground/40 hover:text-ws-1 disabled:opacity-30"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border border-foreground/20 text-ws-4 hover:border-foreground/40 hover:text-ws-1 disabled:opacity-30"
       >
-        <span className="h-2 w-2 rounded-full bg-current" />
+        <Eye className="h-3.5 w-3.5" />
       </button>
 
-      {/* Убрать файл — квадратная. Слот при этом остаётся: его требует граф. */}
-      <button
-        type="button"
-        title={t.elementRemoveFile}
-        aria-label={t.elementRemoveFile}
-        disabled={!node || busy}
-        onClick={remove}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-foreground/20 text-ws-4 hover:border-destructive hover:text-destructive disabled:opacity-30"
-      >
-        <X className="h-3 w-3" />
-      </button>
+      {/* Убрать строку вместе с файлом. Место кнопки занято всегда, даже когда
+          убирать нельзя: иначе «Выбрать» у соседних строк стояло бы на разном
+          отступе и колонка кнопок разъезжалась бы. */}
+      {onRemoveRow ? (
+        <button
+          type="button"
+          title={t.elementRemoveSlot}
+          aria-label={t.elementRemoveSlot}
+          disabled={busy}
+          onClick={onRemoveRow}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border border-foreground/20 text-ws-4 hover:border-destructive hover:text-destructive disabled:opacity-30"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ) : (
+        <span aria-hidden className="h-6 w-6 shrink-0" />
+      )}
 
       {isText ? (
         <button
@@ -371,6 +389,12 @@ export function ElementGroups({
       try {
         await io.reorder({ nodes: ordered, labels: groups.map((g) => g.row.label) })
         await onChanged()
+      } catch (error) {
+        // Без этой ветки отказ уходил в никуда: строка возвращалась на место
+        // молча, и перетаскивание выглядело как неработающее, хотя отказ был
+        // осмысленный — например занятое имя.
+        toast.error(error instanceof Error ? error.message : t.elementSlotBadType)
+        await onChanged()
       } finally {
         onBusy(false)
       }
@@ -418,10 +442,61 @@ export function ElementGroups({
             >
               <SortableContext items={ids} strategy={verticalListSortingStrategy}>
                 <div className="flex flex-col gap-2">
-                  {slots.map((slot, position) => {
+                  {slots.map((slot) => {
                     const node = nodeOf(slot)
                     const rowId = node?.id ?? `empty-${group.row.id}-${slot.index}`
-                    const last = position === slots.length - 1
+
+                    /*
+                      Убрать можно ЛЮБУЮ строку сверх объявленного минимума, а не
+                      только последнюю: номер — это позиция, а не имя файла, и
+                      оставшиеся просто сдвигаются. Ограничение «только
+                      последняя» берегло от перенумерации то, что и так
+                      перенумеровывается при каждом перетаскивании.
+
+                      Файл уходит вместе со строкой: слот — это место, и пустых
+                      мест сверх минимума форма не держит. Счётчик добавленных
+                      вручную строк уменьшается в любом случае — без этого на
+                      месте удалённого файла осталась бы пустая строка, которую
+                      человек не заводил.
+                    */
+                    const removeRow = removable
+                      ? () => {
+                          if (!node) {
+                            onRemoveSlot(key)
+                            return
+                          }
+                          onBusy(true)
+                          void (async () => {
+                            try {
+                              await io.remove(node.id)
+                              // Закрыть дыру в номерах: после удаления второго из
+                              // трёх третий обязан стать вторым, иначе следующее
+                              // добавление попросится в занятое имя.
+                              const rest = slots
+                                .map(nodeOf)
+                                .filter(
+                                  (item): item is DriveFile =>
+                                    item !== null && item.id !== node.id,
+                                )
+                              if (rest.length > 0) {
+                                await io.reorder({
+                                  nodes: rest,
+                                  labels: groups.map((g) => g.row.label),
+                                })
+                              }
+                              onRemoveSlot(key)
+                              await onChanged()
+                            } catch (error) {
+                              toast.error(
+                                error instanceof Error ? error.message : t.elementRemoveSlot,
+                              )
+                              await onChanged()
+                            } finally {
+                              onBusy(false)
+                            }
+                          })()
+                        }
+                      : null
 
                     return (
                       <SortableRow
@@ -473,37 +548,24 @@ export function ElementGroups({
                             onChanged={onChanged}
                             onPreview={onPreview}
                             onOpenText={() => onOpenText({ dir, slot, node })}
+                            onRemoveRow={removeRow}
                           />
                         )}
 
-                        {/* Убрать сам слот — только сверх объявленного минимума
-                            и только у последнего: удаление среднего сдвинуло бы
-                            номера остальных, то есть та же перенумерация, но
-                            неочевидная для того, кто её вызвал. */}
-                        {removable && last ? (
+                        {/* У подпапки кнопка снаружи: внутри неё своя форма со
+                            своими строками, и корзина при каждой из них не
+                            сказала бы, что убирают — вложенный файл или всю
+                            подпапку. */}
+                        {isFolder && removeRow ? (
                           <button
                             type="button"
                             title={t.elementRemoveSlot}
                             aria-label={t.elementRemoveSlot}
                             disabled={busy}
-                            onClick={() => {
-                              if (node) {
-                                onBusy(true)
-                                void (async () => {
-                                  try {
-                                    await io.remove(node.id)
-                                    await onChanged()
-                                  } finally {
-                                    onBusy(false)
-                                  }
-                                })()
-                                return
-                              }
-                              onRemoveSlot(key)
-                            }}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] text-ws-4 hover:text-destructive"
+                            onClick={removeRow}
+                            className="flex h-6 w-6 shrink-0 items-center justify-center self-start rounded-[6px] border border-foreground/20 text-ws-4 hover:border-destructive hover:text-destructive"
                           >
-                            <Square className="h-3.5 w-3.5" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         ) : null}
                       </SortableRow>

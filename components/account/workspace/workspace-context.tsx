@@ -196,7 +196,12 @@ type WorkspaceValue = {
   rootFiles: DriveFile[]
   driveAvailable: boolean
   loadingFiles: boolean
-  refreshDrive: () => void
+  /**
+   * Перечитать список файлов. Возвращает промис, а не `void`: форма элемента
+   * после переименования обязана ДОЖДАТЬСЯ нового списка — иначе она рисует
+   * старый порядок поверх уже переставленных файлов.
+   */
+  refreshDrive: () => Promise<void>
   inFolder: DriveFile | null
   outFolder: DriveFile | null
   /**
@@ -932,11 +937,27 @@ export function WorkspaceProvider({
         setPath((prev) => (keepPath ? resolvePath(files, prev) : []))
         setSelectedFile(null)
 
-        const cursorRes = await fetch(sourceRef.current.treeCursorUrl(projectId))
-        if (cursorRes.ok) {
-          const cursorData = await cursorRes.json()
-          if (typeof cursorData.cursor === "number") {
-            storageCursorRef.current = cursorData.cursor
+        /*
+          Курсор приезжает вместе с деревом — отдельного запроса за ним больше
+          нет. Тот запрос ради одного числа поднимал весь каталог проекта
+          заново, то есть каждое обновление дерева читало его дважды, и так
+          каждые несколько секунд при опросе дельты.
+
+          Откат на старый адрес остаётся на случай источника, чей роут дерева
+          курсор ещё не отдаёт: без курсора опрос дельты начал бы с нуля и
+          вернул бы весь журнал.
+        */
+        if (typeof data.cursor === "number") {
+          storageCursorRef.current = data.cursor
+        } else {
+          const cursorRes = await fetch(
+            sourceRef.current.treeCursorUrl(projectId),
+          )
+          if (cursorRes.ok) {
+            const cursorData = await cursorRes.json()
+            if (typeof cursorData.cursor === "number") {
+              storageCursorRef.current = cursorData.cursor
+            }
           }
         }
       } finally {
@@ -1452,8 +1473,8 @@ export function WorkspaceProvider({
     setSelectedFile(null)
   }, [])
 
-  const refreshDrive = useCallback(() => {
-    if (selectedId) void loadDrive(selectedId, true)
+  const refreshDrive = useCallback(async () => {
+    if (selectedId) await loadDrive(selectedId, true)
   }, [selectedId, loadDrive])
 
   const createFolder = useCallback(

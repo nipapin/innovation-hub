@@ -4,6 +4,7 @@ import { loadInStatus } from "@/lib/pipeline/in-status"
 import { loadProjectStorageState } from "@/lib/project-storage"
 import { findProjectById } from "@/lib/repositories/projects"
 import { isS3Configured } from "@/lib/s3-client"
+import { getLatestCursor } from "@/lib/storage/changes"
 import { writeFolderCreate } from "@/lib/storage/write-path"
 
 export const runtime = "nodejs"
@@ -31,7 +32,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    const [state, inStatus] = await Promise.all([
+    // Курсор журнала едет вместе с деревом — как в кабинетном роуте, и по той
+    // же причине: вторым запросом клиент поднимал весь каталог заново.
+    const [state, inStatus, cursor] = await Promise.all([
       loadProjectStorageState(project.storageOwnerId, project.id, {
         includeServiceFiles: true,
       }),
@@ -39,10 +42,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
         projectId: project.id,
         storageOwnerId: project.storageOwnerId,
       }),
+      getLatestCursor(project.id),
     ])
     return NextResponse.json({
       ...state,
       inStatus,
+      cursor,
       storageAvailable: state.available,
     })
   } catch (error) {

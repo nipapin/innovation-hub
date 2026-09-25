@@ -17,8 +17,6 @@ import type { DriveFile } from "../types"
 
 export type ElementIO = {
   projectId: string
-  /** Логический путь папки элемента от корня проекта: `IN/-Ролик 2026-09-23`. */
-  folderPath: string
   /** Залить файл в слот под именем, которое ждёт граф. */
   putFile: (input: {
     dir: string
@@ -42,6 +40,15 @@ export type ElementIO = {
   }) => Promise<void>
   /** Завести подпапку слота. */
   makeFolder: (input: { dir: string; index: number; label: string }) => Promise<void>
+  /**
+   * Завести несколько подпапок разом — структура элемента целиком.
+   *
+   * Порядок сохраняется: родителя надо завести раньше ребёнка, и вызывающий
+   * отдаёт список уже сверху вниз (`missingFolders`).
+   */
+  makeFolders: (
+    items: readonly { dir: string; index: number; label: string }[],
+  ) => Promise<void>
   /** Удалить строку каталога по id. */
   remove: (fileId: string) => Promise<void>
   /** Перенумеровать слоты строки требования одной пачкой. */
@@ -59,11 +66,21 @@ function joinPath(folderPath: string, dir: string): string {
 
 export function createElementIO(input: {
   projectId: string
-  folderPath: string
+  /**
+   * Путь папки элемента — РЕЗОЛВЕРОМ, а не строкой.
+   *
+   * Папка заводится лениво, с первым же файлом: открыть окно и передумать —
+   * обычное дело, и пустых папок, которых человек не создавал осознанно, в `IN`
+   * оставаться не должно. Значит в момент сборки этого объекта пути ещё нет, и
+   * каждое действие спрашивает его заново, а создание случается один раз.
+   */
+  ensureFolderPath: () => Promise<string>
   fileUrl: (projectId: string, fileId: string) => string
   folderUrl: (projectId: string) => string
+  /** Пачка папок одним запросом; нет — заводим по одной, как раньше. */
+  foldersBatchUrl?: (() => string) | undefined
 }): ElementIO {
-  const { projectId, folderPath, fileUrl, folderUrl } = input
+  const { projectId, ensureFolderPath, fileUrl, folderUrl, foldersBatchUrl } = input
 
   const upload = async (
     dir: string,
@@ -72,10 +89,11 @@ export function createElementIO(input: {
     replaces: string | null | undefined,
     onProgress?: (percent: number) => void,
   ) => {
+    const base = await ensureFolderPath()
     await uploadProjectFileDirect({
       projectId,
       file,
-      folderPath: joinPath(folderPath, dir),
+      folderPath: joinPath(base, dir),
       name,
       // Перезапись поверх того же имени сохраняет файлу историю и id. Имя при
       // этом всегда наше: слот его и задаёт.
@@ -86,7 +104,6 @@ export function createElementIO(input: {
 
   return {
     projectId,
-    folderPath,
 
     putFile: async ({ dir, index, label, file, originalName, replaces, onProgress }) => {
       const name = slotFileName(index, label, originalName ?? file.name)
@@ -105,12 +122,58 @@ export function createElementIO(input: {
     },
 
     makeFolder: async ({ dir, index, label }) => {
+      const base = await ensureFolderPath()
       const res = await fetch(folderUrl(projectId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: subfolderName(index, label),
-          folderPath: joinPath(folderPath, dir),
+          folderPath: joinPath(base, dir),
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.message ?? "Failed")
+      }
+    },
+
+    makeFolders: async (items) => {
+      if (items.length === 0) return
+      const base = await ensureFolderPath()
+
+      /*
+        Без пакетного адреса — прежний путь, по одной папке за запрос. Он
+        остаётся не для красоты: источник, у которого этого поля нет, иначе
+        перестал бы заводить структуру вовсе.
+      */
+      const batchUrl = foldersBatchUrl?.()
+      if (!batchUrl) {
+        for (const item of items) {
+          const res = await fetch(folderUrl(projectId), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: subfolderName(item.index, item.label),
+              folderPath: joinPath(base, item.dir),
+            }),
+          })
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            throw new Error(data.message ?? "Failed")
+          }
+        }
+        return
+      }
+
+      const res = await fetch(batchUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          items: items.map((item) => ({
+            folderPath: joinPath(base, item.dir),
+            name: subfolderName(item.index, item.label),
+          })),
         }),
       })
       if (!res.ok) {

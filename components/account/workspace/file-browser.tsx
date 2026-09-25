@@ -6,13 +6,14 @@ import {
   CircleAlert,
   CircleCheck,
   Clock,
+  FolderOpen,
   Loader2,
   Plus,
-  SquarePen,
   Upload,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { ElementFill } from "./element/element-fill"
 import {
   fileIcon,
   fileIconClass,
@@ -264,47 +265,62 @@ function InMark({ file, className }: { file: DriveFile; className?: string }) {
 }
 
 /**
- * «Править элемент» на строке папки в `IN`.
+ * «Открыть папку» на строке элемента в `IN`.
+ *
+ * Действия обменяны намеренно: обычный клик по папке элемента открывает состав
+ * (окно сборки), а зайти внутрь папки файлами можно этой иконкой. Так чаще
+ * делаемое действие стоит на более доступном месте — состав правят постоянно, а
+ * внутрь лезут редко и обычно чтобы что-то починить руками.
  *
  * `span`, а не `button`: строка файла сама по себе кнопка, а кнопка внутри
  * кнопки — недопустимая разметка, и браузеры разбирают её кто во что горазд.
- * Появляется по наведению на строку; то же действие есть в контекстном меню —
- * иконку при наведении находят не все.
+ *
+ * Показывается ровно тогда, когда обычный клик перехвачен, то есть при праве
+ * правки: без него клик и так заходит внутрь, и вторая дорога туда же незачем.
  */
-function ElementEditMark({
+function ElementEnterMark({
   file,
+  onEnter,
   className,
+  /** Размер иконки: он равен иконке файла в том же виде, чтобы строка
+      и плитка не получали второй, спорящий с первым, размер значка. */
+  iconClass = "h-5 w-5",
 }: {
   file: DriveFile
+  /** Навигация живёт в области списка — сюда она приходит колбэком. */
+  onEnter: () => void
   className?: string
+  iconClass?: string
 }) {
-  const { t, isElementFolder, openElementDialog, can } = useWorkspace()
+  const { t, isElementFolder, can } = useWorkspace()
   if (!can.renameItem || !isElementFolder(file)) return null
 
   return (
     <span
       role="button"
       tabIndex={0}
-      title={t.elementEdit}
-      aria-label={t.elementEdit}
+      title={t.elementEnter}
+      aria-label={t.elementEnter}
       onClick={(e) => {
         e.stopPropagation()
-        openElementDialog(file)
+        onEnter()
       }}
       onKeyDown={(e) => {
         if (e.key !== "Enter" && e.key !== " ") return
         e.stopPropagation()
         e.preventDefault()
-        openElementDialog(file)
+        onEnter()
       }}
       className={cn(
-        "flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-ws-4",
-        "opacity-0 transition-opacity hover:bg-foreground/[0.07] hover:text-ws-1",
-        "group-hover:opacity-100 focus-visible:opacity-100",
+        "flex shrink-0 items-center justify-center rounded-[8px] p-1.5 text-ws-4",
+        "transition-opacity hover:bg-foreground/[0.07] hover:text-ws-1",
+        // На узких экранах наведения нет — иконка видна всегда, иначе действие
+        // остаётся только в контекстном меню.
+        "opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100",
         className,
       )}
     >
-      <SquarePen className="h-[15px] w-[15px]" />
+      <FolderOpen className={iconClass} />
     </span>
   )
 }
@@ -425,6 +441,7 @@ function FileRow({
   size,
   subtitle,
   onOpen,
+  onEnterFolder,
   onPreview,
   onContext,
 }: {
@@ -433,6 +450,8 @@ function FileRow({
   /** Откуда файл: путь до него в режиме «без папок», проект в корне корзины. */
   subtitle?: string | null
   onOpen: (e: React.MouseEvent) => void
+  /** Зайти внутрь папки — для элемента это иконка, а не клик по строке. */
+  onEnterFolder: () => void
   onPreview: () => void
   onContext: (e: React.MouseEvent) => void
 }) {
@@ -450,7 +469,8 @@ function FileRow({
       onDoubleClick={onPreview}
       onContextMenu={onContext}
       className={cn(
-        "group flex w-full select-none items-center border text-left transition-opacity hover:bg-foreground/5",
+        // relative + overflow-hidden — под полосу заполненности по нижнему краю.
+        "group relative flex w-full select-none items-center overflow-hidden border text-left transition-opacity hover:bg-foreground/5",
         isCut(file.id) && "opacity-45",
         roomy
           ? "gap-3.5 rounded-[14px] p-[13px]"
@@ -501,8 +521,13 @@ function FileRow({
           {fileMeta(file, t, lang)}
         </span>
       </span>
-      <ElementEditMark file={file} />
+      <ElementEnterMark
+        file={file}
+        onEnter={onEnterFolder}
+        iconClass={roomy ? "h-6 w-6" : "h-5 w-5"}
+      />
       <InMark file={file} />
+      <ElementFill file={file} />
       {file.isFolder ? (
         <ChevronRight
           className={cn(
@@ -520,6 +545,7 @@ function FileCard({
   size,
   subtitle,
   onOpen,
+  onEnterFolder,
   onPreview,
   onContext,
 }: {
@@ -527,6 +553,8 @@ function FileCard({
   size: Size
   subtitle?: string | null
   onOpen: (e: React.MouseEvent) => void
+  /** Зайти внутрь папки — для элемента это иконка, а не клик по плитке. */
+  onEnterFolder: () => void
   onPreview: () => void
   onContext: (e: React.MouseEvent) => void
 }) {
@@ -545,7 +573,9 @@ function FileCard({
       onContextMenu={onContext}
       className={cn(
         // relative — под отметку обработки в правом верхнем углу плитки.
-        "relative select-none border bg-ws-control text-left transition-opacity hover:border-foreground/[0.18]",
+        // group — по нему иконка узнаёт о наведении на плитку.
+        // overflow-hidden — под полосу заполненности по нижнему краю.
+        "group relative select-none overflow-hidden border bg-ws-control text-left transition-opacity hover:border-foreground/[0.18]",
         isCut(file.id) && "opacity-45",
         roomy
           ? "flex items-center gap-3 rounded-2xl p-[18px]"
@@ -593,8 +623,17 @@ function FileCard({
           {fileMeta(file, t, lang)}
         </span>
       </span>
-      <InMark file={file} className="absolute right-2 top-2" />
-      <ElementEditMark file={file} className="absolute right-2 bottom-2" />
+      {/* Обе отметки одной строкой в правом верхнем углу: иконка встаёт на
+          уровень иконки файла, а не в противоположный угол плитки. */}
+      <span className="absolute right-2 top-2 flex items-center gap-1.5">
+        <InMark file={file} />
+        <ElementEnterMark
+          file={file}
+          onEnter={onEnterFolder}
+          iconClass={roomy ? "h-[26px] w-[26px]" : "h-6 w-6"}
+        />
+      </span>
+      <ElementFill file={file} />
     </button>
   )
 }
@@ -681,7 +720,8 @@ function FileColumn({
                   }
                 }}
                 className={cn(
-                  "group mb-0.5 flex w-full select-none items-center gap-2.5 rounded-[7px] px-2.5 py-2 text-left transition-opacity hover:bg-foreground/5",
+                  // relative + overflow-hidden — под полосу заполненности.
+                  "group relative mb-0.5 flex w-full select-none items-center gap-2.5 overflow-hidden rounded-[7px] px-2.5 py-2 text-left transition-opacity hover:bg-foreground/5",
                   ws.isCut(f.id) && "opacity-45",
                   isMenuTarget
                     ? "bg-ws-accent/[0.18] text-ws-1 ring-1 ring-ws-accent/55"
@@ -692,8 +732,13 @@ function FileColumn({
               >
                 <Icon className={cn("h-[18px] w-[18px] shrink-0", fileIconClass(f))} />
                 <span className="min-w-0 flex-1 truncate text-[14px]">{f.name}</span>
-                <ElementEditMark file={f} />
+                <ElementEnterMark
+                  file={f}
+                  onEnter={() => onNavigate([...prefix, f])}
+                  iconClass="h-[18px] w-[18px]"
+                />
                 <InMark file={f} />
+                <ElementFill file={f} />
                 {f.isFolder ? (
                   <ChevronRight className="h-4 w-4 shrink-0 text-ws-4" />
                 ) : null}
@@ -825,6 +870,10 @@ export function FileBrowser({
    * Cmd/Ctrl — добавить или снять один элемент, Shift — выделить диапазон.
    * Обычный клик по папке заходит внутрь, по файлу — выделяет его,
    * двойной по файлу открывает окно превью (`openPreview` игнорирует папки).
+   *
+   * Исключение — папка элемента в `IN`: по ней клик открывает состав, а внутрь
+   * ведёт иконка на строке (`ElementEnterMark`). Состав правят постоянно,
+   * внутрь заходят редко, и более доступное место отдано частому действию.
    */
   const openItem = (f: DriveFile, event: React.MouseEvent) => {
     if (event.shiftKey) {
@@ -835,8 +884,12 @@ export function FileBrowser({
       selectFile(f, true)
       return
     }
-    if (f.isFolder) onNavigate([...path, f])
-    else selectFile(f)
+    if (f.isFolder) {
+      // Без права правки состав открывать нечем — такой клик заходит внутрь,
+      // как в любую другую папку.
+      if (ws.can.renameItem && ws.isElementFolder(f)) ws.openElementDialog(f)
+      else onNavigate([...path, f])
+    } else selectFile(f)
   }
 
   const areaHighlight = drop.active
@@ -916,6 +969,7 @@ export function FileBrowser({
                 size={size}
                 subtitle={subtitleFor(f)}
                 onOpen={(e) => openItem(f, e)}
+                onEnterFolder={() => onNavigate([...path, f])}
                 onPreview={() => ws.openPreview(f)}
                 onContext={(e) => openMenu("file", e, { file: f, target })}
               />
@@ -935,6 +989,7 @@ export function FileBrowser({
                 size={size}
                 subtitle={subtitleFor(f)}
                 onOpen={(e) => openItem(f, e)}
+                onEnterFolder={() => onNavigate([...path, f])}
                 onPreview={() => ws.openPreview(f)}
                 onContext={(e) => openMenu("file", e, { file: f, target })}
               />

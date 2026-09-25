@@ -4,6 +4,7 @@ import { loadInStatus } from "@/lib/pipeline/in-status"
 import { loadProjectStorageState } from "@/lib/project-storage"
 import { requireProjectAccess } from "@/lib/project-access"
 import { isS3Configured } from "@/lib/s3-client"
+import { getLatestCursor } from "@/lib/storage/changes"
 import { writeFolderCreate } from "@/lib/storage/write-path"
 
 export const runtime = "nodejs"
@@ -27,16 +28,23 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const project = access.project
     // Состояние обработки едет вместе с деревом, а не отдельным опросом:
     // отметка нужна ровно там, где нарисован файл, и живёт ровно столько же.
-    const [state, inStatus] = await Promise.all([
+    //
+    // Курсор журнала — здесь же, по той же причине. Раньше клиент дочитывал его
+    // вторым запросом в /api/storage/v1/tree, а тот ради одного числа поднимал
+    // весь каталог проекта заново: два полных чтения на каждое обновление
+    // дерева, и так каждые несколько секунд при опросе дельты.
+    const [state, inStatus, cursor] = await Promise.all([
       loadProjectStorageState(project.storageOwnerId, project.id),
       loadInStatus({
         projectId: project.id,
         storageOwnerId: project.storageOwnerId,
       }),
+      getLatestCursor(project.id),
     ])
     return NextResponse.json({
       ...state,
       inStatus,
+      cursor,
       storageAvailable: state.available,
     })
   } catch (error) {

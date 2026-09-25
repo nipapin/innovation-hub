@@ -52,7 +52,13 @@ function SegButton({
   )
 }
 
-/** Переключатель режима рабочей области — виден всегда. */
+/**
+ * Переключатель режима рабочей области.
+ *
+ * Только с `lg`: ниже этого порога раскладка всегда мобильная
+ * (`MobileWorkspace`, см. `workspace-page.tsx`), режим на неё не влияет вовсе, и
+ * переключатель занимал место в узкой шапке, ничего при этом не переключая.
+ */
 export function DensitySwitch() {
   const { t, density, setDensity } = useWorkspace()
   const options: { id: Density; icon: LucideIcon; label: string }[] = [
@@ -60,7 +66,7 @@ export function DensitySwitch() {
     { id: "simple", icon: Rows2, label: t.cozy },
   ]
   return (
-    <div className="flex shrink-0 gap-[3px] rounded-[9px] border border-foreground/10 bg-ws-control p-[3px]">
+    <div className="hidden shrink-0 gap-[3px] rounded-[9px] border border-foreground/10 bg-ws-control p-[3px] lg:flex">
       {options.map((o) => (
         <SegButton
           key={o.id}
@@ -199,7 +205,10 @@ export function WorkspaceTopbar() {
           onClick={clearSelection}
           className="hidden rounded-lg px-2 py-1 text-[16px] font-medium text-ws-3 hover:bg-foreground/5 hover:text-ws-1 sm:block"
         >
-          {rootLabel}
+          {/* Ниже lg режима не существует, поэтому и его подпись там не нужна:
+              крошка всегда «Проекты», как и сам корень, к которому она ведёт. */}
+          <span className="lg:hidden">{t.breadcrumbProjects}</span>
+          <span className="hidden lg:inline">{rootLabel}</span>
         </button>
         {selected ? (
           <>

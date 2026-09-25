@@ -6,6 +6,7 @@ import { WorkspaceShell } from "@/components/account/workspace-shell"
 import { AdminShell } from "@/components/admin/shell/admin-shell"
 import { getCurrentUser } from "@/lib/admin-auth"
 import { isElevated } from "@/lib/admin-roles"
+import { getCompanyContext } from "@/lib/company-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -21,7 +22,13 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  const user = await getCurrentUser()
+  // Пункт «Консоль компании» — по тому же ответу гейта, что и в кабинете
+  // (app/account/layout.tsx). Суперадмин видит оба блока, и вход в компанию
+  // должен быть у него из любой поверхности, а не только изнутри неё самой.
+  const [user, companyContext] = await Promise.all([
+    getCurrentUser(),
+    getCompanyContext(),
+  ])
   // Погашенные разделы — свойство установки, а не человека, поэтому
   // считаются один раз на layout и раздаются контекстом.
   const disabledTools = await disabledAdminHrefs()
@@ -39,6 +46,15 @@ export default async function AdminLayout({
         role={user.role}
         capabilities={user.capabilities}
         balanceCents={user.balanceCents ?? 0}
+        companyNav={
+          companyContext
+            ? {
+                role: companyContext.companyRole,
+                capabilities: companyContext.capabilities,
+                sections: companyContext.companySections,
+              }
+            : null
+        }
       >
         <AdminShell
           email={user.email}

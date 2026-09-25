@@ -7,12 +7,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
   Archive,
-  Building2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   FolderOpen,
-  KeyRound,
   Trash2,
   Wrench,
   type LucideIcon,
@@ -24,9 +22,14 @@ import {
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { UserRole } from "@/lib/domain-types"
+import type { CompanyRole, UserRole } from "@/lib/domain-types"
+import type { CompanyCapability } from "@/lib/company-capabilities"
+import {
+  companyAreaHref,
+  isCompanyAreaActive,
+  visibleCompanyAreas,
+} from "@/components/company/nav-config"
 import { BalanceWidget } from "@/components/account/balance-widget"
-import { isKeysPath } from "@/components/account/keys/keys-shell"
 import { ResizeGrip } from "@/components/account/resize-grip"
 import { useBranding } from "@/components/branding/branding-context"
 import { ThemeSwitch } from "@/components/account/theme-switch"
@@ -70,6 +73,76 @@ const PROJECT_SECTIONS: {
   { tab: "trash", labelKey: "trashTab", icon: Trash2 },
 ]
 
+/**
+ * Всё, что меню знает о компании этого человека.
+ *
+ * Три строки-оси, а не готовый список пунктов: список несёт иконки, а их через
+ * границу сервер→клиент не передать. Считает его `visibleCompanyAreas` здесь же
+ * — ровно как админский блок ниже считает свои области по роли и тегам.
+ *
+ * `null` — консоли у него нет вовсе. Ответ приходит от гейта
+ * (lib/company-auth.ts), а не собирается в меню: «видит ли он консоль» — вопрос
+ * со сложным ответом (участник, компания на паузе, суперадмин без своей
+ * компании), и второй его источник однажды разошёлся бы с первым.
+ */
+export type CompanyNav = {
+  role: CompanyRole
+  capabilities: CompanyCapability[]
+  /** Набор разделов, проданный компании. `null` — все. */
+  sections: string[] | null
+}
+
+/**
+ * Блок консоли компании в боковом меню.
+ *
+ * Отдельным компонентом, потому что областей теперь несколько и их надо
+ * посчитать: внутри JSX для этого негде завести имя, а звать
+ * `visibleCompanyAreas` дважды — в условии и в `map` — значило бы считать одно и
+ * то же по два раза и однажды разойтись между строкой условия и строкой списка.
+ */
+function CompanyConsoleNav({
+  nav,
+  collapsed,
+  pathname,
+  onNavigate,
+}: {
+  nav: CompanyNav
+  collapsed: boolean
+  pathname: string
+  onNavigate?: () => void
+}) {
+  const { t } = useI18n()
+  const areas = visibleCompanyAreas(nav.role, nav.capabilities, nav.sections)
+  if (areas.length === 0) return null
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div
+        className={cn("mb-1 h-px bg-foreground/10", collapsed ? "mx-1" : "mx-2.5")}
+      />
+      {!collapsed ? (
+        <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+          {t.coConsolePanel}
+        </p>
+      ) : null}
+      {areas.map((area) => {
+        const Icon = area.icon
+        return (
+          <div key={area.key} onClick={onNavigate}>
+            <NavItem
+              href={companyAreaHref(area, nav.role, nav.capabilities, nav.sections)}
+              active={isCompanyAreaActive(area, pathname)}
+              collapsed={collapsed}
+              icon={<Icon className="h-5 w-5" />}
+              label={t[area.labelKey]}
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export type WorkspaceUser = {
   email: string
   fullName: string
@@ -77,13 +150,8 @@ export type WorkspaceUser = {
   /** Теги админа: по ним фильтруется свёртка «Админка» в боковом меню. */
   capabilities: AdminCapability[]
   balanceCents: number
-  /**
-   * Пускать ли в консоль компании (/company). Готовый ответ, а не роль с
-   * тегами: «видит ли он консоль» решает гейт на сервере
-   * (lib/company-auth.ts), и повторять это правило в меню значило бы завести
-   * второй источник правды — он однажды разойдётся с первым.
-   */
-  hasCompanyConsole?: boolean
+  /** Консоль компании: чем её наполнять и наполнять ли вовсе. См. `CompanyNav`. */
+  companyNav?: CompanyNav | null
   /**
    * Суперадмин зашёл в ЧУЖУЮ компанию через переключатель.
    *
@@ -373,25 +441,12 @@ function SidebarContent({
               </div>
             )
           })}
-          {/* Чужие секреты человека: ключи сервисов и аккаунты площадок.
-              Отдельным пунктом, а не полем в настройках проекта, — и то и
-              другое у него ОДНО на все проекты, и заводить их изнутри проекта
-              означало бы «найди тот проект, где я это вводил» при заведении,
-              при замене и при отзыве.
-
-              Пункт один, инструментов внутри два: их различают в колонке
-              раздела (KeysShell). Двумя пунктами меню это было бы честно, но
-              боковое меню кабинета — про рабочее место, и секретам в нём место
-              одно. */}
-          <div onClick={onNavigate}>
-            <NavItem
-              href="/account/vendor-keys"
-              active={isKeysPath(pathname)}
-              collapsed={collapsed}
-              icon={<KeyRound className="h-5 w-5" />}
-              label={t.keysAreaNav}
-            />
-          </div>
+          {/* Личных ключей в рабочем месте больше нет: внешние сервисы в
+              компании общие, и подключают их в «Доступах» консоли — одно место
+              на всю компанию. Пункт, ведущий в собственные ключи, обещал бы
+              вторую, личную связку, которой у сотрудника компании не бывает.
+              Сама страница /account/vendor-keys пока жива: на неё ссылаются
+              настройки проекта. */}
         </nav>
 
         <div className="flex-1" />
@@ -407,30 +462,14 @@ function SidebarContent({
               должно быть отделено видимой чертой. Раньше подпись была только у
               админки, и у сотрудника компании его консоль висела просто
               последним пунктом рабочего места — то есть выглядела его частью. */}
-          {user.hasCompanyConsole && (
-            <div className="flex flex-col gap-0.5">
-              <div
-                className={cn(
-                  "mb-1 h-px bg-foreground/10",
-                  collapsed ? "mx-1" : "mx-2.5",
-                )}
-              />
-              {!collapsed ? (
-                <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
-                  {t.coConsolePanel}
-                </p>
-              ) : null}
-              <div onClick={onNavigate}>
-                <NavItem
-                  href="/company"
-                  active={pathname === "/company" || pathname.startsWith("/company/")}
-                  collapsed={collapsed}
-                  icon={<Building2 className="h-5 w-5" />}
-                  label={t.coConsole}
-                />
-              </div>
-            </div>
-          )}
+          {user.companyNav ? (
+            <CompanyConsoleNav
+              nav={user.companyNav}
+              collapsed={collapsed}
+              pathname={pathname}
+              onNavigate={onNavigate}
+            />
+          ) : null}
           {isElevated(user.role) && (
             <div className="flex flex-col gap-0.5">
               {/* Отбивка: админская зона отделена от рабочего места.
@@ -564,7 +603,7 @@ function WorkspaceShellInner({
   role,
   capabilities,
   balanceCents,
-  hasCompanyConsole,
+  companyNav,
   companyGuest,
   children,
 }: ShellProps) {
@@ -575,7 +614,7 @@ function WorkspaceShellInner({
     role,
     capabilities,
     balanceCents,
-    hasCompanyConsole,
+    companyNav,
     companyGuest,
   }
   const { t } = useI18n()

@@ -255,6 +255,13 @@ export type WorkspaceSource = {
   projectUrl: (projectId: string) => string
   /** Папки проекта: POST — создать вложенную. */
   folderUrl: (projectId: string) => string
+  /**
+   * Пачка папок одним запросом — для структуры элемента, где их сразу
+   * несколько. Необязательный: без него вызывающий заводит их по одной через
+   * `folderUrl`, как раньше. Адрес общий для обеих зон — тела здесь наши, а
+   * эндпоинт пускает ADMIN в любой проект (lib/storage/auth.ts).
+   */
+  foldersBatchUrl?: () => string
   /** Элемент дерева: PATCH — переименовать, DELETE — удалить, GET — скачать. */
   fileUrl: (projectId: string, fileId: string) => string
   /** Загрузка файла: отдельным XHR, чтобы был прогресс. */

@@ -5,9 +5,19 @@ import {
   requireEditableProjectAccess,
   requireStorageApi,
 } from "@/lib/storage/auth"
-import { StorageWriteError, writeEnsureFolderPath, writeFolderCreate } from "@/lib/storage/write-path"
+import {
+  StorageWriteError,
+  writeEnsureFolderPath,
+  writeFolderCreate,
+  writeFolderCreateBatch,
+} from "@/lib/storage/write-path"
 
 export const runtime = "nodejs"
+
+const itemSchema = z.object({
+  folderPath: z.string().default(""),
+  name: z.string().min(1).max(180),
+})
 
 const schema = z.object({
   projectId: z.string().min(1),
@@ -15,6 +25,14 @@ const schema = z.object({
   name: z.string().min(1).max(180).optional(),
   /** Full relative path to ensure (a/b/c) — creates missing parents. */
   ensurePath: z.string().min(1).max(1000).optional(),
+  /**
+   * Пачка папок одной транзакцией, родитель раньше ребёнка.
+   *
+   * Предел — как у пакетного переименования и по той же причине: одна
+   * транзакция не должна держать каталог проекта дольше, чем человек готов
+   * ждать ответа. Структуры элементов на порядок мельче этого предела.
+   */
+  items: z.array(itemSchema).min(1).max(200).optional(),
   eventId: z.string().optional(),
 })
 
@@ -42,7 +60,37 @@ export async function POST(request: NextRequest) {
   const access = await requireEditableProjectAccess(auth, data.projectId)
   if (access instanceof NextResponse) return access
 
+  // Взаимоисключение, как в пакетном переименовании: молча предпочесть одну
+  // форму другой значило бы тихо не выполнить половину запроса.
+  if (data.items && (data.name || data.ensurePath)) {
+    return NextResponse.json(
+      { message: "Provide either items or name/ensurePath, not both." },
+      { status: 400 },
+    )
+  }
+
   try {
+    if (data.items) {
+      const base = data.folderPath.replace(/^\/+|\/+$/g, "")
+      const files = await writeFolderCreateBatch({
+        storageOwnerId: access.storageOwnerId,
+        projectId: access.projectId,
+        items: data.items.map((item) => {
+          const rel = item.folderPath.replace(/^\/+|\/+$/g, "")
+          return {
+            folderPath: base && rel ? `${base}/${rel}` : base || rel,
+            name: item.name,
+          }
+        }),
+        eventId: data.eventId,
+        actor: actorFromAuth(auth),
+      })
+      return NextResponse.json(
+        { files, fileIds: files.map((file) => file.id) },
+        { status: 201 },
+      )
+    }
+
     if (data.ensurePath) {
       const base = data.folderPath.replace(/^\/+|\/+$/g, "")
       const rel = data.ensurePath.replace(/^\/+|\/+$/g, "")

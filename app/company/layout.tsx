@@ -91,7 +91,11 @@ export default async function CompanyLayout({
         role={user.role}
         capabilities={user.capabilities}
         balanceCents={user.balanceCents ?? 0}
-        hasCompanyConsole
+        companyNav={{
+          role: context.companyRole,
+          capabilities: context.capabilities,
+          sections: context.companySections,
+        }}
         companyGuest={isGuest}
       >
         <CompanyShell

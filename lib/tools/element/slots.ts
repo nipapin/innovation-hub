@@ -224,6 +224,40 @@ export function isComplete(state: ElementState): boolean {
   return missingLabels(state).length === 0
 }
 
+/**
+ * Сколько слотов занято из скольких — для полосы заполненности на папке.
+ *
+ * Считается по тем же правилам, что `missingLabels`, и обходом той же формы:
+ * два разных ответа на вопрос «собрано ли» разошлись бы при первой же правке, и
+ * полоса показывала бы полноту у папки, которую кнопка запускать отказывается.
+ *
+ * Слоты-папки сами по себе не считаются — засчитывается их содержимое, иначе
+ * заведённая пустая подпапка давала бы долю там, где не положено ещё ничего.
+ *
+ * `total` — знаменатель доли: при `>=` он растёт вместе с добавленными слотами,
+ * потому что незаполненный добавленный слот — такая же нехватка, как объявленный.
+ */
+export function slotFill(state: ElementState): { filled: number; total: number } {
+  let filled = 0
+  let total = 0
+
+  const walk = (groups: readonly Group[]) => {
+    for (const group of groups) {
+      for (const slot of group.slots) {
+        if (group.row.type === FOLDER_TYPE) {
+          walk(slot.groups)
+          continue
+        }
+        total += 1
+        if (slot.file) filled += 1
+      }
+    }
+  }
+
+  walk(state.groups)
+  return { filled, total }
+}
+
 /** Подпапка, которой в папке элемента ещё нет. */
 export type MissingFolder = {
   /** Путь от папки элемента, куда её заводить. Пусто — корень элемента. */
