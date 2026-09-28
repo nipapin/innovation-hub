@@ -341,8 +341,12 @@ export async function listPipelineAreas(): Promise<PipelineArea[]> {
      iron AS (
        SELECT rc.company_id,
               COUNT(*)::int AS machines,
+              -- Живой по любому следу: rc_ отмечается heartbeat'ом, десктоп —
+              -- пингом и опросом очереди, last_seen_at. По одному heartbeat
+              -- работающая машина компании горела «не на связи».
               COUNT(*) FILTER (
-                WHERE rc.last_heartbeat_at > NOW() - ($1 || ' milliseconds')::interval
+                WHERE GREATEST(rc.last_heartbeat_at, rc.last_seen_at)
+                      > NOW() - ($1 || ' milliseconds')::interval
               )::int AS online
          FROM remote_computers rc
         WHERE rc.revoked_at IS NULL

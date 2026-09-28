@@ -246,7 +246,11 @@ export function companyAreaHref(
   sections: string[] | null = null,
 ): string {
   const tools = companyToolsInArea(area.key, role, capabilities, sections)
-  return tools[0]?.href ?? area.href
+  // Сперва раздел, для которого эта область ОСНОВНАЯ. Журнал лежит и в
+  // «Доступах», но основная у него статистика: веди кнопка «Доступы» в журнал —
+  // меню подсветило бы «Статистику», и в «Доступы» было бы не попасть.
+  const home = tools.find((tool) => tool.areas[0] === area.key) ?? tools[0]
+  return home?.href ?? area.href
 }
 
 export function isCompanyToolActive(tool: CompanyTool, pathname: string): boolean {

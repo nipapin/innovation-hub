@@ -223,7 +223,9 @@ export async function listCompanyMachines(
             rc.name,
             rc.description,
             rc.status,
-            rc.last_heartbeat_at AS "lastHeartbeatAt",
+            -- Последний контакт любого рода: десктоп heartbeat не шлёт, он
+            -- отмечается пингом и опросом очереди (last_seen_at).
+            GREATEST(rc.last_heartbeat_at, rc.last_seen_at) AS "lastHeartbeatAt",
             rc.created_at AS "createdAt",
             p.name AS "currentProjectName"
        FROM remote_computers rc

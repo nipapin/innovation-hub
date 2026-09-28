@@ -98,18 +98,24 @@ export default async function CompanyLayout({
         }}
         companyGuest={isGuest}
       >
-        <CompanyShell
-          className="company-brand"
-          companyTitle={context.companyTitle}
-          companyRole={context.companyRole}
-          capabilities={context.capabilities}
-          companies={companies}
-          currentCompanyId={context.companyId}
-          isSiteSuperAdmin={context.isSiteSuperAdmin}
-          sections={context.companySections}
-        >
-          {children}
-        </CompanyShell>
+        {/* Прокрутку оболочка не даёт: её область содержимого `overflow-hidden`,
+            и скроллер ставит каждая поверхность сама — как AdminShell. Без него
+            длинный раздел (журнал) обрезался по низу экрана. Снаружи колонки,
+            чтобы полоса стояла у края окна, а не у края `max-w-7xl`. */}
+        <div className="h-full overflow-y-auto">
+          <CompanyShell
+            className="company-brand"
+            companyTitle={context.companyTitle}
+            companyRole={context.companyRole}
+            capabilities={context.capabilities}
+            companies={companies}
+            currentCompanyId={context.companyId}
+            isSiteSuperAdmin={context.isSiteSuperAdmin}
+            sections={context.companySections}
+          >
+            {children}
+          </CompanyShell>
+        </div>
       </WorkspaceShell>
     </div>
   )
