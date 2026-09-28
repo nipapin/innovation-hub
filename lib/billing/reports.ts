@@ -214,6 +214,12 @@ export type UserPick = {
   fullName: string
   balanceOwnCents: number
   balanceGiftCents: number
+  /**
+   * Компания подпрофиля. У человека на одну почту бывает несколько строк — вход
+   * и профили в компаниях (docs/MULTI_COMPANY_PROFILES_PLAN.md §10), — и без
+   * пометки в поиске их не различить.
+   */
+  companyTitle: string | null
 }
 
 /** Поиск человека для адресного подарка. */
@@ -225,16 +231,20 @@ export async function searchUsers(q: string, limit = 20): Promise<UserPick[]> {
       balanceGiftCents: string
     }
   >(
-    `SELECT id AS "userId",
-            email,
-            COALESCE(full_name, '') AS "fullName",
-            COALESCE(balance_own_cents, 0)::text  AS "balanceOwnCents",
-            COALESCE(balance_gift_cents, 0)::text AS "balanceGiftCents"
-       FROM users
-      WHERE is_active
-        AND kind = 'person'
-        AND (lower(email) LIKE $1 OR lower(COALESCE(full_name, '')) LIKE $1)
-      ORDER BY email
+    `SELECT u.id AS "userId",
+            u.email,
+            COALESCE(u.full_name, '') AS "fullName",
+            COALESCE(u.balance_own_cents, 0)::text  AS "balanceOwnCents",
+            COALESCE(u.balance_gift_cents, 0)::text AS "balanceGiftCents",
+            c.title AS "companyTitle"
+       FROM users u
+       LEFT JOIN companies c ON c.id = u.company_id
+      WHERE u.is_active
+        AND u.kind = 'person'
+        AND (lower(u.email) LIKE $1 OR lower(COALESCE(u.full_name, '')) LIKE $1)
+      -- Вход — первым среди строк одной почты: кто ищет человека по адресу,
+      -- находит его самого, а профили в компаниях идут следом.
+      ORDER BY u.email, (u.login_user_id IS NOT NULL), lower(COALESCE(c.title, ''))
       LIMIT $2`,
     [term, limit],
   )

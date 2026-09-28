@@ -45,6 +45,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto"
 import bcrypt from "bcryptjs"
 import { Client } from "pg"
 import { readConnectionConfig, resolvePgSsl } from "./pg-connection.mjs"
+import { usersEmailConflictTarget } from "./lib/users-email-conflict.mjs"
 
 const email = (process.env.TEMPLATES_EMAIL ?? "templates@ffworks.pro")
   .trim()
@@ -150,7 +151,7 @@ async function main() {
        id, full_name, email, password_hash, role, is_active, auth_provider
      )
      VALUES ($1, $2, $3, $4, 'USER', TRUE, 'local')
-     ON CONFLICT (email) DO UPDATE
+     ${await usersEmailConflictTarget(client)} DO UPDATE
        SET password_hash = EXCLUDED.password_hash,
            is_active     = TRUE
      RETURNING id, (xmax = 0) AS created`,

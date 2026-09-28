@@ -5,10 +5,11 @@ import {
   buildSessionCookieConfig,
   createSessionToken,
 } from "@/lib/auth"
-import { getCurrentUser } from "@/lib/admin-auth"
+import { getCurrentUser, getSessionLogin } from "@/lib/admin-auth"
 import {
-  findUserByEmail,
-  updateUser,
+  findLoginByEmail,
+  listLoginProfiles,
+  updateLoginIdentity,
 } from "@/lib/repositories/users"
 import { syncUserMeta } from "@/lib/project-storage"
 
@@ -25,9 +26,21 @@ export async function GET() {
     role: user.role,
     isActive: user.isActive,
     createdAt: user.createdAt,
+    // «Удалить аккаунт» — только в «Личном» (docs/MULTI_COMPANY_PROFILES_PLAN.md
+    // §5.3): из профиля компании удалять пришлось бы вход целиком, а человек в
+    // этот момент стоит в одном из его рабочих мест.
+    isPersonal: user.loginUserId === null,
   })
 }
 
+/**
+ * Имя, подпись и почта — общие у человека, а не у рабочего места
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §3.3, §5.3).
+ *
+ * Поэтому правка из любого профиля пишется во вход и копируется во все его
+ * подпрофили одной транзакцией: письма компании уходят на ту же почту, по
+ * которой человек входит, а статистика не расщепляет его на две подписи.
+ */
 export async function PATCH(request: Request) {
   const current = await getCurrentUser()
   if (!current) {
@@ -38,6 +51,10 @@ export async function PATCH(request: Request) {
       { message: "Account is inactive." },
       { status: 403 },
     )
+  }
+  const session = await getSessionLogin()
+  if (!session) {
+    return NextResponse.json({ message: "Unauthorized." }, { status: 401 })
   }
 
   const payload = await request.json().catch(() => null)
@@ -55,8 +72,9 @@ export async function PATCH(request: Request) {
   const nextEmail = parsed.data.email
   const emailChanged = nextEmail !== current.email
   if (emailChanged) {
-    const existing = await findUserByEmail(nextEmail)
-    if (existing && existing.id !== current.id) {
+    // Занятость — среди входов: у подпрофилей почта не своя, а копия.
+    const existing = await findLoginByEmail(nextEmail)
+    if (existing && existing.id !== session.loginUserId) {
       return NextResponse.json(
         { message: "Email is already in use." },
         { status: 409 },
@@ -66,7 +84,7 @@ export async function PATCH(request: Request) {
 
   let updated
   try {
-    updated = await updateUser(current.id, {
+    updated = await updateLoginIdentity(session.loginUserId, {
       fullName: parsed.data.fullName,
       contactName: parsed.data.contactName,
       email: nextEmail,
@@ -97,32 +115,39 @@ export async function PATCH(request: Request) {
   }
 
   if (emailChanged) {
-    void syncUserMeta({
-      userId: updated.id,
-      email: updated.email,
-      createdAt: updated.createdAt.toISOString(),
-    })
+    // Зеркало метаданных — у каждого профиля своё: проекты подпрофиля лежат
+    // под его id, и адрес в них должен совпасть с новым.
+    const profiles = await listLoginProfiles(session.loginUserId).catch(() => [])
+    for (const profile of profiles) {
+      void syncUserMeta({
+        userId: profile.id,
+        email: updated.email,
+        createdAt: updated.createdAt.toISOString(),
+      })
+    }
   }
 
   const response = NextResponse.json({
     message: "Profile updated.",
     profile: {
-      id: updated.id,
+      // Профиль — тот, в котором человек сейчас; поля — общие, со входа.
+      id: current.id,
       fullName: updated.fullName,
       contactName: updated.contactName,
       email: updated.email,
-      role: updated.role,
-      isActive: updated.isActive,
+      role: current.role,
+      isActive: current.isActive,
     },
   })
 
   // The session cookie carries the email claim, so we re-issue it whenever the
   // email changes; otherwise the header would keep rendering the old address
-  // until the cookie expires (up to 7 days).
+  // until the cookie expires (up to 7 days). Активный профиль не меняется.
   if (emailChanged) {
     const token = await createSessionToken({
-      sub: updated.id,
-      role: updated.role,
+      sub: current.id,
+      lid: session.loginUserId,
+      role: current.role,
       email: updated.email,
     })
     response.cookies.set(SESSION_COOKIE_NAME, token, buildSessionCookieConfig())

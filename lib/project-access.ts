@@ -12,7 +12,7 @@ import {
   type ProjectAccessRole,
   type ProjectPermissions,
 } from "@/lib/project-roles"
-import { findProjectMembership } from "@/lib/repositories/project-members"
+import { findMembershipForAccess } from "@/lib/repositories/project-members"
 import { findProjectById } from "@/lib/repositories/projects"
 
 /**
@@ -79,9 +79,14 @@ export async function resolveProjectAccess(
     ...(inTrash ? { inTrash: true } : {}),
   })
 
+  // Владелец — строго этот профиль: проект привязан к компании, где его
+  // завели, и из другого профиля того же человека он не виден
+  // (docs/MULTI_COMPANY_PROFILES_PLAN.md §0).
   if (project.userId === userId) return clamp("owner")
 
-  const membership = await findProjectMembership(projectId, userId)
+  // Участие — своё или входа: проект, расшаренный на вход, открывается из
+  // любого профиля человека (§8.3).
+  const membership = await findMembershipForAccess(projectId, userId)
   if (!membership || !isProjectMemberRole(membership.role)) return null
   return clamp(membership.role)
 }

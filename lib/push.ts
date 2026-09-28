@@ -3,6 +3,8 @@ import {
   deletePushSubscriptionByEndpoint,
   listPushSubscriptionsByUserId,
 } from "@/lib/repositories/push-subscriptions"
+import { findCompanyById } from "@/lib/repositories/companies"
+import { findUserById } from "@/lib/repositories/users"
 
 export function isPushConfigured(): boolean {
   return !!(
@@ -42,6 +44,11 @@ export type PushPayload = {
  * (404/410 — e.g. the user cleared browsing data or uninstalled) is deleted;
  * any other per-subscription failure is logged and otherwise ignored so one
  * dead device never blocks notifying the user's other devices.
+ *
+ * `userId` — профиль-адресат (docs/MULTI_COMPANY_PROFILES_PLAN.md §9.4).
+ * Подписки лежат на его входе, поэтому уведомление приходит, какой бы профиль
+ * ни был открыт. Профиль в компании — префикс «Компания · » в заголовке, а
+ * ссылка несёт `?profile=`: страница сама переключится туда, где проект виден.
  */
 export async function sendPushToUser(
   userId: string,
@@ -50,8 +57,17 @@ export async function sendPushToUser(
   if (!isPushConfigured()) return
   ensureConfigured()
 
-  const subscriptions = await listPushSubscriptionsByUserId(userId)
+  const profile = await findUserById(userId)
+  const loginUserId = profile?.loginUserId ?? userId
+  const subscriptions = await listPushSubscriptionsByUserId(loginUserId)
   if (subscriptions.length === 0) return
+
+  const company = profile?.companyId ? await findCompanyById(profile.companyId) : null
+  const message: PushPayload = {
+    ...payload,
+    title: company ? `${company.title} · ${payload.title}` : payload.title,
+    url: withProfileParam(payload.url, userId),
+  }
 
   await Promise.all(
     subscriptions.map(async (sub) => {
@@ -61,7 +77,7 @@ export async function sendPushToUser(
             endpoint: sub.endpoint,
             keys: { p256dh: sub.p256dh, auth: sub.auth },
           },
-          JSON.stringify(payload),
+          JSON.stringify(message),
         )
       } catch (error) {
         const statusCode =
@@ -80,4 +96,11 @@ export async function sendPushToUser(
       }
     }),
   )
+}
+
+/** Путь уведомления с `?profile=` — какой бы запрос в нём уже ни был. */
+function withProfileParam(path: string, profileId: string): string {
+  const url = new URL(path, "http://push.local")
+  url.searchParams.set("profile", profileId)
+  return `${url.pathname}${url.search}${url.hash}`
 }

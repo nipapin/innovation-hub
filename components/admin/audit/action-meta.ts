@@ -16,6 +16,7 @@ import {
   ToggleRight,
   Trash2,
   UserCog,
+  UserMinus,
   UserPlus,
   Workflow,
 } from "lucide-react"
@@ -242,6 +243,19 @@ export const ACTION_META: Record<
   // ничьей принадлежности и ничьего кошелька это действие не задевает.
   "company.member_added": {
     labelKey: "auditCompanyMemberAdded",
+    icon: UserPlus,
+    tone: "neutral",
+  },
+  // «access»: человек теряет доступ к работе компании.
+  "company.member_removed": {
+    labelKey: "auditCompanyMemberRemoved",
+    icon: UserMinus,
+    tone: "access",
+  },
+  // «neutral»: для компании ничего не поменялось — у человека появился
+  // отдельный вход, а его профиль в компании остался прежним.
+  "company.member_split": {
+    labelKey: "auditCompanyMemberSplit",
     icon: UserPlus,
     tone: "neutral",
   },

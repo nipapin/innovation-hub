@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireUserApi } from "@/lib/admin-auth"
+import { getSessionLogin, requireUserApi } from "@/lib/admin-auth"
 import {
   deletePushSubscriptionByEndpoint,
   upsertPushSubscription,
@@ -16,10 +16,17 @@ const subscriptionSchema = z.object({
   }),
 })
 
-/** Registers (or updates) a browser's push subscription for the current user. */
+/**
+ * Registers (or updates) a browser's push subscription for the current user.
+ *
+ * Подписка — на ВХОД, а не на активный профиль (docs/MULTI_COMPANY_PROFILES_PLAN.md
+ * §9.4): браузер один, а профилей у человека несколько. Запиши её на профиль —
+ * и уведомления из других компаний не доходили бы, пока человек в этой.
+ */
 export async function POST(request: NextRequest) {
   const auth = await requireUserApi(request)
   if (auth instanceof NextResponse) return auth
+  const session = await getSessionLogin()
 
   const payload = await request.json().catch(() => null)
   const parsed = subscriptionSchema.safeParse(payload)
@@ -28,7 +35,7 @@ export async function POST(request: NextRequest) {
   }
 
   await upsertPushSubscription({
-    userId: auth.userId,
+    userId: session?.loginUserId ?? auth.userId,
     endpoint: parsed.data.endpoint,
     p256dh: parsed.data.keys.p256dh,
     auth: parsed.data.keys.auth,

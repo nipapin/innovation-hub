@@ -8,9 +8,11 @@ import { hashPassword } from "@/lib/auth"
 import {
   countActiveAdmins,
   countActiveSuperAdmins,
+  countSubprofiles,
   deleteUser,
-  findUserByEmail,
+  findLoginByEmail,
   findUserById,
+  updateLoginIdentity,
   updateUser,
 } from "@/lib/repositories/users"
 import { isElevated, isSuperAdmin } from "@/lib/admin-roles"
@@ -113,10 +115,39 @@ export async function PATCH(
     }
   }
 
-  let nextEmail: string | undefined
-  if (parsed.data.email !== undefined) {
-    nextEmail = parsed.data.email.toLowerCase()
-    const conflict = await findUserByEmail(nextEmail)
+  const nextEmail =
+    parsed.data.email !== undefined ? parsed.data.email.toLowerCase() : undefined
+  const emailChanging = nextEmail !== undefined && nextEmail !== previousEmail
+  const nameChanging =
+    parsed.data.fullName !== undefined && parsed.data.fullName !== previousFullName
+  const roleChanging = nextRole !== undefined && nextRole !== previousRole
+  const passwordChanging =
+    parsed.data.password !== undefined && parsed.data.password.length > 0
+
+  /**
+   * Подпрофиль — рабочее место в компании, а не человек целиком
+   * (docs/MULTI_COMPANY_PROFILES_PLAN.md §10). Почта, имя и пароль у него —
+   * копии со входа, роль сайта — всегда `USER`. Правка здесь разошлась бы со
+   * входом, а роль сайта не пустила бы база. Сравниваем с текущим, а не с
+   * присланным: диалог шлёт профиль целиком при каждом сохранении.
+   */
+  if (
+    target.loginUserId !== null &&
+    (emailChanging || nameChanging || roleChanging || passwordChanging)
+  ) {
+    return NextResponse.json(
+      {
+        message:
+          "This is a company profile. Change the name, email, password and site role on the person's login.",
+        code: "subprofile",
+      },
+      { status: 409 },
+    )
+  }
+
+  if (emailChanging && nextEmail) {
+    // Занятость — среди входов: у подпрофилей почта не своя, а копия.
+    const conflict = await findLoginByEmail(nextEmail)
     if (conflict && conflict.id !== id) {
       return NextResponse.json(
         { message: "Another account already uses this email." },
@@ -126,17 +157,32 @@ export async function PATCH(
   }
 
   let nextPasswordHash: string | undefined
-  if (parsed.data.password !== undefined && parsed.data.password.length > 0) {
+  if (passwordChanging && parsed.data.password) {
     nextPasswordHash = await hashPassword(parsed.data.password)
   }
 
+  // Только если действительно меняется: у подпрофиля заблокированного входа
+  // показывается действующее «выключен», и сохранение имени из диалога иначе
+  // записало бы это в сам подпрофиль — после разблокировки входа он остался бы
+  // выключенным.
+  const nextIsActive =
+    parsed.data.isActive !== undefined && parsed.data.isActive !== wasActive
+      ? parsed.data.isActive
+      : undefined
+
   try {
+    // Почта и имя входа — во вход и во все его подпрофили одной транзакцией:
+    // иначе письма компании ушли бы на старый адрес.
+    if (emailChanging || nameChanging) {
+      await updateLoginIdentity(id, {
+        email: emailChanging ? nextEmail : undefined,
+        fullName: nameChanging ? parsed.data.fullName : undefined,
+      })
+    }
     const user = await updateUser(id, {
-      fullName: parsed.data.fullName,
-      email: nextEmail,
       passwordHash: nextPasswordHash,
       role: parsed.data.role,
-      isActive: parsed.data.isActive,
+      isActive: nextIsActive,
     })
 
     if (!user) {
@@ -254,6 +300,19 @@ export async function DELETE(
         { status: 400 },
       )
     }
+  }
+
+  // Вход с профилями в компаниях: на него ссылаются подпрофили, а их проекты —
+  // проекты компаний. База не даст удалить такую строку, отвечаем причиной.
+  if ((await countSubprofiles(id)) > 0) {
+    return NextResponse.json(
+      {
+        message:
+          "This person has company profiles. Remove them from the companies and delete those profiles first.",
+        code: "has-company-profiles",
+      },
+      { status: 409 },
+    )
   }
 
   // Тот, кто платит за других, уходит только после них: каскад унёс бы ленту

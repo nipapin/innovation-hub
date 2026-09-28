@@ -87,12 +87,18 @@ export function LoginForm({
 
       setServerMessage(data.message ?? "Signed in successfully.")
       form.reset({ email: values.email, password: "" })
+      const safeRedirect =
+        redirectTo.startsWith("/") && !redirectTo.startsWith("//")
+          ? redirectTo
+          : "/account"
+      // Временный пароль ведёт на смену пароля — если ссылка не знает, куда
+      // точнее. Приглашение в компанию знает: оно переключает профиль и само
+      // открывает страницу профиля, где пароль и меняют
+      // (docs/MULTI_COMPANY_PROFILES_PLAN.md §2).
       const target =
-        data.mustChangePassword
+        data.mustChangePassword && safeRedirect === "/account"
           ? "/account/security?mustChange=1"
-          : redirectTo.startsWith("/") && !redirectTo.startsWith("//")
-            ? redirectTo
-            : "/account"
+          : safeRedirect
       window.location.assign(target)
     } catch {
       setServerError("Unable to reach the server. Please try again.")

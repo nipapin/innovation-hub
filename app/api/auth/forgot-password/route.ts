@@ -4,7 +4,7 @@ import { forgotPasswordSchema } from "@/lib/auth-schemas"
 import { sendPasswordResetEmail } from "@/lib/mail/send"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 import { issuePasswordReset } from "@/lib/repositories/password-resets"
-import { findUserByEmail } from "@/lib/repositories/users"
+import { findLoginByEmail } from "@/lib/repositories/users"
 
 export const runtime = "nodejs"
 
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   const email = parsed.data.email.toLowerCase()
 
   try {
-    const user = await findUserByEmail(email)
+    const user = await findLoginByEmail(email)
 
     // Кому ссылка не нужна и не поможет: у служебного кошелька пароля нет и не
     // должно быть, у OAuth-аккаунта вход идёт через провайдера, а заблокированный

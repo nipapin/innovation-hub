@@ -6,7 +6,17 @@ export const SESSION_COOKIE_NAME = "inhub_session"
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7
 
 type SessionPayload = {
+  /** Активный профиль. Все проверки прав — по нему и только по нему. */
   sub: string
+  /**
+   * Вход, под которым открыта сессия (docs/MULTI_COMPANY_PROFILES_PLAN.md §4.1).
+   * При входе совпадает с `sub`; после переключения `sub` — подпрофиль.
+   *
+   * Гвардам не нужен и читаться ими не должен: он для переключателя, учётных
+   * данных и участия входа в проектах. Токены до плана его не несут — поэтому
+   * вход сессии всегда досчитывается по базе (`getSessionLogin`).
+   */
+  lid: string
   role: UserRole
   email: string
 }
@@ -41,7 +51,7 @@ export async function verifyPassword(password: string, hash: string) {
 }
 
 export async function createSessionToken(payload: SessionPayload) {
-  return new SignJWT({ role: payload.role, email: payload.email })
+  return new SignJWT({ role: payload.role, email: payload.email, lid: payload.lid })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.sub)
     .setIssuedAt()
@@ -59,6 +69,9 @@ export async function verifySessionToken(token: string) {
       userId: verified.payload.sub ?? "",
       role: verified.payload.role as UserRole | undefined,
       email: verified.payload.email as string | undefined,
+      /** Нет у токенов, выданных до подпрофилей. См. SessionPayload.lid. */
+      loginId:
+        typeof verified.payload.lid === "string" ? verified.payload.lid : undefined,
     }
   } catch {
     return null

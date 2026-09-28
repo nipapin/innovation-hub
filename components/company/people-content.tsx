@@ -26,11 +26,12 @@ type Person = {
 }
 
 /**
- * «Сотрудники» — роли внутри компании.
+ * «Сотрудники» — роли внутри компании, добавление и вывод.
  *
- * Заводить новых — можно (план §7). ПЕРЕВОДИТЬ существующих нельзя: перевод
- * меняет плательщика и снимает права, то есть задевает деньги и принадлежность,
- * и живёт он в нашей админке (план §6.6).
+ * Добавить можно и того, у кого аккаунт уже есть: он получает рабочее место в
+ * компании — подпрофиль под своим входом, — а личные проекты и кошелёк у него
+ * остаются прежними (docs/MULTI_COMPANY_PROFILES_PLAN.md §7). Вывод выключает
+ * этот подпрофиль: проекты остаются компании.
  */
 export function CompanyPeople({ currentUserId }: { currentUserId: string }) {
   const { t } = useI18n()
@@ -52,6 +53,42 @@ export function CompanyPeople({ currentUserId }: { currentUserId: string }) {
   useEffect(() => {
     void load()
   }, [load])
+
+  const removePerson = async (person: Person) => {
+    if (
+      !confirm(
+        tf(t.coPeopleRemoveConfirm, { name: person.fullName || person.email }),
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    try {
+      const res = await fetch(
+        `/api/company/people?userId=${encodeURIComponent(person.userId)}`,
+        { method: "DELETE" },
+      )
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { code?: string }
+        toast.error(
+          body.code === "last-owner"
+            ? t.coPeopleLastOwner
+            : body.code === "owner-only"
+              ? t.coPeopleOwnerOnly
+              : body.code === "self"
+                ? t.coPeopleSelfRemove
+                : body.code === "not-subprofile"
+                  ? t.coPeopleNotSubprofile
+                  : t.coSaveFailed,
+        )
+        return
+      }
+      toast.success(t.coPeopleRemoved)
+      await load()
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const changeRole = async (userId: string, companyRole: CompanyRole) => {
     setBusy(true)
@@ -123,6 +160,18 @@ export function CompanyPeople({ currentUserId }: { currentUserId: string }) {
                     <SelectItem value="owner">{t.coRoleOwner}</SelectItem>
                   </SelectContent>
                 </Select>
+                {/* Выведенного второй раз не выводят: вернуть его — добавить
+                    заново по почте. */}
+                {person.isActive && !isSelf ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void removePerson(person)}
+                  >
+                    {t.coPeopleRemove}
+                  </Button>
+                ) : null}
               </li>
             )
           })}
@@ -136,14 +185,15 @@ export function CompanyPeople({ currentUserId }: { currentUserId: string }) {
 
 type AddOutcome =
   | "created"
+  | "added"
   | "mail-failed"
   | "already"
-  | "taken"
   | "invalid"
   | "failed"
 
 /**
- * «Добавить сотрудника» — заведение нового аккаунта по почте.
+ * «Добавить сотрудника» — по почте: новый аккаунт или рабочее место в компании
+ * тому, у кого аккаунт уже есть.
  *
  * Результат показывается построчно и НЕ исчезает сам: в строке «заведён, но
  * письмо не ушло» лежит единственное, что отличает заведённого человека от
@@ -159,9 +209,9 @@ function AddPeople({ onAdded }: { onAdded: () => Promise<void> | void }) {
 
   const outcomeText: Record<AddOutcome, string> = {
     created: t.coPeopleAddCreated,
+    added: t.coPeopleAddAdded,
     "mail-failed": t.coPeopleAddMailFailed,
     already: t.coPeopleAddAlready,
-    taken: t.coPeopleAddTaken,
     invalid: t.coPeopleAddInvalid,
     failed: t.coPeopleAddFailed,
   }
@@ -193,7 +243,11 @@ function AddPeople({ onAdded }: { onAdded: () => Promise<void> | void }) {
       setResults(body.results)
       // Поле чистим только если кого-то действительно завели: иначе человек
       // потеряет список, который вставлял, и наберёт его заново.
-      if (body.results.some((row) => row.outcome === "created")) {
+      if (
+        body.results.some(
+          (row) => row.outcome === "created" || row.outcome === "added",
+        )
+      ) {
         setRaw("")
         await onAdded()
       }
@@ -223,7 +277,7 @@ function AddPeople({ onAdded }: { onAdded: () => Promise<void> | void }) {
                 <span className="text-foreground">{row.email}</span>
                 <span
                   className={
-                    row.outcome === "created"
+                    row.outcome === "created" || row.outcome === "added"
                       ? "text-muted-foreground"
                       : "text-amber-600 dark:text-amber-500"
                   }

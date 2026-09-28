@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto"
 import { query, withTransaction } from "@/lib/db"
+import type { PoolClient } from "pg"
 import type { CompanyRecord, CompanyRole } from "@/lib/domain-types"
 
 /**
  * Компания как сущность. Этап 3 плана docs/COMPANY_ACCOUNTS_PLAN.md.
  *
- * Компания на этом этапе ещё ничего не открывает — консоли `/company` нет, это
- * этап 4. Здесь только модель: заведение вместе со служебным кошельком, перенос
- * человека одной транзакцией, выключение и удаление пустой компании.
+ * Заведение вместе со служебным кошельком, выключение и удаление пустой
+ * компании. Люди попадают в компанию подпрофилем под своим входом
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md): `createSubprofile` и
+ * `deactivateSubprofile` ниже.
  */
 
 const COMPANY_FIELDS = `
@@ -31,9 +33,13 @@ export async function listCompanies(): Promise<CompanyWithCount[]> {
     `SELECT ${COMPANY_FIELDS}, COALESCE(m.count, 0)::int AS "memberCount"
        FROM companies
        LEFT JOIN (
+         -- Выведенные из компании подпрофили остаются строками (на них
+         -- ссылаются проекты компании), но людьми компании уже не считаются.
          SELECT company_id, COUNT(*)::int AS count
            FROM users
           WHERE company_id IS NOT NULL
+            AND kind = 'person'
+            AND is_active
           GROUP BY company_id
        ) m ON m.company_id = companies.id
       ORDER BY companies.created_at DESC`,
@@ -248,9 +254,13 @@ export async function createCompany(input: {
     })
     return { ok: true, company }
   } catch (error) {
+    // Почта кошелька уникальна среди входов: до миграции подпрофилей — своим
+    // ограничением, после — частичным индексом. Имена у них разные, а причина
+    // отказа одна.
     if (
       isUniqueViolation(error, "companies_slug_key") ||
-      isUniqueViolation(error, "users_email_key")
+      isUniqueViolation(error, "users_email_key") ||
+      isUniqueViolation(error, "users_login_email_idx")
     ) {
       return { ok: false, reason: "slug-taken" }
     }
@@ -343,167 +353,247 @@ export type CompanyMember = {
   companyRole: CompanyRole
 }
 
+/**
+ * Люди компании для нашей админки. Только действующие: выведенный подпрофиль
+ * остаётся строкой (на него ссылаются проекты компании), но сотрудником уже не
+ * числится, и в списке он путал бы — «убрали, а он на месте».
+ */
 export async function listCompanyMembers(companyId: string): Promise<CompanyMember[]> {
   const result = await query<CompanyMember>(
     `SELECT id AS "userId", email, full_name AS "fullName", company_role AS "companyRole"
        FROM users
-      WHERE company_id = $1 AND kind = 'person'
+      WHERE company_id = $1 AND kind = 'person' AND is_active
       ORDER BY lower(COALESCE(NULLIF(full_name, ''), email))`,
     [companyId],
   )
   return result.rows
 }
 
-export type TransferProblem =
-  | "not-found"
-  | "is-wallet"
+/**
+ * Кто платит за работу сотрудника этой компании — её кошелёк.
+ *
+ * Одно место на весь код, куда ведёт вопрос «чей кошелёк у сотрудника»: прежде
+ * ответ жил внутри переноса человека между компаниями, а второй INSERT со
+ * своими правилами плательщика разошёлся бы с ним молча
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §3.5).
+ *
+ * `null` — компании нет или она выключена: в выключенную компанию не
+ * добавляют, и объяснять это надо причиной, а не ошибкой базы.
+ */
+async function companyPayerFor(
+  client: PoolClient,
+  companyId: string,
+): Promise<
+  | { ok: true; walletUserId: string }
+  | { ok: false; reason: "company-not-found" | "company-inactive" }
+> {
+  const companyRes = await client.query<{ isActive: boolean; walletUserId: string }>(
+    `SELECT is_active AS "isActive", wallet_user_id AS "walletUserId"
+       FROM companies
+      WHERE id = $1
+        FOR UPDATE`,
+    [companyId],
+  )
+  const company = companyRes.rows[0]
+  if (!company) return { ok: false, reason: "company-not-found" }
+  if (!company.isActive) return { ok: false, reason: "company-inactive" }
+  return { ok: true, walletUserId: company.walletUserId }
+}
+
+export type SubprofileProblem =
+  /** Такого входа нет, или это не вход (подпрофиль, кошелёк компании). */
+  | "login-not-found"
+  /** Вход заблокирован — в компанию его не добавляют. */
+  | "login-inactive"
   | "company-not-found"
   | "company-inactive"
-  | "invalid-pair"
-  /** Человек сам платит за других — цепочек нет (план §7.4). */
-  | "has-dependents"
-  /** У человека открыт подарок на его личном кошельке. */
-  | "has-open-grants"
 
-export type TransferResult =
+export type CreateSubprofileResult =
   | {
       ok: true
-      changed: boolean
-      previousCompanyId: string | null
-      /** С какого кошелька теперь платят — первый вопрос после перевода. */
-      payerUserId: string | null
-      previousPayerUserId: string | null
+      /**
+       * created — новый подпрофиль; reactivated — прежний, выведенный из
+       * компании, вернули; already — действующий профиль в ней уже есть.
+       */
+      outcome: "created" | "reactivated" | "already"
+      profileId: string
+      /** Роль в компании ДО вызова. Только у `already`. */
+      currentRole: CompanyRole | null
     }
-  | { ok: false; reason: TransferProblem }
+  | { ok: false; reason: SubprofileProblem }
 
 /**
- * Перевод человека между компаниями или в общий раздел — одна транзакция
- * (план §3): смена company_id, выставление или снятие company_role, снятие
- * всех company_capabilities и решение payer_user_id (план §7.4).
+ * Рабочее место человека в компании — подпрофиль под его входом
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §3.5, §7).
  *
- * Плательщик подставляется на кошелёк компании при входе и снимается при
- * выходе, но только если это был кошелёк ИМЕННО прежней компании: личного
- * плательщика, назначенного в общем разделе через lib/billing/payer.ts, смена
- * компании не касается.
+ * ЕДИНСТВЕННЫЙ путь создать подпрофиль — для консоли компании, для нашей
+ * админки и для возвращения выведенного. Инварианты, которых CHECK не выразит
+ * (§3.2), держатся здесь: цепочка глубиной один (вход — строка без
+ * `login_user_id`), вход — активный человек, второй профиль в той же компании
+ * не заводится.
  *
- * Смена плательщика здесь — та же операция, что и на экране акций, поэтому и
- * защиты у неё те же (lib/billing/payer.ts, setPayer). Без них перевод обходил
- * бы их молча: открытый подарок остался бы на личном кошельке, с которого уже
- * никто не платит, а «платит за других» упёрлось бы в триггер базы и вернуло
- * 500 вместо причины.
+ * Общие поля (почта, имя, подпись) копируются со входа, роль сайта — всегда
+ * `USER`, средств входа нет: всё это требует и CHECK, но отказ базы здесь был
+ * бы 500, а не причина. Платит кошелёк компании — как у любого её сотрудника.
+ *
+ * Уже есть действующий профиль в этой компании — `already`, и роль НЕ
+ * меняется: повторное добавление не должно молча понижать владельца до
+ * участника. Менять роль — отдельным действием.
  */
-export async function transferUserToCompany(input: {
-  userId: string
-  companyId: string | null
-  companyRole: CompanyRole | null
-}): Promise<TransferResult> {
-  if ((input.companyId === null) !== (input.companyRole === null)) {
-    return { ok: false, reason: "invalid-pair" }
-  }
-
+export async function createSubprofile(input: {
+  loginUserId: string
+  companyId: string
+  companyRole: CompanyRole
+}): Promise<CreateSubprofileResult> {
   return withTransaction(async (client) => {
-    const userRes = await client.query<{
+    const loginRes = await client.query<{
       id: string
       kind: string
+      loginUserId: string | null
+      isActive: boolean
       companyId: string | null
-      companyRole: string | null
-      payerUserId: string | null
+      companyRole: CompanyRole | null
     }>(
-      `SELECT id, kind, company_id AS "companyId", company_role AS "companyRole",
-              payer_user_id AS "payerUserId"
+      `SELECT id, kind, login_user_id AS "loginUserId", is_active AS "isActive",
+              company_id AS "companyId", company_role AS "companyRole"
          FROM users
         WHERE id = $1
           FOR UPDATE`,
-      [input.userId],
+      [input.loginUserId],
     )
-    const user = userRes.rows[0]
-    if (!user) return { ok: false, reason: "not-found" }
-    if (user.kind !== "person") return { ok: false, reason: "is-wallet" }
-
-    let walletUserId: string | null = null
-    if (input.companyId) {
-      const companyRes = await client.query<{
-        isActive: boolean
-        walletUserId: string
-      }>(
-        `SELECT is_active AS "isActive", wallet_user_id AS "walletUserId"
-           FROM companies
-          WHERE id = $1
-            FOR UPDATE`,
-        [input.companyId],
-      )
-      const company = companyRes.rows[0]
-      if (!company) return { ok: false, reason: "company-not-found" }
-      if (!company.isActive) return { ok: false, reason: "company-inactive" }
-      walletUserId = company.walletUserId
+    const login = loginRes.rows[0]
+    if (!login || login.kind !== "person" || login.loginUserId !== null) {
+      return { ok: false, reason: "login-not-found" }
     }
+    if (!login.isActive) return { ok: false, reason: "login-inactive" }
 
-    const previousCompanyId = user.companyId
-    if (previousCompanyId === input.companyId && user.companyRole === input.companyRole) {
+    const payer = await companyPayerFor(client, input.companyId)
+    if (!payer.ok) return payer
+
+    // Между выкатом кода и миграцией перевода сотрудник ещё живёт одной строкой
+    // — входом с компанией. Для своей компании он «уже в ней».
+    if (login.companyId === input.companyId) {
       return {
         ok: true,
-        changed: false,
-        previousCompanyId,
-        payerUserId: user.payerUserId,
-        previousPayerUserId: user.payerUserId,
+        outcome: "already",
+        profileId: login.id,
+        currentRole: login.companyRole,
       }
     }
 
-    let nextPayerUserId = user.payerUserId
-    if (walletUserId) {
-      nextPayerUserId = walletUserId
-    } else if (previousCompanyId) {
-      const prevCompany = await client.query<{ walletUserId: string }>(
-        `SELECT wallet_user_id AS "walletUserId" FROM companies WHERE id = $1`,
-        [previousCompanyId],
-      )
-      if (prevCompany.rows[0]?.walletUserId === user.payerUserId) {
-        nextPayerUserId = null
+    const existingRes = await client.query<{
+      id: string
+      isActive: boolean
+      companyRole: CompanyRole
+    }>(
+      `SELECT id, is_active AS "isActive", company_role AS "companyRole"
+         FROM users
+        WHERE login_user_id = $1 AND company_id = $2
+          FOR UPDATE`,
+      [input.loginUserId, input.companyId],
+    )
+    const existing = existingRes.rows[0]
+
+    if (existing?.isActive) {
+      return {
+        ok: true,
+        outcome: "already",
+        profileId: existing.id,
+        currentRole: existing.companyRole,
       }
     }
 
-    if (nextPayerUserId !== user.payerUserId) {
-      const dependents = await client.query(
-        `SELECT 1 FROM users WHERE payer_user_id = $1 LIMIT 1`,
-        [input.userId],
+    if (existing) {
+      // Возвращение выведенного. Права компании сняли при выводе, но чистим и
+      // здесь: теги, всплывшие из прошлой жизни, вернули бы доступ, которого в
+      // этот раз никто не выдавал.
+      await client.query(`DELETE FROM company_capabilities WHERE user_id = $1`, [
+        existing.id,
+      ])
+      await client.query(
+        `UPDATE users s
+            SET is_active     = TRUE,
+                company_role  = $2,
+                payer_user_id = $3,
+                email         = l.email,
+                full_name     = l.full_name,
+                contact_name  = l.contact_name,
+                updated_at    = NOW()
+           FROM users l
+          WHERE s.id = $1
+            AND l.id = s.login_user_id`,
+        [existing.id, input.companyRole, payer.walletUserId],
       )
-      if ((dependents.rowCount ?? 0) > 0) {
-        return { ok: false, reason: "has-dependents" }
-      }
-
-      // Подарок лежит на кошельке человека, а платить после перевода будет
-      // другой — начисленное повисло бы невидимым.
-      const grants = await client.query(
-        `SELECT 1 FROM billing_grants
-          WHERE user_id = $1
-            AND status IN ('provisioning', 'active')
-            AND reset_at IS NULL
-          LIMIT 1`,
-        [input.userId],
-      )
-      if ((grants.rowCount ?? 0) > 0) {
-        return { ok: false, reason: "has-open-grants" }
+      return {
+        ok: true,
+        outcome: "reactivated",
+        profileId: existing.id,
+        currentRole: null,
       }
     }
+
+    const profileId = randomUUID()
+    await client.query(
+      `INSERT INTO users (
+         id, full_name, contact_name, email, password_hash, role, auth_provider,
+         provider_account_id, kind, company_id, company_role, payer_user_id,
+         login_user_id
+       )
+       SELECT $1, l.full_name, l.contact_name, l.email, NULL, 'USER', 'local',
+              NULL, 'person', $2, $3, $4, l.id
+         FROM users l
+        WHERE l.id = $5`,
+      [profileId, input.companyId, input.companyRole, payer.walletUserId, input.loginUserId],
+    )
+    return { ok: true, outcome: "created", profileId, currentRole: null }
+  })
+}
+
+export type DeactivateSubprofileResult =
+  | { ok: true; changed: boolean; email: string }
+  | { ok: false; reason: "not-found" }
+
+/**
+ * Вывести человека из компании — выключить его подпрофиль
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §7.3).
+ *
+ * Строку НЕ удаляем: на неё ссылаются проекты компании, задачи и журнал, и
+ * проекты остаются компании, как у уволенного. Права компании снимаются здесь
+ * же: выключенный профиль их не использует, но при возвращении они всплыли бы
+ * сами.
+ *
+ * Плательщик не трогается: работа по проектам компании — её расход, кто бы их
+ * ни завёл. Вход и остальные компании человека не меняются.
+ *
+ * Только подпрофиль в ЭТОЙ компании: чужой идентификатор просто не находится.
+ */
+export async function deactivateSubprofile(input: {
+  companyId: string
+  profileId: string
+}): Promise<DeactivateSubprofileResult> {
+  return withTransaction(async (client) => {
+    const res = await client.query<{ isActive: boolean; email: string }>(
+      `SELECT is_active AS "isActive", email
+         FROM users
+        WHERE id = $1
+          AND company_id = $2
+          AND login_user_id IS NOT NULL
+          FOR UPDATE`,
+      [input.profileId, input.companyId],
+    )
+    const row = res.rows[0]
+    if (!row) return { ok: false, reason: "not-found" }
 
     await client.query(`DELETE FROM company_capabilities WHERE user_id = $1`, [
-      input.userId,
+      input.profileId,
     ])
+    if (!row.isActive) return { ok: true, changed: false, email: row.email }
 
     await client.query(
-      `UPDATE users
-          SET company_id = $2, company_role = $3, payer_user_id = $4, updated_at = NOW()
-        WHERE id = $1`,
-      [input.userId, input.companyId, input.companyRole, nextPayerUserId],
+      `UPDATE users SET is_active = FALSE, updated_at = NOW() WHERE id = $1`,
+      [input.profileId],
     )
-
-    return {
-      ok: true,
-      changed: true,
-      previousCompanyId,
-      payerUserId: nextPayerUserId,
-      previousPayerUserId: user.payerUserId,
-    }
+    return { ok: true, changed: true, email: row.email }
   })
 }
 

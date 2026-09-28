@@ -2,14 +2,18 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { auditFrom } from "@/lib/audit"
 import { requireCompanyApi } from "@/lib/company-auth"
-import { createAccountByEmail } from "@/lib/invite-account"
-import { mailBrandForOwner, sendCompanyWelcomeEmail } from "@/lib/mail/send"
+import { addLoginToCompany, createAccountByEmail } from "@/lib/invite-account"
+import {
+  mailBrandForCompany,
+  sendCompanyAddedEmail,
+  sendCompanyWelcomeEmail,
+} from "@/lib/mail/send"
 import {
   clearCompanyCapabilities,
   countCompanyOwners,
 } from "@/lib/repositories/company-capabilities"
-import { transferUserToCompany } from "@/lib/repositories/companies"
-import { findUserByEmail, findUserById } from "@/lib/repositories/users"
+import { deactivateSubprofile } from "@/lib/repositories/companies"
+import { findLoginByEmail, findUserById } from "@/lib/repositories/users"
 import {
   listPeople,
   readMemberRole,
@@ -33,14 +37,11 @@ const roleSchema = z.object({
 /**
  * Сменить роль сотрудника внутри компании.
  *
- * ПЕРЕВОДИТЬ людей отсюда нельзя — это делает наша админка (план §6.6).
- * Причина в том, что перевод меняет плательщика и снимает права, то есть
- * задевает деньги и принадлежность; отдать это компании — значит отдать ей
- * возможность посадить чужого человека на свой счёт.
- *
- * ЗАВОДИТЬ нового — можно, это `POST` ниже (план §7): у несуществующего
- * аккаунта нет ни плательщика, ни прав, ни другой компании, и посадить на счёт
- * чужого человека им нельзя.
+ * Добавить человека — `POST` ниже, вывести — `DELETE`. Оба трогают только
+ * рабочее место человека В ЭТОЙ компании — его подпрофиль
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §7). Прежний запрет «переводить людей
+ * отсюда нельзя» держался на том, что перевод забирал человека целиком, вместе
+ * с его личным кошельком и проектами; подпрофиль ничего из этого не задевает.
  */
 export async function PUT(request: NextRequest) {
   const auth = await requireCompanyApi(request, "people.manage")
@@ -126,22 +127,34 @@ const addSchema = z.object({
   emails: z.array(z.string()).min(1).max(50),
 })
 
-/** Что вышло по каждому адресу. Разбирается на экране в человеческую строку. */
+/**
+ * Что вышло по каждому адресу. Разбирается на экране в человеческую строку.
+ *
+ * `added` — аккаунт уже был, человек получил рабочее место в компании. Прежний
+ * исход `taken` ушёл: состав чужой компании по-прежнему не раскрывается —
+ * `added` одинаков для человека из общего раздела и из другой компании (§7.1).
+ */
 type AddOutcome =
   | "created"
+  | "added"
   | "mail-failed"
   | "already"
-  | "taken"
   | "invalid"
   | "failed"
 
 /**
- * Завести сотрудника по почте (план §7).
+ * Добавить людей в компанию по почте (docs/MULTI_COMPANY_PROFILES_PLAN.md §7.1).
  *
- * Заводится ТОЛЬКО новый аккаунт. Занятый адрес — отказ, а не перевод: даже
- * человек без компании вовсе платит сегодня за себя сам, и зачисление его сюда
- * переложило бы оплату на кошелёк компании. Это тот же перевод, просто менее
- * заметный, а перевод остаётся за нами.
+ * | под этой почтой                  | исход                                        |
+ * | -------------------------------- | -------------------------------------------- |
+ * | никого                           | вход + подпрофиль, письмо с паролем — created |
+ * | действующий профиль в компании   | already                                      |
+ * | выведенный профиль в компании    | возвращается — added                         |
+ * | вход без профиля в компании      | подпрофиль, письмо «вас добавили» — added     |
+ *
+ * Новый аккаунт — ВХОД без компании, а в компанию человек попадает подпрофилем:
+ * вход всегда без компании (§3.1). Роль — всегда участник: повышение отдельным
+ * действием через роли, потому что право раздачи прав тегом не раздаётся.
  *
  * Отвечает построчно, а не первой ошибкой. Адреса вставляют пачкой, и «не
  * удалось» без указания, на ком именно, заставило бы заводить всех заново — при
@@ -160,7 +173,7 @@ export async function POST(request: NextRequest) {
   // меня позвал» человек должен прочитать явно.
   const actor = await findUserById(auth.userId)
   const inviterName = actor?.fullName?.trim() || auth.email
-  const brand = await mailBrandForOwner(auth.userId)
+  const brand = await mailBrandForCompany(auth.companyId)
   const audit = auditFrom(request, { userId: auth.userId, email: auth.email })
 
   const seen = new Set<string>()
@@ -176,60 +189,151 @@ export async function POST(request: NextRequest) {
       continue
     }
 
-    const existing = await findUserByEmail(email)
-    if (existing) {
-      // Свой — не ошибка: адрес вставили второй раз или человека уже завёл
-      // коллега. Чужой — отказ без подробностей о том, чей он: состав соседней
-      // компании этой компании знать незачем.
-      results.push({
-        email,
-        outcome: existing.companyId === auth.companyId ? "already" : "taken",
-      })
+    const login = await findLoginByEmail(email)
+    // Служебный кошелёк компании — не человек, добавлять его некуда.
+    if (login && login.kind !== "person") {
+      results.push({ email, outcome: "invalid" })
       continue
     }
 
-    const account = await createAccountByEmail({ email })
-    if (!account) {
-      results.push({ email, outcome: "failed" })
-      continue
+    let loginUserId = login?.id ?? null
+    let temporaryPassword: string | null = null
+    let inviteeName = login?.fullName ?? ""
+    if (!loginUserId) {
+      const account = await createAccountByEmail({ email })
+      if (!account) {
+        results.push({ email, outcome: "failed" })
+        continue
+      }
+      loginUserId = account.user.id
+      temporaryPassword = account.temporaryPassword
+      inviteeName = account.user.fullName
     }
 
-    // Зачисляем тем же путём, что и перевод в админке, хотя переводить тут
-    // нечего: у нового аккаунта все её проверки проходят тривиально, зато
-    // плательщик и принадлежность остаются выставлены в одном месте на всю
-    // систему. Второй INSERT со своими правилами разошёлся бы с первым молча.
-    const moved = await transferUserToCompany({
-      userId: account.user.id,
+    const added = await addLoginToCompany({
+      loginUserId,
       companyId: auth.companyId,
-      // Всегда рядовой: повышение — отдельным действием через роли, потому что
-      // право раздачи прав тегом не раздаётся (план §4).
       companyRole: "member",
     })
-    if (!moved.ok) {
+    if (!added.ok) {
       results.push({ email, outcome: "failed" })
       continue
     }
+    if (added.outcome === "already") {
+      results.push({ email, outcome: "already" })
+      continue
+    }
 
-    const mail = await sendCompanyWelcomeEmail({
-      to: email,
-      inviteeName: account.user.fullName,
-      inviterName,
-      temporaryPassword: account.temporaryPassword,
-      brand,
-    })
+    const mail = temporaryPassword
+      ? await sendCompanyWelcomeEmail({
+          to: email,
+          inviteeName,
+          inviterName,
+          temporaryPassword,
+          brand,
+          profileId: added.profileId,
+        })
+      : await sendCompanyAddedEmail({
+          to: email,
+          inviteeName: inviteeName || email,
+          inviterName,
+          profileId: added.profileId,
+          brand,
+        })
 
     await audit({
       action: "company.member_added",
       targetType: "user",
-      targetId: account.user.id,
+      targetId: added.profileId,
       companyId: auth.companyId,
-      meta: { email, mailOk: mail.ok },
+      meta: {
+        email,
+        mailOk: mail.ok,
+        subprofile: true,
+        loginUserId,
+        newAccount: temporaryPassword !== null,
+        reactivated: added.outcome === "reactivated",
+      },
     })
 
-    // Письмо не ушло — человек всё равно заведён, и сказать об этом надо прямо:
-    // временный пароль есть только в этом письме, и без него он не войдёт.
-    results.push({ email, outcome: mail.ok ? "created" : "mail-failed" })
+    // Новому аккаунту письмо обязательно: временный пароль есть только в нём.
+    // У существующего пароль прежний, и неушедшее письмо — не беда: компания
+    // уже в его переключателе.
+    results.push({
+      email,
+      outcome: temporaryPassword ? (mail.ok ? "created" : "mail-failed") : "added",
+    })
   }
 
   return NextResponse.json({ results })
+}
+
+/**
+ * Вывести человека из компании (docs/MULTI_COMPANY_PROFILES_PLAN.md §7.3).
+ *
+ * Выключается его подпрофиль В ЭТОЙ компании: пункт пропадает из
+ * переключателя, права компании снимаются, проекты остаются компании — как у
+ * уволенного. Вход человека и другие его компании не меняются.
+ *
+ * Правила — те же, что у смены роли: себя не выводят, владельца выводит только
+ * владелец, последнего владельца не выводит никто.
+ */
+export async function DELETE(request: NextRequest) {
+  const auth = await requireCompanyApi(request, "people.manage")
+  if (auth instanceof NextResponse) return auth
+
+  const userId = request.nextUrl.searchParams.get("userId")
+  if (!userId) {
+    return NextResponse.json({ message: "userId is required." }, { status: 400 })
+  }
+  if (userId === auth.userId) {
+    return NextResponse.json(
+      { message: "You cannot remove yourself from the company.", code: "self" },
+      { status: 400 },
+    )
+  }
+
+  const current = await readMemberRole(auth.companyId, userId)
+  if (!current) {
+    return NextResponse.json({ message: "Person not found." }, { status: 404 })
+  }
+  if (current === "owner") {
+    if (auth.companyRole !== "owner") {
+      return NextResponse.json(
+        { message: "Only an owner can remove an owner.", code: "owner-only" },
+        { status: 403 },
+      )
+    }
+    if ((await countCompanyOwners(auth.companyId, userId)) === 0) {
+      return NextResponse.json(
+        { message: "At least one owner must remain.", code: "last-owner" },
+        { status: 400 },
+      )
+    }
+  }
+
+  const result = await deactivateSubprofile({
+    companyId: auth.companyId,
+    profileId: userId,
+  })
+  if (!result.ok) {
+    // Сотрудник есть, но не подпрофилем: он ещё не переведён миграцией
+    // перевода. Выводить такого — значит выводить его целиком, и это не сюда.
+    return NextResponse.json(
+      { message: "This person cannot be removed here yet.", code: "not-subprofile" },
+      { status: 409 },
+    )
+  }
+
+  if (result.changed) {
+    await auditFrom(request, { userId: auth.userId, email: auth.email })({
+      action: "company.member_removed",
+      targetType: "user",
+      targetId: userId,
+      companyId: auth.companyId,
+      meta: { email: result.email, companyRole: current },
+    })
+  }
+
+  return NextResponse.json({ ok: true })
 }

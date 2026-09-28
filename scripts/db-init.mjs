@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto"
 import bcrypt from "bcryptjs"
 import { Client } from "pg"
 import { readConnectionConfig, resolvePgSsl } from "./pg-connection.mjs"
+import { usersEmailConflictTarget } from "./lib/users-email-conflict.mjs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const projectRoot = join(__dirname, "..")
@@ -111,7 +112,7 @@ async function ensureAdmin() {
   await client.query(
     `INSERT INTO users (id, full_name, email, password_hash, role, is_active)
        VALUES ($1, $2, $3, $4, 'SUPERADMIN', TRUE)
-     ON CONFLICT (email) DO UPDATE
+     ${await usersEmailConflictTarget(client)} DO UPDATE
        SET full_name     = EXCLUDED.full_name,
            password_hash = EXCLUDED.password_hash,
            role          = 'SUPERADMIN',

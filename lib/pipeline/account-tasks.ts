@@ -1,4 +1,5 @@
 import { query } from "@/lib/db"
+import { accessIdsFor } from "@/lib/repositories/users"
 
 /**
  * Что об обработке видит сам человек в кабинете.
@@ -133,9 +134,11 @@ const SELECT = `
     ) src ON TRUE
    WHERE (
            p.user_id = $1
+           -- Участие своё или входа (MULTI_COMPANY_PROFILES_PLAN.md §8.3):
+           -- $2 — accessIdsFor(userId).
            OR EXISTS (
              SELECT 1 FROM project_members m
-              WHERE m.project_id = p.id AND m.user_id = $1
+              WHERE m.project_id = p.id AND m.user_id = ANY($2::text[])
            )
          )
 `
@@ -186,18 +189,19 @@ function toTask(row: Row): AccountTask {
 }
 
 export async function listAccountTasks(userId: string): Promise<AccountTask[]> {
+  const ids = await accessIdsFor(userId)
   const [live, finished] = await Promise.all([
     query<Row>(
       `${SELECT} AND t.status IN ('queued', 'claimed', 'running')
         ORDER BY t.created_at ASC
         LIMIT ${LIVE_LIMIT}`,
-      [userId],
+      [userId, ids],
     ),
     query<Row>(
       `${SELECT} AND t.status IN ('done', 'failed')
         ORDER BY t.updated_at DESC
         LIMIT ${FINISHED_LIMIT}`,
-      [userId],
+      [userId, ids],
     ),
   ])
 

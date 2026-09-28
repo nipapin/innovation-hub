@@ -1,7 +1,7 @@
 import { cache } from "react"
 import { cookies } from "next/headers"
 import { NextResponse, type NextRequest } from "next/server"
-import { findUserById } from "@/lib/repositories/users"
+import { findUserById, loginIdOf } from "@/lib/repositories/users"
 import { listCapabilitiesFor } from "@/lib/repositories/admin-capabilities"
 import {
   hasCapability,
@@ -35,6 +35,41 @@ export const getCurrentUser = cache(async () => {
       : []
 
   return { ...user, capabilities }
+})
+
+export type SessionLogin = {
+  /** Активный профиль — `sub` токена. */
+  profileId: string
+  /** Вход, под которым открыта сессия. */
+  loginUserId: string
+}
+
+/**
+ * Сессия глазами входа: активный профиль и вход человека
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §4.1).
+ *
+ * Вход берётся из базы, а не из токена как есть: у сотрудников, переведённых
+ * миграцией перевода, в уже выданной куке `sub` — строка, ставшая подпрофилем,
+ * а `lid` там нет. Так переключатель у них работает без повторного входа.
+ *
+ * ГВАРДЫ ЭТО НЕ ЗОВУТ. Права считаются по активному профилю; вход нужен только
+ * переключателю, учётным данным, push и возврату из выключенного профиля.
+ * Проверка — `npm run profiles:check`.
+ *
+ * Активность здесь не проверяется намеренно: выведенный из компании человек
+ * должен суметь вернуться в «Личное», хотя его активный профиль уже выключен.
+ */
+export const getSessionLogin = cache(async (): Promise<SessionLogin | null> => {
+  const cookieStore = await cookies()
+  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value
+  if (!token) return null
+
+  const session = await verifySessionToken(token)
+  if (!session?.userId) return null
+
+  const loginUserId = await loginIdOf(session.loginId ?? session.userId)
+  if (!loginUserId) return null
+  return { profileId: session.userId, loginUserId }
 })
 
 export type AuthenticatedApiUser = {

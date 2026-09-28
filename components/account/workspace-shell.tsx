@@ -30,6 +30,7 @@ import {
   visibleCompanyAreas,
 } from "@/components/company/nav-config"
 import { BalanceWidget } from "@/components/account/balance-widget"
+import { ProfileSwitcher } from "@/components/account/profile-switcher"
 import { ResizeGrip } from "@/components/account/resize-grip"
 import { useBranding } from "@/components/branding/branding-context"
 import { ThemeSwitch } from "@/components/account/theme-switch"
@@ -334,9 +335,9 @@ function SidebarContent({
           ) : null
         ) : (
           <>
-            <span className="flex-1 whitespace-nowrap text-[16px] font-semibold text-foreground">
-              {branding.name}
-            </span>
+            {/* Название рабочего места и есть переключатель между ними: у
+                человека в нескольких компаниях он открывает выбор. */}
+            <ProfileSwitcher label={branding.name} />
             {onToggle && (
               <button
                 type="button"

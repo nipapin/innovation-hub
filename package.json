@@ -16,6 +16,7 @@
     "admin:check": "node scripts/admin-nav-check.mjs",
     "help:check": "node scripts/help-check.mjs",
   "company:check": "node scripts/company-check.mjs",
+    "profiles:check": "node scripts/profiles-check.mjs",
     "features:check": "node scripts/features-check.mjs",
     "db:init": "node scripts/db-init.mjs",
     "db:reset": "node scripts/db-init.mjs --reset",

@@ -15,6 +15,7 @@ import {
   FolderInput,
   FolderPlus,
   FolderUp,
+  LogOut,
   MessageCircle,
   Pencil,
   RotateCcw,
@@ -366,6 +367,19 @@ export function WorkspaceContextMenu() {
               icon: project.isArchived ? ArchiveRestore : Archive,
               label: project.isArchived ? t.mUnarchive : t.mArchive,
               onClick: () => ws.setArchived(project, !project.isArchived),
+            } as MenuEntry,
+          ]
+        : []),
+      // Выйти из чужого проекта может участник с любой ролью
+      // (COMPANY_ACCOUNTS_PLAN.md §8.3) — не по правам, а по тому, что проект
+      // чужой: своему владельцу выходить не из чего.
+      ...(project.sharedWithMe && !project.deletedAt && source.projectLeaveUrl
+        ? [
+            {
+              icon: LogOut,
+              label: t.mLeaveProject,
+              danger: true,
+              onClick: () => ws.leaveProject(project),
             } as MenuEntry,
           ]
         : []),

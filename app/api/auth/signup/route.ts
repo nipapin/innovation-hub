@@ -6,7 +6,7 @@ import {
   createSessionToken,
   hashPassword,
 } from "@/lib/auth"
-import { createUser, findUserByEmail } from "@/lib/repositories/users"
+import { createUser, findLoginByEmail } from "@/lib/repositories/users"
 import { syncUserMeta } from "@/lib/project-storage"
 
 const signupRequestSchema = z.object({
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     }
 
     const email = parsed.data.email.toLowerCase()
-    const existing = await findUserByEmail(email)
+    const existing = await findLoginByEmail(email)
     if (existing) {
       return NextResponse.json(
         { message: "User with this email already exists." },
@@ -74,6 +74,7 @@ export async function POST(request: Request) {
 
     const token = await createSessionToken({
       sub: user.id,
+      lid: user.id,
       role: user.role,
       email: user.email,
     })

@@ -17,7 +17,14 @@ export type UserRecord = {
   contactName: string | null
   email: string
   role: UserRole
-  /** Аккаунт не заблокирован — к автоматизации отношения не имеет. */
+  /**
+   * Аккаунт не заблокирован — к автоматизации отношения не имеет.
+   *
+   * У подпрофиля это ДЕЙСТВУЮЩЕЕ значение: он активен, только пока активен и
+   * он сам, и его вход. Заблокированный вход закрывает все профили человека
+   * (docs/MULTI_COMPANY_PROFILES_PLAN.md §4.4), и гварды узнают об этом, ничего
+   * не зная о входах.
+   */
   isActive: boolean
   createdAt: Date
   balanceCents: number
@@ -36,6 +43,15 @@ export type UserRecord = {
    */
   companyId: string | null
   companyRole: CompanyRole | null
+  /**
+   * Вход, которому принадлежит этот профиль. NULL — это и есть вход (основной
+   * профиль, «Личное»); иначе — подпрофиль в компании под единым входом
+   * человека (docs/MULTI_COMPANY_PROFILES_PLAN.md §1).
+   *
+   * Права по этому полю не считаются: все проверки идут по активному профилю.
+   * Поле нужно переключателю, учётным данным и списку людей в админке.
+   */
+  loginUserId: string | null
 }
 
 export type ProjectGroupName = "personal" | "shared" | "tools" | "archive"

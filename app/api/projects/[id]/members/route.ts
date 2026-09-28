@@ -12,6 +12,7 @@ import type { MailBrand } from "@/lib/mail/templates"
 import {
   canGrantRole,
   canManageMember,
+  requireProjectAccess,
   requireProjectAccessOrCapability,
   type ProjectAccessRole,
   type ProjectMemberRole,
@@ -25,7 +26,12 @@ import {
 import { rememberShareContact } from "@/lib/repositories/share-contacts"
 import { hasCapability } from "@/lib/admin-capabilities"
 import { checkCompanyInvite } from "@/lib/company-invite-gate"
-import { findUserByEmail, findUserById } from "@/lib/repositories/users"
+import {
+  accessIdsFor,
+  findLoginByEmail,
+  findProfileInCompany,
+  findUserById,
+} from "@/lib/repositories/users"
 
 export const runtime = "nodejs"
 
@@ -108,15 +114,44 @@ async function inviteOne(input: {
    * должен то, куда его позвали.
    */
   brand: MailBrand
+  /** Компания владельца проекта — по ней выбирается профиль приглашённого. */
+  ownerCompanyId: string | null
+  /** Профили зовущего: он сам и его вход (`accessIdsFor`). */
+  actorIds: string[]
   email: string
   role: ProjectMemberRole
   fullName?: string
 }): Promise<InviteOk | InviteFail> {
-  let user = await findUserByEmail(input.email)
+  const login = await findLoginByEmail(input.email)
   let created = false
   let temporaryPassword: string | null = null
 
-  if (!user) {
+  // Служебный кошелёк компании — не человек, делиться с ним нечем.
+  if (login && login.kind !== "person") {
+    return {
+      email: input.email,
+      ok: false,
+      message: "Could not share with this address.",
+    }
+  }
+
+  /**
+   * На какой профиль выдаётся доступ — docs/MULTI_COMPANY_PROFILES_PLAN.md §8.1.
+   *
+   * Какой профиль у человека активен, в момент приглашения неизвестно, поэтому
+   * правило — от компании ПРОЕКТА: есть у него профиль в компании владельца —
+   * доступ туда, проект появится у него в этой компании как у своего. Нет —
+   * доступ на вход: проект виден из любого его профиля с плашкой
+   * компании-владельца. Подпрофиль при этом не создаётся никогда: сотрудником
+   * компании делает сама компания, а не расшаривание (§2.1).
+   */
+  let user: { id: string; email: string; fullName: string }
+  if (login) {
+    const profile = input.ownerCompanyId
+      ? await findProfileInCompany(login.id, input.ownerCompanyId)
+      : null
+    user = profile ?? login
+  } else {
     // Заведение аккаунта — общий код с консолью компании (`lib/invite-account.ts`).
     // Две копии разошлись бы молча и разошлись бы именно по `mustChangePassword`.
     const account = await createAccountByEmail({
@@ -150,7 +185,12 @@ async function inviteOne(input: {
   // него не бессмыслица, а единственный способ открыть проект как обычный
   // участник, поэтому «у вас уже есть доступ» остаётся только владельцу и
   // участникам, у которых этот доступ действительно есть.
-  if (user.id === input.actorUserId && !input.actorViaCapability) {
+  // «Себя» — любым своим профилем: зовущий из профиля компании, вписав свою же
+  // почту, попал бы во вход, который и так видит всё, что видит профиль.
+  if (
+    !input.actorViaCapability &&
+    (input.actorIds.includes(user.id) || (login && input.actorIds.includes(login.id)))
+  ) {
     return {
       email: input.email,
       ok: false,
@@ -210,6 +250,8 @@ async function inviteOne(input: {
       inviteeName: user.fullName,
       projectName: input.projectName,
       projectId: input.projectId,
+      // Ссылка откроет проект в том профиле, на который выдан доступ (§9.3).
+      profileId: user.id,
       role: input.role,
       inviterName: input.inviterName,
       brand: input.brand,
@@ -344,7 +386,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     )
   }
 
-  const inviter = await findUserById(auth.userId)
+  const [inviter, owner, actorIds] = await Promise.all([
+    findUserById(auth.userId),
+    findUserById(access.project.userId),
+    accessIdsFor(auth.userId),
+  ])
   const inviterName = inviter?.fullName ?? auth.email
   const brand = await mailBrandForOwner(access.project.userId)
 
@@ -360,6 +406,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         actorViaCapability: access.viaCapability === true,
         inviterName,
         brand,
+        ownerCompanyId: owner?.companyId ?? null,
+        actorIds,
         email,
         role: parsed.data.role,
         fullName: parsed.data.fullName,
@@ -520,6 +568,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 /**
  * DELETE /api/projects/:id/members?userId= — снять доступ.
+ * DELETE /api/projects/:id/members?self=1 — выйти из чужого проекта самому.
  *
  * Каскада нет: те, кого позвал снятый участник, остаются в проекте. Иначе один
  * клик убирал бы из проекта группу людей, а вернуть их можно только заново
@@ -530,21 +579,53 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   if (auth instanceof NextResponse) return auth
 
   const { id } = await params
-  // Владелец, участник с полным доступом — или админ, которому доверено
-  // распоряжаться чужими проектами: он раздаёт доступ из «Папок пользователей»
-  // тем же диалогом, что и владелец (docs/ADMIN_WORKSPACE_PLAN.md §7).
-  const access = await requireProjectAccessOrCapability(
-    id,
-    auth,
-    "full",
-    "projects.manage",
-  )
-  if (access instanceof NextResponse) return access
-
-  const userId = request.nextUrl.searchParams.get("userId")
-  if (!userId) {
+  const requested = request.nextUrl.searchParams.get("userId")
+  const selfParam = request.nextUrl.searchParams.get("self") === "1"
+  if (!requested && !selfParam) {
     return NextResponse.json({ message: "userId is required." }, { status: 400 })
   }
+
+  // «Себя» — любым своим профилем: доступ, выданный на вход, виден из профиля
+  // компании (docs/MULTI_COMPANY_PROFILES_PLAN.md §8.3), и уйти из такого
+  // проекта человек должен уметь оттуда же.
+  const ownIds = await accessIdsFor(auth.userId)
+  const leaving = selfParam || (requested !== null && ownIds.includes(requested))
+
+  /**
+   * Выйти может участник С ЛЮБОЙ РОЛЬЮ (COMPANY_ACCOUNTS_PLAN.md §8.3). Раньше
+   * роут требовал полный доступ ещё до проверки «удаляю самого себя», и
+   * читатель не мог убрать из своего списка проект, которым с ним поделились.
+   *
+   * Снять ДРУГОГО — по-прежнему владелец, полный доступ или админ, которому
+   * доверено распоряжаться чужими проектами: он раздаёт доступ из «Папок
+   * пользователей» тем же диалогом (docs/ADMIN_WORKSPACE_PLAN.md §7).
+   */
+  const access = leaving
+    ? await requireProjectAccess(id, auth.userId, "viewer")
+    : await requireProjectAccessOrCapability(id, auth, "full", "projects.manage")
+  if (access instanceof NextResponse) return access
+
+  if (leaving) {
+    if (ownIds.includes(access.project.userId)) {
+      return NextResponse.json(
+        { message: "The project owner cannot be removed." },
+        { status: 400 },
+      )
+    }
+    // Вышел — забыл проект: снимаем всё, через что этот профиль его видел, —
+    // своё участие и участие входа. Иначе проект остался бы в списке.
+    const targets = requested && !selfParam ? [requested] : ownIds
+    let removed = false
+    for (const userId of targets) {
+      removed = (await removeProjectMember(id, userId)) || removed
+    }
+    if (!removed) {
+      return NextResponse.json({ message: "Member not found." }, { status: 404 })
+    }
+    return NextResponse.json({ ok: true })
+  }
+
+  const userId = requested as string
   if (userId === access.project.userId) {
     return NextResponse.json(
       { message: "The project owner cannot be removed." },
@@ -556,11 +637,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   if (!existing) {
     return NextResponse.json({ message: "Member not found." }, { status: 404 })
   }
-  // Исключение для себя: снять свой доступ — это выход из чужого проекта, а не
-  // отзыв. Без него участник с полным доступом уйти бы не смог: правило п. 2
-  // (docs/BACKEND_PLAN.md §8.2б) не даёт ему тронуть такой же полный доступ,
-  // включая свой собственный.
-  if (userId !== auth.userId && !canManageMember(access.role, existing.role)) {
+  // Полный доступ не трогает такой же полный: правило п. 2
+  // (docs/BACKEND_PLAN.md §8.2б). Свой собственный уход разобран выше.
+  if (!canManageMember(access.role, existing.role)) {
     return NextResponse.json(
       { message: "Only the project owner can remove this person." },
       { status: 403 },

@@ -233,3 +233,30 @@ export function companyWelcomeWithPasswordHtml(input: {
   </tr>`
   return wrapEmail(inner, input.brand)
 }
+
+/**
+ * «Вас добавили в компанию» — человеку, у которого аккаунт уже есть
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §7.2).
+ *
+ * Без пароля: вход у него прежний, новый аккаунт не заводится. Компания
+ * появляется пунктом в переключателе, и кнопка сразу открывает её — ссылка
+ * переключает профиль сама.
+ */
+export function companyAddedHtml(input: {
+  inviteeName: string
+  inviterName: string
+  openUrl: string
+  brand: MailBrand
+}): string {
+  const inner = `<tr>
+    <td style="padding:32px 32px 8px;font-family:${FONT};color:#0f172a;">
+      <p style="margin:0 0 6px;font-size:13px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;color:#64748b;">New workspace</p>
+      <h1 style="margin:0 0 20px;font-size:24px;line-height:30px;font-weight:700;letter-spacing:-0.4px;">${escapeHtml(input.brand.name)}</h1>
+      <p style="margin:0;font-size:16px;line-height:24px;color:#334155;">Hi ${escapeHtml(input.inviteeName)},</p>
+      <p style="margin:12px 0 0;font-size:16px;line-height:24px;color:#334155;"><strong style="color:#0f172a;">${escapeHtml(input.inviterName)}</strong> added you to ${escapeHtml(input.brand.name)}.</p>
+      <p style="margin:12px 0 0;font-size:14px;line-height:22px;color:#64748b;">Sign in as usual — your password stays the same. The company now appears in the workspace switcher at the top of your sidebar, next to your personal workspace.</p>
+      ${ctaButton(input.openUrl, `Open ${escapeHtml(input.brand.name)}`)}
+    </td>
+  </tr>`
+  return wrapEmail(inner, input.brand)
+}

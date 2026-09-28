@@ -2,7 +2,7 @@ import { IBM_Plex_Sans } from "next/font/google"
 import { redirect } from "next/navigation"
 import { WorkspaceShell } from "@/components/account/workspace-shell"
 import { CompanyShell } from "@/components/company/company-shell"
-import { getCurrentUser } from "@/lib/admin-auth"
+import { getCurrentUser, getSessionLogin } from "@/lib/admin-auth"
 import { isSuperAdmin } from "@/lib/admin-roles"
 import { accentCss, DEFAULT_ACCENT, readBranding } from "@/lib/branding"
 import { getCompanyContext } from "@/lib/company-auth"
@@ -34,7 +34,20 @@ export default async function CompanyLayout({
 }) {
   const [user, context] = await Promise.all([getCurrentUser(), getCompanyContext()])
 
-  if (!user || !user.isActive) redirect("/login")
+  if (!user) redirect("/login")
+  if (!user.isActive) {
+    // Вывели из компании прямо в консоли — в «Личное», как в кабинете (§4.4).
+    const login = user.loginUserId !== null ? await getSessionLogin() : null
+    if (login && login.loginUserId !== user.id) {
+      redirect(
+        `/api/auth/switch-profile?${new URLSearchParams({
+          to: login.loginUserId,
+          next: "/account",
+        }).toString()}`,
+      )
+    }
+    redirect("/login")
+  }
   // Консоли для него нет: не в компании, участник, или компания выключена.
   if (!context) redirect("/account")
 

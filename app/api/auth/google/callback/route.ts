@@ -13,7 +13,7 @@ import {
 } from "@/lib/google-oauth"
 import {
   createOAuthUser,
-  findUserByEmail,
+  findLoginByEmail,
   findUserByProviderAccount,
   linkProviderToUser,
 } from "@/lib/repositories/users"
@@ -102,7 +102,7 @@ export async function GET(request: Request) {
   let user = await findUserByProviderAccount("google", profile.sub)
 
   if (!user) {
-    const byEmail = await findUserByEmail(email)
+    const byEmail = await findLoginByEmail(email)
     if (byEmail) {
       // Existing local account — link the Google identity to it so the user
       // can sign in with either method afterwards. We never overwrite the
@@ -147,8 +147,11 @@ export async function GET(request: Request) {
     return loginErrorRedirect(request, "account_inactive")
   }
 
+  // Google привязан только ко входу (подпрофилю привязку не даёт CHECK), так что
+  // и здесь сессия открывается во входе — в «Личном».
   const sessionToken = await createSessionToken({
     sub: user.id,
+    lid: user.id,
     role: user.role,
     email: user.email,
   })

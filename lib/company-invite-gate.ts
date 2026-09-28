@@ -1,6 +1,10 @@
 import { hasCompanyCapability } from "@/lib/company-capabilities"
 import { listCompanyCapabilitiesFor } from "@/lib/repositories/company-capabilities"
-import { findUserByEmail, findUserById } from "@/lib/repositories/users"
+import {
+  findLoginByEmail,
+  findProfileInCompany,
+  findUserById,
+} from "@/lib/repositories/users"
 
 /**
  * Можно ли звать этих людей в проект компании.
@@ -20,9 +24,13 @@ import { findUserByEmail, findUserById } from "@/lib/repositories/users"
  * участник с полным доступом звал бы кого угодно, сам не будучи ни в какой
  * компании.
  *
- * «Свой» — тот, кто уже в ТОЙ ЖЕ компании. Проверка по существующему аккаунту,
- * а не по домену почты: домен подделывается опечаткой, а принадлежность
- * компании — запись, которую ставил администратор.
+ * «Свой» — тот, у кого есть действующий профиль в ТОЙ ЖЕ компании. Проверка
+ * по существующему аккаунту, а не по домену почты: домен подделывается
+ * опечаткой, а принадлежность компании — запись, которую ставил администратор.
+ *
+ * По профилю под входом, а не по строке, найденной по почте: почта ведёт во
+ * вход, а он всегда без компании (docs/MULTI_COMPANY_PROFILES_PLAN.md §8.2).
+ * Сравнение по нему считало бы посторонним каждого сотрудника.
  */
 export type InviteGate =
   | { ok: true }
@@ -52,8 +60,9 @@ export async function checkCompanyInvite(input: {
 
   const foreign: string[] = []
   for (const email of input.emails) {
-    const target = await findUserByEmail(email)
-    if (!target || target.companyId !== companyId) foreign.push(email)
+    const login = await findLoginByEmail(email)
+    const profile = login ? await findProfileInCompany(login.id, companyId) : null
+    if (!profile) foreign.push(email)
   }
   if (foreign.length === 0) return { ok: true }
 

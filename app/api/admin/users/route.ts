@@ -4,12 +4,13 @@ import { auditFrom } from "@/lib/audit"
 import { isElevated, isSuperAdmin } from "@/lib/admin-roles"
 import { hasCapability } from "@/lib/admin-capabilities"
 import { listCapabilitiesForMany } from "@/lib/repositories/admin-capabilities"
-import { transferUserToCompany } from "@/lib/repositories/companies"
+import { addLoginToCompany } from "@/lib/invite-account"
+import { listCompanies } from "@/lib/repositories/companies"
 import { userCreateSchema } from "@/lib/admin-schemas"
 import { hashPassword } from "@/lib/auth"
 import {
   createUser,
-  findUserByEmail,
+  findLoginByEmail,
   listUsers,
   updateUser,
 } from "@/lib/repositories/users"
@@ -19,16 +20,22 @@ export async function GET(request: NextRequest) {
   const auth = await requireAdminApi(request, "users.read")
   if (auth instanceof NextResponse) return auth
 
-  const users = await listUsers()
+  const [users, companies] = await Promise.all([listUsers(), listCompanies()])
 
   // Теги отдаём вместе со списком: страница «Права доступа» строится из него же,
   // и отдельный запрос на каждую строку превратил бы её открытие в веер вызовов.
   const capabilities = await listCapabilitiesForMany(users.map((u) => u.id))
 
+  // Подпрофили — отдельными строками с пометкой компании
+  // (docs/MULTI_COMPANY_PROFILES_PLAN.md §10). Скрывать их нельзя: через них
+  // идут гранты, статистика и разбор «почему у сотрудника нет кошелька».
+  const companyTitles = new Map(companies.map((company) => [company.id, company.title]))
+
   return NextResponse.json(
     users.map((user) => ({
       ...user,
       capabilities: capabilities.get(user.id) ?? [],
+      companyTitle: user.companyId ? (companyTitles.get(user.companyId) ?? null) : null,
     })),
   )
 }
@@ -71,7 +78,7 @@ export async function POST(request: NextRequest) {
   }
 
   const email = parsed.data.email.toLowerCase()
-  const existing = await findUserByEmail(email)
+  const existing = await findLoginByEmail(email)
   if (existing) {
     return NextResponse.json(
       { message: "User with this email already exists." },
@@ -93,16 +100,18 @@ export async function POST(request: NextRequest) {
       createdAt: user.createdAt.toISOString(),
     })
 
-    // Зачисляем тем же вызовом, что и перевод существующего человека, а не
-    // записью company_id напрямую: правила про кошелёк и плательщика живут
-    // внутри него, и вторая точка записи разошлась бы с ними молча.
+    // Заведённое — ВХОД, и он всегда без компании: в компанию человек попадает
+    // подпрофилем тем же путём, что из консоли компании и из раздела
+    // «Компании» (docs/MULTI_COMPANY_PROFILES_PLAN.md §7). Роль сайта остаётся
+    // на входе; в профиле компании он рядовой.
+    let companyProfileId: string | null = null
     if (companyId) {
-      const transfer = await transferUserToCompany({
-        userId: user.id,
+      const added = await addLoginToCompany({
+        loginUserId: user.id,
         companyId,
         companyRole: parsed.data.companyRole,
       })
-      if (!transfer.ok) {
+      if (!added.ok) {
         // Аккаунт уже создан, и удалять его здесь нельзя: он мог бы успеть стать
         // чьим-то плательщиком. Говорим прямо, что человек заведён, но остался
         // в общем разделе, — иначе админ решит, что не создалось ничего, и
@@ -111,12 +120,13 @@ export async function POST(request: NextRequest) {
           {
             message:
               "Account created, but it could not be added to the company. It is in the common section.",
-            code: transfer.reason,
+            code: added.reason,
             user,
           },
           { status: 409 },
         )
       }
+      companyProfileId = added.profileId
     }
 
     await auditFrom(request, auth)({
@@ -129,6 +139,7 @@ export async function POST(request: NextRequest) {
         isActive: parsed.data.isActive,
         companyId,
         companyRole: companyId ? parsed.data.companyRole : null,
+        companyProfileId,
       },
     })
 

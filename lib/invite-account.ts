@@ -2,14 +2,24 @@ import { randomBytes } from "node:crypto"
 
 import { hashPassword } from "@/lib/auth"
 import { syncUserMeta } from "@/lib/project-storage"
-import { createUser, findUserByEmail, updateUser } from "@/lib/repositories/users"
+import {
+  createSubprofile,
+  type CreateSubprofileResult,
+} from "@/lib/repositories/companies"
+import {
+  createUser,
+  findLoginByEmail,
+  findUserById,
+  updateUser,
+} from "@/lib/repositories/users"
+import type { CompanyRole } from "@/lib/domain-types"
 
 /**
  * Ровно та запись, которую отдаёт поиск по почте, — выведена из него, а не
  * названа своим типом. Вызывающие присваивают её в ту же переменную, и
  * разойдись эти типы, расхождение всплыло бы у них, а не здесь.
  */
-type FoundUser = NonNullable<Awaited<ReturnType<typeof findUserByEmail>>>
+type FoundUser = NonNullable<Awaited<ReturnType<typeof findLoginByEmail>>>
 
 /**
  * Завести аккаунт по одной почте — общий код двух точек входа.
@@ -56,7 +66,7 @@ export async function createAccountByEmail(input: {
   const created = await createUser({ email: input.email, fullName, passwordHash })
   await updateUser(created.id, { mustChangePassword: true })
 
-  const user = await findUserByEmail(input.email)
+  const user = await findLoginByEmail(input.email)
   if (!user) return null
 
   try {
@@ -70,4 +80,37 @@ export async function createAccountByEmail(input: {
   }
 
   return { user, temporaryPassword }
+}
+
+/**
+ * Добавить человека в компанию — подпрофилем под его входом
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §7).
+ *
+ * Общий код консоли компании и нашей админки. Сам подпрофиль заводит
+ * `createSubprofile` — единственный путь в базе; здесь к нему добавляется
+ * зеркало метаданных в хранилище, как у любого нового владельца проектов
+ * (`createAccountByEmail` выше делает то же для входа). Отдельно от репозитория,
+ * чтобы не тянуть в него хранилище.
+ */
+export async function addLoginToCompany(input: {
+  loginUserId: string
+  companyId: string
+  companyRole: CompanyRole
+}): Promise<CreateSubprofileResult> {
+  const result = await createSubprofile(input)
+  if (result.ok && result.outcome === "created") {
+    const profile = await findUserById(result.profileId)
+    if (profile) {
+      try {
+        await syncUserMeta({
+          userId: profile.id,
+          email: profile.email,
+          createdAt: profile.createdAt.toISOString(),
+        })
+      } catch {
+        // Зеркало метаданных — не повод не добавить человека.
+      }
+    }
+  }
+  return result
 }

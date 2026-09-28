@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server"
 import { deleteAccountSchema } from "@/lib/account-schemas"
 import { SESSION_COOKIE_NAME, verifyPassword } from "@/lib/auth"
-import { getCurrentUser } from "@/lib/admin-auth"
+import { getCurrentUser, getSessionLogin } from "@/lib/admin-auth"
 import { hasDependents } from "@/lib/billing/payer"
 import {
   countActiveAdmins,
   countActiveSuperAdmins,
+  countSubprofiles,
   deleteUser,
-  findUserByEmail,
+  findLoginById,
 } from "@/lib/repositories/users"
 import { isElevated, isSuperAdmin } from "@/lib/admin-roles"
 
@@ -29,11 +30,39 @@ export async function DELETE(request: Request) {
     )
   }
 
-  const full = await findUserByEmail(current.email)
+  // Удаляют вход, и только из «Личного» (docs/MULTI_COMPANY_PROFILES_PLAN.md
+  // §5.3): из профиля компании кнопка вела бы удалять не то место, где человек
+  // сейчас стоит. Вход — по сессии, а не по почте: почта у профилей одна.
+  const session = await getSessionLogin()
+  if (session && session.profileId !== session.loginUserId) {
+    return NextResponse.json(
+      {
+        message: "Switch to your personal profile to delete the account.",
+        code: "not-personal",
+      },
+      { status: 409 },
+    )
+  }
+  const full = session ? await findLoginById(session.loginUserId) : null
   if (!full) {
     return NextResponse.json(
       { message: "Account no longer exists." },
       { status: 404 },
+    )
+  }
+
+  // Профили в компаниях держат проекты КОМПАНИЙ: они остаются им и после ухода
+  // человека, а строку входа, на которую они ссылаются, база удалить не даст
+  // (`login_user_id ... ON DELETE RESTRICT`). Отвечаем причиной, а не ошибкой
+  // базы: развязать это может только администратор.
+  if ((await countSubprofiles(full.id)) > 0) {
+    return NextResponse.json(
+      {
+        message:
+          "Your account has company workspaces. Contact support to delete it — their projects belong to the companies.",
+        code: "has-company-profiles",
+      },
+      { status: 409 },
     )
   }
 

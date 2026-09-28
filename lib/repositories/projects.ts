@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { companyChatSyncSql } from "@/lib/company-features"
+import { accessIdsFor } from "@/lib/repositories/users"
 import { query } from "@/lib/db"
 import type {
   ProjectGroupName,
@@ -206,6 +207,7 @@ export async function findProjectForUser(
   // EXISTS, not JOIN: project_members also has user_id and created_at, so a
   // JOIN with unqualified PROJECT_FIELDS blows up with "column reference is
   // ambiguous" — that's the HTTP 500 on shared projects.
+  // Участие своё или входа — docs/MULTI_COMPANY_PROFILES_PLAN.md §8.3.
   const member = await query<ProjectRecord>(
     `SELECT ${PROJECT_FIELDS}
        FROM projects
@@ -215,9 +217,9 @@ export async function findProjectForUser(
           SELECT 1
             FROM project_members pm
            WHERE pm.project_id = projects.id
-             AND pm.user_id = $2
+             AND pm.user_id = ANY($2::text[])
         )`,
-    [id, userId],
+    [id, await accessIdsFor(userId)],
   )
   return member.rows[0] ?? null
 }

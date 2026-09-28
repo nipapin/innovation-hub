@@ -38,6 +38,13 @@ export type AdminUser = {
   capabilities: AdminCapability[]
   isActive: boolean
   createdAt: string
+  /**
+   * Вход, которому принадлежит этот профиль. `null` — это сам вход; иначе —
+   * подпрофиль человека в компании (docs/MULTI_COMPANY_PROFILES_PLAN.md §10).
+   */
+  loginUserId?: string | null
+  /** Компания профиля — для пометки подпрофиля в списке. */
+  companyTitle?: string | null
 }
 
 export type ContentDraft = {

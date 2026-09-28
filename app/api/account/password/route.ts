@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { changePasswordSchema } from "@/lib/account-schemas"
 import { hashPassword, verifyPassword } from "@/lib/auth"
-import { getCurrentUser } from "@/lib/admin-auth"
-import { findUserByEmail, updateUser } from "@/lib/repositories/users"
+import { getCurrentUser, getSessionLogin } from "@/lib/admin-auth"
+import { findLoginById, updateUser } from "@/lib/repositories/users"
 
 export async function POST(request: Request) {
   const current = await getCurrentUser()
@@ -28,9 +28,12 @@ export async function POST(request: Request) {
     )
   }
 
-  // We need the stored password_hash to verify the current password — the
-  // session/public lookup intentionally strips it, so reload by email.
-  const full = await findUserByEmail(current.email)
+  // Пароль один — у входа, из какого бы профиля его ни меняли
+  // (docs/MULTI_COMPANY_PROFILES_PLAN.md §5.3). Вход берём по сессии, а не по
+  // почте текущего профиля: почта у входа и подпрофилей одна, и поиск по ней
+  // однажды попал бы не в ту строку.
+  const session = await getSessionLogin()
+  const full = session ? await findLoginById(session.loginUserId) : null
   if (!full) {
     return NextResponse.json(
       { message: "Account no longer exists." },
@@ -57,7 +60,7 @@ export async function POST(request: Request) {
   }
 
   const passwordHash = await hashPassword(parsed.data.newPassword)
-  const updated = await updateUser(current.id, {
+  const updated = await updateUser(full.id, {
     passwordHash,
     mustChangePassword: false,
   })

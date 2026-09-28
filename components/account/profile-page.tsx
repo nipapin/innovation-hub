@@ -28,6 +28,12 @@ export type ProfileUser = {
   email: string
   role: UserRole
   isActive: boolean
+  /**
+   * Открыто «Личное», а не профиль компании. Удалить аккаунт можно только
+   * отсюда (docs/MULTI_COMPANY_PROFILES_PLAN.md §5.3): удаляется вход целиком, а
+   * из профиля компании кнопка вела бы удалять не то место, где человек стоит.
+   */
+  isPersonal: boolean
   createdAt: string
 }
 
@@ -356,6 +362,7 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
           </form>
 
           {/* Danger */}
+          {user.isPersonal ? (
           <form
             method="post"
             onSubmit={deleteForm.handleSubmit(onDelete)}
@@ -388,6 +395,11 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
               </button>
             </div>
           </form>
+          ) : (
+            <p className="mt-6 text-[13px] text-muted-foreground">
+              {t.deleteAccountPersonalOnly}
+            </p>
+          )}
         </div>
       </div>
     </main>

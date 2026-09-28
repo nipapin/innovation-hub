@@ -53,6 +53,8 @@ export const CABINET_SOURCE: WorkspaceSource = {
     return `/api/storage/v1/trash?${params.toString()}`
   },
   projectPurgeUrl: () => "/api/storage/v1/project-purge",
+  projectLeaveUrl: (projectId) =>
+    `/api/projects/${encodeURIComponent(projectId)}/members?self=1`,
   showServiceFolders: false,
   directUpload: true,
   can: {

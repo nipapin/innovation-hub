@@ -17,6 +17,7 @@ export default async function ProfilePage() {
         email: user.email,
         role: user.role,
         isActive: user.isActive,
+        isPersonal: user.loginUserId === null,
         createdAt:
           user.createdAt instanceof Date
             ? user.createdAt.toISOString()

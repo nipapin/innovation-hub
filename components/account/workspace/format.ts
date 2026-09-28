@@ -373,6 +373,28 @@ export function resolvePath(
   return next
 }
 
+/** Плашка компании-владельца из ответа `/api/projects` — или `null`. */
+function readOwnerCompany(raw: unknown): Project["ownerCompany"] {
+  if (!raw || typeof raw !== "object") return null
+  const value = raw as Record<string, unknown>
+  const accent = value.accent as Record<string, unknown> | undefined
+  if (
+    typeof value.id !== "string" ||
+    typeof value.title !== "string" ||
+    typeof value.monogram !== "string" ||
+    typeof accent?.light !== "string" ||
+    typeof accent?.dark !== "string"
+  ) {
+    return null
+  }
+  return {
+    id: value.id,
+    title: value.title,
+    monogram: value.monogram,
+    accent: { light: accent.light, dark: accent.dark },
+  }
+}
+
 export function mapProject(raw: Record<string, unknown>): Project {
   return {
     id: String(raw.id),
@@ -389,6 +411,7 @@ export function mapProject(raw: Record<string, unknown>): Project {
           ? raw.deletedAt
           : new Date(String(raw.deletedAt)).toISOString(),
     sharedWithMe: Boolean(raw.sharedWithMe),
+    ownerCompany: readOwnerCompany(raw.ownerCompany),
     memberRole:
       raw.memberRole === "viewer" ||
       raw.memberRole === "editor" ||

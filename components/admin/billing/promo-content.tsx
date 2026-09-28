@@ -40,6 +40,8 @@ type UserPick = {
   fullName: string
   balanceOwnCents: number
   balanceGiftCents: number
+  /** Компания подпрофиля — иначе строки одной почты не различить. */
+  companyTitle?: string | null
 }
 
 type ProjectRow = { projectId: string; name: string; isArchived: boolean }
@@ -275,6 +277,11 @@ export function AdminBillingPromo() {
                     {user.fullName ? (
                       <span className="ml-2 text-xs text-muted-foreground">
                         {user.fullName}
+                      </span>
+                    ) : null}
+                    {user.companyTitle ? (
+                      <span className="ml-2 text-xs text-primary/80">
+                        · {user.companyTitle}
                       </span>
                     ) : null}
                   </span>
@@ -679,6 +686,11 @@ function PayerSection({
                       {user.fullName ? (
                         <span className="ml-2 text-xs text-muted-foreground">
                           {user.fullName}
+                        </span>
+                      ) : null}
+                      {user.companyTitle ? (
+                        <span className="ml-2 text-xs text-primary/80">
+                          · {user.companyTitle}
                         </span>
                       ) : null}
                     </span>

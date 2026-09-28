@@ -76,6 +76,17 @@ export type Project = {
    * расшаренного платит его хозяин, и чужой подарок смотрящего не касается.
    */
   gift?: ProjectGift | null
+  /**
+   * Компания владельца расшаренного проекта — плашка на карточке
+   * (docs/MULTI_COMPANY_PROFILES_PLAN.md §8.4). `null` — проект свой, владелец в
+   * общем разделе или в той же компании, где сейчас смотрящий.
+   */
+  ownerCompany?: {
+    id: string
+    title: string
+    monogram: string
+    accent: { light: string; dark: string }
+  } | null
 }
 
 export type ChatMessage = {
@@ -340,6 +351,12 @@ export type WorkspaceSource = {
   trashPurgeUrl?: (projectId: string, fileId?: string) => string
   /** Стереть навсегда сам проект из корзины. */
   projectPurgeUrl?: () => string
+  /**
+   * Выйти из чужого проекта самому — у любой роли (COMPANY_ACCOUNTS_PLAN.md
+   * §8.3). Только в кабинете: админ, открывший чужие папки, в них не участник,
+   * и выходить ему не из чего.
+   */
+  projectLeaveUrl?: (projectId: string) => string
   /** Показывать служебную папку options (в кабинете она скрыта). */
   showServiceFolders: boolean
   /**

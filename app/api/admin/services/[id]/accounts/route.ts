@@ -3,7 +3,7 @@ import { requireAdminApi } from "@/lib/admin-auth"
 import { auditFrom } from "@/lib/audit"
 import { VaultKeyError } from "@/lib/vault/crypto"
 import { createAccountSchema } from "@/lib/vault/schemas"
-import { findUserByEmail } from "@/lib/repositories/users"
+import { findLoginByEmail } from "@/lib/repositories/users"
 import { createAccount, findService } from "@/lib/vault/services"
 
 export const runtime = "nodejs"
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   // таблицу пользователей сейфу незачем.
   let ownerUserId: string | null = null
   if (parsed.data.ownerEmail) {
-    const owner = await findUserByEmail(parsed.data.ownerEmail)
+    const owner = await findLoginByEmail(parsed.data.ownerEmail)
     if (!owner) {
       return NextResponse.json({ code: "owner-not-found" }, { status: 404 })
     }

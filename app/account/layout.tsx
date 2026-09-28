@@ -3,7 +3,7 @@ import { DisabledToolsProvider } from "@/components/admin/shell/features-context
 import { disabledAdminHrefs } from "@/lib/features-state"
 import { redirect } from "next/navigation"
 import { WorkspaceShell } from "@/components/account/workspace-shell"
-import { getCurrentUser } from "@/lib/admin-auth"
+import { getCurrentUser, getSessionLogin } from "@/lib/admin-auth"
 import { getCompanyContext } from "@/lib/company-auth"
 
 export const dynamic = "force-dynamic"
@@ -47,6 +47,18 @@ export default async function AccountLayout({
   }
 
   if (!user.isActive) {
+    // Выведенного из компании — обратно в «Личное», а не на порог
+    // (docs/MULTI_COMPANY_PROFILES_PLAN.md §4.4). Куку серверный компонент
+    // поставить не может, поэтому через роут переключения.
+    const login = user.loginUserId !== null ? await getSessionLogin() : null
+    if (login && login.loginUserId !== user.id) {
+      redirect(
+        `/api/auth/switch-profile?${new URLSearchParams({
+          to: login.loginUserId,
+          next: "/account",
+        }).toString()}`,
+      )
+    }
     redirect("/")
   }
 

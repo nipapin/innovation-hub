@@ -14,7 +14,12 @@ import {
   isProjectMemberRole,
   type ProjectMemberRole,
 } from "@/lib/project-access"
-import { listSharedProjectsForUser } from "@/lib/repositories/project-members"
+import {
+  listSharedProjectsForUser,
+  type SharedProjectOwnerCompany,
+} from "@/lib/repositories/project-members"
+import { findUserById } from "@/lib/repositories/users"
+import { accentPair, monogramFrom, readBranding, type AccentPair } from "@/lib/branding"
 import { listDeletedProjects } from "@/lib/storage/project-trash"
 import { isS3Configured } from "@/lib/s3-client"
 
@@ -88,6 +93,8 @@ function serializeProject(
     deletedAt: string | null
     /** Проект оплачен подарком: тестовым периодом или акцией. */
     gift?: ProjectGift | null
+    /** Компания владельца расшаренного проекта — плашка на карточке. */
+    ownerCompany?: OwnerCompanyBadge | null
   },
 ) {
   return {
@@ -117,7 +124,39 @@ function serializeProject(
     // Чем оплачен. Не у каждого проекта есть подарок, и `null` здесь — это
     // «платит владелец», а не «мы не знаем».
     gift: extra.gift ?? null,
+    ownerCompany: extra.ownerCompany ?? null,
     yougileChatId: p.yougileChatId,
+  }
+}
+
+/** Плашка компании-владельца на карточке расшаренного проекта. */
+type OwnerCompanyBadge = {
+  id: string
+  title: string
+  monogram: string
+  /** Акцент компании — пара для светлой и тёмной темы. */
+  accent: AccentPair
+}
+
+/**
+ * Плашка компании-владельца — docs/MULTI_COMPANY_PROFILES_PLAN.md §8.4.
+ *
+ * Не рисуется, если владелец в общем разделе (компании нет) или его компания —
+ * та же, где сейчас смотрящий: свой проект своей компании в пометке не
+ * нуждается, а у чужого она отвечает на вопрос «чья это работа и кто за неё
+ * платит».
+ */
+function ownerCompanyBadge(
+  company: SharedProjectOwnerCompany | null,
+  viewerCompanyId: string | null,
+): OwnerCompanyBadge | null {
+  if (!company || company.id === viewerCompanyId) return null
+  const branding = readBranding(company.branding)
+  return {
+    id: company.id,
+    title: company.title,
+    monogram: branding.monogram ?? monogramFrom(company.title),
+    accent: accentPair(branding.accent),
   }
 }
 
@@ -151,8 +190,14 @@ export async function GET(request: NextRequest) {
     }
 
     let shared: Awaited<ReturnType<typeof listSharedProjectsForUser>> = []
+    let viewerCompanyId: string | null = null
     try {
-      shared = await listSharedProjectsForUser(auth.userId)
+      const [rows, viewer] = await Promise.all([
+        listSharedProjectsForUser(auth.userId),
+        findUserById(auth.userId),
+      ])
+      shared = rows
+      viewerCompanyId = viewer?.companyId ?? null
     } catch (error) {
       if (isSchemaOutOfDate(error)) return schemaOutOfDateResponse()
       console.error("[projects] shared list failed", error)
@@ -228,6 +273,7 @@ export async function GET(request: NextRequest) {
           sharedWithMe: true,
           memberRole: isProjectMemberRole(p.memberRole) ? p.memberRole : null,
           deletedAt: null,
+          ownerCompany: ownerCompanyBadge(p.ownerCompany, viewerCompanyId),
         }),
       ),
       ...deleted.map((p) =>

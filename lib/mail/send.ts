@@ -5,6 +5,7 @@ import { findCompanyById } from "@/lib/repositories/companies"
 import { findUserById } from "@/lib/repositories/users"
 import {
   INSTALLATION_BRAND,
+  companyAddedHtml,
   companyWelcomeWithPasswordHtml,
   passwordResetHtml,
   projectAccessGrantedHtml,
@@ -34,7 +35,23 @@ export async function mailBrandForOwner(ownerId: string): Promise<MailBrand> {
   try {
     const owner = await findUserById(ownerId)
     if (!owner?.companyId) return INSTALLATION_BRAND
-    const company = await findCompanyById(owner.companyId)
+    return await mailBrandForCompany(owner.companyId)
+  } catch {
+    // Оформление письма — не повод не отправить письмо.
+    return INSTALLATION_BRAND
+  }
+}
+
+/**
+ * Подпись письма КОМПАНИИ — по ней самой, а не по тому, кто нажал кнопку
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §9.2).
+ *
+ * В консоль компании заходит и суперадмин сайта, а он в компании не состоит:
+ * подпись по его профилю отправила бы приглашение в компанию от имени установки.
+ */
+export async function mailBrandForCompany(companyId: string): Promise<MailBrand> {
+  try {
+    const company = await findCompanyById(companyId)
     if (!company) return INSTALLATION_BRAND
     const branding = readBranding(company.branding)
     return {
@@ -42,7 +59,6 @@ export async function mailBrandForOwner(ownerId: string): Promise<MailBrand> {
       monogram: branding.monogram ?? monogramFrom(company.title),
     }
   } catch {
-    // Оформление письма — не повод не отправить письмо.
     return INSTALLATION_BRAND
   }
 }
@@ -122,10 +138,18 @@ export async function sendProjectAccessGrantedEmail(input: {
   inviterName: string
   /** Чьим именем подписано письмо. Пусто — установка. */
   brand?: MailBrand
+  /**
+   * Профиль, на который выдан доступ. Страница проекта по нему сама переключит
+   * профиль, если из активного проект не виден
+   * (docs/MULTI_COMPANY_PROFILES_PLAN.md §9.3).
+   */
+  profileId?: string
 }): Promise<MailResult> {
   const brand = input.brand ?? INSTALLATION_BRAND
   const site = siteBase()
-  const openUrl = `${site}/account/projects/${input.projectId}`
+  const openUrl = input.profileId
+    ? `${site}/account/projects/${input.projectId}?profile=${encodeURIComponent(input.profileId)}`
+    : `${site}/account/projects/${input.projectId}`
   const role = shareRoleCopy(input.role)
   const subject = `${input.inviterName} shared “${input.projectName}” with you`
   const text = [
@@ -236,9 +260,22 @@ export async function sendCompanyWelcomeEmail(input: {
   inviterName: string
   temporaryPassword: string
   brand: MailBrand
+  /**
+   * Подпрофиль в компании. Вход открывает «Личное», а человека звали в
+   * компанию: ссылка после входа сама переключает туда — на страницу профиля,
+   * где он и сменит временный пароль (пароль один на все профили).
+   */
+  profileId?: string
 }): Promise<MailResult> {
   const site = siteBase()
-  const loginUrl = `${site}/login`
+  const loginUrl = input.profileId
+    ? `${site}/login?${new URLSearchParams({
+        next: `/api/auth/switch-profile?${new URLSearchParams({
+          to: input.profileId,
+          next: "/account/profile",
+        }).toString()}`,
+      }).toString()}`
+    : `${site}/login`
   const subject = `${input.inviterName} invited you to ${input.brand.name}`
   const text = [
     `Hi ${input.inviteeName},`,
@@ -257,6 +294,53 @@ export async function sendCompanyWelcomeEmail(input: {
     email: input.to,
     temporaryPassword: input.temporaryPassword,
     loginUrl,
+    brand: input.brand,
+  })
+  return sendMail({ to: input.to, subject, html, text })
+}
+
+/**
+ * Адрес, который открывает страницу в нужном профиле человека
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §9.3).
+ *
+ * Идёт через роут переключения: куку профиля ставит только он. Без сессии роут
+ * сам отправит на вход и вернёт сюда же.
+ */
+export function profileSwitchUrl(profileId: string, next: string): string {
+  const params = new URLSearchParams({ to: profileId, next })
+  return `${siteBase()}/api/auth/switch-profile?${params.toString()}`
+}
+
+/**
+ * Письмо человеку, которого добавили в компанию, когда аккаунт у него уже есть
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §7.2).
+ *
+ * Бренд обязателен по той же причине, что у приветствия: человека зовут в
+ * конкретную компанию. Кнопка переключает профиль сама — искать компанию в
+ * переключателе ему не придётся.
+ */
+export async function sendCompanyAddedEmail(input: {
+  to: string
+  inviteeName: string
+  inviterName: string
+  /** Подпрофиль в этой компании — куда ведёт кнопка. */
+  profileId: string
+  brand: MailBrand
+}): Promise<MailResult> {
+  const openUrl = profileSwitchUrl(input.profileId, "/account")
+  const subject = `${input.inviterName} added you to ${input.brand.name}`
+  const text = [
+    `Hi ${input.inviteeName},`,
+    ``,
+    `${input.inviterName} added you to ${input.brand.name}.`,
+    `Sign in as usual — your password stays the same. The company now appears in the workspace switcher at the top of your sidebar.`,
+    ``,
+    `Open ${input.brand.name}: ${openUrl}`,
+  ].join("\n")
+  const html = companyAddedHtml({
+    inviteeName: input.inviteeName,
+    inviterName: input.inviterName,
+    openUrl,
     brand: input.brand,
   })
   return sendMail({ to: input.to, subject, html, text })

@@ -6,7 +6,7 @@ import {
   createSessionToken,
   verifyPassword,
 } from "@/lib/auth"
-import { findUserByEmail } from "@/lib/repositories/users"
+import { findLoginByEmail } from "@/lib/repositories/users"
 
 export async function POST(request: Request) {
   try {
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const user = await findUserByEmail(parsed.data.email.toLowerCase())
+    const user = await findLoginByEmail(parsed.data.email.toLowerCase())
     if (!user) {
       return NextResponse.json(
         { message: "Invalid email or password." },
@@ -73,8 +73,11 @@ export async function POST(request: Request) {
       )
     }
 
+    // Входят всегда во вход, то есть в «Личное»: в компанию попадают
+    // переключателем (docs/MULTI_COMPANY_PROFILES_PLAN.md §2).
     const token = await createSessionToken({
       sub: user.id,
+      lid: user.id,
       role: user.role,
       email: user.email,
     })

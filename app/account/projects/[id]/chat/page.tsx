@@ -7,15 +7,21 @@ import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/admin-auth"
 import { listProjectChatMessages } from "@/lib/repositories/project-chat"
 import { resolveProjectAccess } from "@/lib/project-access"
+import { profileRedirectFor } from "@/lib/profile-switch"
 import { syncProjectChatFromYouGile } from "@/lib/project-chat-sync"
 
 export const dynamic = "force-dynamic"
 
 type PageProps = {
   params: Promise<{ id: string }>
+  /** `profile` — из push: в каком профиле открыть чат (§9.3–9.4). */
+  searchParams: Promise<{ profile?: string }>
 }
 
-export default async function AccountProjectChatPage({ params }: PageProps) {
+export default async function AccountProjectChatPage({
+  params,
+  searchParams,
+}: PageProps) {
   const user = await getCurrentUser()
   if (!user) {
     redirect("/login")
@@ -23,6 +29,13 @@ export default async function AccountProjectChatPage({ params }: PageProps) {
 
   const { id } = await params
   const access = await resolveProjectAccess(id, user.id)
+  const switchTo = await profileRedirectFor({
+    requestedProfileId: (await searchParams).profile,
+    currentProfileId: user.id,
+    hasAccess: access !== null,
+    path: `/account/projects/${id}/chat`,
+  })
+  if (switchTo) redirect(switchTo)
   if (!access) {
     notFound()
   }

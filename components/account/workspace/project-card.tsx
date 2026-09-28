@@ -13,6 +13,7 @@ import {
   Wrench,
 } from "lucide-react"
 
+import { CompanyBadge } from "@/components/account/company-mark"
 import { tf } from "@/components/account/i18n"
 import { cn } from "@/lib/utils"
 import { fmtDateTime, trashDaysLeft } from "./format"
@@ -245,6 +246,16 @@ export function ProjectCard({
         >
           {project.name}
         </span>
+        {/* Чей это проект — у расшаренного из чужой компании: из какого бы
+            профиля человек ни смотрел, работа и оплата — её. */}
+        {project.ownerCompany ? (
+          <CompanyBadge
+            title={project.ownerCompany.title}
+            monogram={project.ownerCompany.monogram}
+            accent={project.ownerCompany.accent}
+            tooltip={tf(t.projectOwnerCompany, { company: project.ownerCompany.title })}
+          />
+        ) : null}
         {/* До счётчика расшаренных: «чем оплачен» важнее «скольким виден». */}
         {project.gift ? (
           <GiftBadge gift={project.gift} size="sm" className="shrink-0" />

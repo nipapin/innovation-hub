@@ -12,7 +12,7 @@ import {
   UserCheck,
   UserX,
 } from "lucide-react"
-import { useAdminI18n } from "@/components/admin/admin-dict"
+import { tf, useAdminI18n } from "@/components/admin/admin-dict"
 import { UserHistory } from "@/components/admin/shared/user-history"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -121,6 +121,18 @@ export function AdminUserRow({
               {t.you}
             </Badge>
           ) : null}
+          {/* Подпрофиль — отдельной строкой, а не скрыт: через него идут
+              гранты, статистика и разбор «почему у сотрудника нет кошелька»
+              (MULTI_COMPANY_PROFILES_PLAN.md §10). */}
+          {user.loginUserId ? (
+            <Badge
+              variant="secondary"
+              className="whitespace-nowrap text-[10px]"
+              title={t.subprofileHint}
+            >
+              {tf(t.subprofileBadge, { company: user.companyTitle ?? "—" })}
+            </Badge>
+          ) : null}
         </div>
         <p className="truncate text-sm text-muted-foreground">{user.email}</p>
       </div>
@@ -186,9 +198,10 @@ export function AdminUserRow({
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuSeparator />
+          {/* Роль сайта у подпрофиля всегда «участник» — её держит вход. */}
           <DropdownMenuItem
             onClick={onToggleRole}
-            disabled={isCurrent || !canManageRoles}
+            disabled={isCurrent || !canManageRoles || Boolean(user.loginUserId)}
           >
             {isElevated(user.role) ? (
               <>

@@ -355,6 +355,8 @@ type WorkspaceValue = {
   restoreProject: (project: Project) => void
   /** Стереть проект из корзины навсегда — вместе с файлами и объектами в R2. */
   purgeProjectForever: (project: Project) => void
+  /** Выйти из расшаренного проекта: он пропадает из списка. */
+  leaveProject: (project: Project) => void
 
   // корзина
   /**
@@ -2266,6 +2268,43 @@ export function WorkspaceProvider({
   )
 
   /**
+   * Выход из чужого проекта (COMPANY_ACCOUNTS_PLAN.md §8.3).
+   *
+   * За подтверждением: вернуться сам человек не может — доступ снова выдаёт тот,
+   * кто поделился. Снимается всё, через что проект был виден, в том числе
+   * доступ, выданный на вход (MULTI_COMPANY_PROFILES_PLAN.md §8.3), — иначе
+   * проект остался бы в списке после «выхода».
+   */
+  const leaveProject = useCallback(
+    (project: Project) => {
+      const t = tRef.current
+      setConfirm({
+        title: t.mLeaveProject,
+        description: tf(t.leaveProjectConfirm, { name: project.name }),
+        confirmLabel: t.mLeaveProject,
+        destructive: true,
+        onConfirm: () => {
+          void (async () => {
+            const url = sourceRef.current.projectLeaveUrl?.(project.id)
+            if (!url) return
+            const res = await fetch(url, { method: "DELETE" })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) {
+              toast.error(data.message ?? t.leaveProjectFailed)
+              return
+            }
+            toast.success(t.leaveProjectDone)
+            if (project.id === selectedId) clearSelection()
+            await loadProjects()
+            notifyProjectsChanged()
+          })()
+        },
+      })
+    },
+    [selectedId, clearSelection, loadProjects],
+  )
+
+  /**
    * Очистка корзины — про проекты, а не про файлы.
    *
    * Удалённые файлы живых проектов остаются: они лежат каждый в своей корзине,
@@ -2706,6 +2745,7 @@ export function WorkspaceProvider({
     closeShareDialog,
     restoreProject,
     purgeProjectForever,
+    leaveProject,
     trashItems,
     loadingTrash,
     trashProjects,

@@ -8,6 +8,7 @@ import {
 } from "@/lib/project-storage"
 import { listProjectMedia } from "@/lib/repositories/projects"
 import { resolveProjectAccess } from "@/lib/project-access"
+import { profileRedirectFor } from "@/lib/profile-switch"
 import {
   countUnreadForProjects,
   listProjectChatMessages,
@@ -19,9 +20,14 @@ export const dynamic = "force-dynamic"
 
 type PageProps = {
   params: Promise<{ id: string }>
+  /** `profile` — из писем и push: в каком профиле открыть проект (§9.3). */
+  searchParams: Promise<{ profile?: string }>
 }
 
-export default async function AccountProjectDetailPage({ params }: PageProps) {
+export default async function AccountProjectDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
   const user = await getCurrentUser()
   if (!user) {
     redirect("/login")
@@ -29,6 +35,15 @@ export default async function AccountProjectDetailPage({ params }: PageProps) {
 
   const { id } = await params
   const access = await resolveProjectAccess(id, user.id)
+  // Ссылка из письма знает, в каком профиле проект виден
+  // (docs/MULTI_COMPANY_PROFILES_PLAN.md §9.3).
+  const switchTo = await profileRedirectFor({
+    requestedProfileId: (await searchParams).profile,
+    currentProfileId: user.id,
+    hasAccess: access !== null,
+    path: `/account/projects/${id}`,
+  })
+  if (switchTo) redirect(switchTo)
   if (!access) {
     notFound()
   }

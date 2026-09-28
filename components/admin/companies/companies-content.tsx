@@ -62,7 +62,13 @@ type MemberRow = {
   companyRole: CompanyRole
 }
 
-type UserPick = { userId: string; email: string; fullName: string }
+/** `companyTitle` — у подпрофиля: строки одной почты иначе не различить. */
+type UserPick = {
+  userId: string
+  email: string
+  fullName: string
+  companyTitle?: string | null
+}
 
 function deleteErrorText(
   code: string | undefined,
@@ -404,6 +410,8 @@ function transferErrorText(
       return t.companyTransferErrDependents
     case "has-open-grants":
       return t.companyTransferErrGrants
+    case "login-inactive":
+      return t.companyTransferErrLoginInactive
     default:
       return t.companyTransferFailed
   }
@@ -476,6 +484,11 @@ function CompanyMembers({
         toast.error(transferErrorText(body.code, t))
         return
       }
+      // Добавление — подпрофиль под входом человека: у кого профиль в этой
+      // компании уже есть, второй не заводится (MULTI_COMPANY_PROFILES_PLAN §7.4).
+      const body = (await res.json().catch(() => ({}))) as { outcome?: string }
+      if (body.outcome === "already") toast.info(t.companyAddAlready)
+      else toast.success(t.companyAdded)
       setQ("")
       setHits([])
       await load()
@@ -615,6 +628,9 @@ function CompanyMembers({
                     {user.email}
                     {user.fullName ? (
                       <span className="ml-2 text-xs text-muted-foreground">{user.fullName}</span>
+                    ) : null}
+                    {user.companyTitle ? (
+                      <span className="ml-2 text-xs text-primary/80">· {user.companyTitle}</span>
                     ) : null}
                   </span>
                 </button>
