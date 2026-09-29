@@ -32,7 +32,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ reason: "stopped" }, { status: 409 })
   }
 
-  const result = await reprocessItem({ projectId: id, fileId })
+  const result = await reprocessItem({
+    projectId: id,
+    fileId,
+    actorUserId: auth.userId,
+  })
   if (!result.ok) {
     // Причину отдаём кодом, а не текстом: подпись человеку выбирает интерфейс,
     // и разбирать строку ради неё — гарантированное расхождение языков.

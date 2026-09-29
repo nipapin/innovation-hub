@@ -28,6 +28,7 @@ export function projectRole(project: Project): ProjectAccessRole {
   if (!project.sharedWithMe) return "owner"
   if (project.memberRole === "full") return "full"
   if (project.memberRole === "editor") return "editor"
+  if (project.memberRole === "commenter") return "commenter"
   // Расшаренный проект без внятной роли — читатель: неизвестное право не может
   // быть больше самого узкого.
   return "viewer"

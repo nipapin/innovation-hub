@@ -279,6 +279,7 @@ export function AdminCompanies({
               tools: readCompanyFeatures(selected.features).companyTools,
               sections: readCompanyFeatures(selected.features).companySections,
               chatSync: readCompanyFeatures(selected.features).chatYouGileSync,
+              production: readCompanyFeatures(selected.features).production,
               billingFree: readCompanyFeatures(selected.features).billingFree,
             }}
             onSaved={load}

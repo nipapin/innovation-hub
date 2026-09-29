@@ -757,7 +757,11 @@ export async function materializeCandidates(input: {
       }
       // Расширения проверяем по содержимому: сама папка расширения не имеет, но
       // папка без ни одного подходящего файла — не источник для этого графа.
-      if (!children.some((child) => matchesSearchExts(child.name, exts.searchExts))) {
+      // Граф, ищущий папки, берёт любую непустую: состав папки — его дело.
+      if (
+        !exts.foldersOnly &&
+        !children.some((child) => matchesSearchExts(child.name, exts.searchExts))
+      ) {
         noteSkip(project.projectId, project.name, "no-match")
         continue
       }
@@ -787,7 +791,9 @@ export async function materializeCandidates(input: {
         children,
       }
     } else {
-      if (!matchesSearchExts(entry.name, exts.searchExts)) {
+      // Одиночный файл в IN графу, который ищет папки, не источник — так же
+      // поступает и десктоп.
+      if (exts.foldersOnly || !matchesSearchExts(entry.name, exts.searchExts)) {
         noteSkip(project.projectId, project.name, "no-match")
         continue
       }

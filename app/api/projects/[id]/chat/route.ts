@@ -54,7 +54,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params
-  const access = await requireProjectAccess(id, auth.userId, "editor")
+  // Писать в чат — право commenter и выше (permissions.writeChat), а не editor:
+  // комментатор файлы не трогает, но в чате участвует.
+  const access = await requireProjectAccess(id, auth.userId, "commenter")
   if (access instanceof NextResponse) return access
   const project = access.project
 

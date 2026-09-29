@@ -21,6 +21,7 @@ import {
   useI18n,
 } from "@/components/account/i18n"
 import { TrialCard } from "@/components/account/trial-card"
+import { WorkspacesCard } from "@/components/account/profile-switcher"
 import { ProcessingIndicator } from "@/components/account/processing-indicator"
 
 type Stats = {
@@ -164,6 +165,10 @@ export function DashboardPageClient({ fullName, createdAt }: Props) {
               </a>
             </div>
           </div>
+
+          {/* Рабочие места — «Личное» и компании. Сразу под приветствием: после
+              входа это первое, что нужно человеку в нескольких компаниях. */}
+          <WorkspacesCard />
 
           {/* Stat cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

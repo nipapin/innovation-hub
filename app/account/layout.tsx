@@ -3,8 +3,9 @@ import { DisabledToolsProvider } from "@/components/admin/shell/features-context
 import { disabledAdminHrefs } from "@/lib/features-state"
 import { redirect } from "next/navigation"
 import { WorkspaceShell } from "@/components/account/workspace-shell"
-import { getCurrentUser, getSessionLogin } from "@/lib/admin-auth"
+import { getCurrentUser, getLoginAdmin, getSessionLogin } from "@/lib/admin-auth"
 import { getCompanyContext } from "@/lib/company-auth"
+import { isProductionAvailable } from "@/lib/production/availability"
 
 export const dynamic = "force-dynamic"
 
@@ -34,9 +35,10 @@ export default async function AccountLayout({
    * которое однажды разойдётся с настоящим. `getCompanyContext` обёрнут в
    * `React.cache`, так что страницам он достанется бесплатно.
    */
-  const [user, companyContext] = await Promise.all([
+  const [user, companyContext, loginAdmin] = await Promise.all([
     getCurrentUser(),
     getCompanyContext(),
+    getLoginAdmin(),
   ])
   // Погашенные разделы — свойство установки, а не человека, поэтому
   // считаются один раз на layout и раздаются контекстом.
@@ -45,6 +47,7 @@ export default async function AccountLayout({
   if (!user) {
     redirect("/login")
   }
+  const production = await isProductionAvailable(user.id)
 
   if (!user.isActive) {
     // Выведенного из компании — обратно в «Личное», а не на порог
@@ -71,8 +74,15 @@ export default async function AccountLayout({
         role={user.role}
         capabilities={user.capabilities}
         balanceCents={user.balanceCents ?? 0}
+        personalProfile={!user.companyId}
+        production={production}
+        loginAdmin={loginAdmin}
         companyNav={
-          companyContext
+          // Только консоль СВОЕЙ компании. Суперадмину гейт отдаёт любую —
+          // последнюю выбранную или первую в списке, — и без этого сравнения
+          // в «Личном» у него висела консоль чужой компании. В чужие он
+          // заходит из админки («Компании»), там этот пункт и живёт.
+          companyContext && companyContext.companyId === user.companyId
             ? {
                 role: companyContext.companyRole,
                 capabilities: companyContext.capabilities,

@@ -15,6 +15,7 @@
     --accent:#0a6b62; --brass:#8f6415;
     --d-people:#0a6b62; --d-storage:#39509e; --d-pipeline:#8a5a12;
     --d-money:#3d6a2c; --d-vendor:#7a3560; --d-site:#9c4a2a; --d-system:#4a5b62;
+    --d-production:#6b3fa0;
     --shadow:0 1px 2px rgba(15,28,30,.05), 0 8px 24px -16px rgba(15,28,30,.28);
     --r:7px;
   }
@@ -25,7 +26,7 @@
       --line:#243133; --hair:#1c2729;
       --accent:#4ac9b7; --brass:#d5a355;
       --d-people:#4ac9b7; --d-storage:#8ea4f2; --d-pipeline:#e0a95c;
-      --d-money:#8fc772; --d-vendor:#d98fbc; --d-site:#e89a74; --d-system:#9fb3ba;
+      --d-money:#8fc772; --d-vendor:#d98fbc; --d-site:#e89a74; --d-system:#9fb3ba; --d-production:#b99be8;
       --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 28px -18px rgba(0,0,0,.8);
     }
   }
@@ -35,7 +36,7 @@
     --line:#243133; --hair:#1c2729;
     --accent:#4ac9b7; --brass:#d5a355;
     --d-people:#4ac9b7; --d-storage:#8ea4f2; --d-pipeline:#e0a95c;
-    --d-money:#8fc772; --d-vendor:#d98fbc; --d-site:#e89a74; --d-system:#9fb3ba;
+    --d-money:#8fc772; --d-vendor:#d98fbc; --d-site:#e89a74; --d-system:#9fb3ba; --d-production:#b99be8;
     --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 28px -18px rgba(0,0,0,.8);
   }
 
@@ -518,6 +519,9 @@ var DOMAINS = [
     { id:'pipeline', name:'Конвейер обработки', color:'var(--d-pipeline)',
       intro:'Очередь задач и парк машин. Задача выдаётся машине в аренду на время: не продлила — вернулась в очередь. Прогресс шагов самоочищается, а итоги уезжают в архив статистики.',
       tables:['tasks','task_progress','remote_computers','machine_tokens','automation_scan_state','automation_settings','processing_stats','stats_import_state'] },
+    { id:'production', name:'Пайплайны производства', color:'var(--d-production)',
+      intro:'Рельсы производства ролика и ролики, которые по ним идут. На этап пайплайна — один проект-папка; ролик — подпапка в каждой из них и свой чат на каждом этапе. Ролик привязан к версии структуры, по которой его запустили. Чат этапа отдельный от чата проекта и в YouGile не уходит. План — docs/PRODUCTION_PLAN.md.',
+      tables:['production_pipelines','production_pipeline_versions','production_pipeline_steps','production_pipeline_people','production_runs','production_run_steps','production_submissions','production_submission_files','production_file_links','production_review_comments','production_messages','production_chat_members','production_message_reactions','production_events'] },
     { id:'money', name:'Деньги', color:'var(--d-money)',
       intro:'Два кошелька у пользователя (свой и подарочный), гранты с сроком жизни и журнал движений, где отдельно посчитаны наша часть, вендорская и маржа. Вендорские суммы приходят в валюте — курс дня берётся из currency_rates.',
       tables:['billing_grants','billing_grant_projects','billing_transactions','billing_settings','currency_rates'] },
@@ -573,6 +577,20 @@ var DESC = {
     ideas:'Идеи. Та же форма полей, что у роликов — админка редактирует их одной формой.',
     tag_suggestions:'Запомненные значения комбобоксов админки, по одному счётчику на поле.',
     visitor_events:'Просмотры страниц. user_id — мягкая ссылка без внешнего ключа, имя и почта продублированы, отпечаток группирует анонимные сессии.',
+    production_pipelines:'Оригинал пайплайна: текущая структура в редакторе, статус, настройки на месте (срок хранения версий). Владелец — хозяин всех папок и плательщик.',
+    production_pipeline_versions:'Зафиксированные версии структуры. Не меняются: по ним идут ролики.',
+    production_pipeline_steps:'Папка-проект этапа. Одна на ноду во всех версиях.',
+    production_pipeline_people:'Кто на этапе: запускающий, исполнитель, проверяющий, наблюдатель. Правка действует и на идущие ролики.',
+    production_runs:'Ролик: по какой версии идёт, имя подпапки, статус, срок, ветка.',
+    production_run_steps:'Этап ролика: статус, кто и как взял, срок, кто принял. К нему привязан чат этапа.',
+    production_submissions:'Сдачи на проверку v1, v2… и решение по ним. Для машины — ссылка на задачу конвейера.',
+    production_submission_files:'Файлы сдачи — копии в VERSIONS/<ролик>/vN. Имя переживает удаление файла по сроку.',
+    production_file_links:'Происхождение: из какого файла сделан какой при сдаче, приёмке и передаче дальше.',
+    production_review_comments:'Пометки ревью: текст, якорь (кадр, диапазон, область) и рисунок вектором в координатах 0..1.',
+    production_messages:'Сообщения чата этапа: текст, системные из журнала, карточки пометок, вложения.',
+    production_chat_members:'Участники чата этапа: откуда взялись, уведомления, слежение, отметка прочтения.',
+    production_message_reactions:'Реакции под сообщениями.',
+    production_events:'Журнал производства: взял, отказался, сдал, принял, вернул, входы собраны. Отсюда системные сообщения и статистика.',
     schema_migrations:'Какие миграции уже применены.'
   };
 

@@ -129,9 +129,26 @@ function normalizeSearchTypes(raw: unknown): string[] {
     .filter(Boolean)
 }
 
+/**
+ * Тип поиска «папками»: элемент витка — папка верхнего уровня в IN, целиком, с
+ * любым содержимым.
+ *
+ * Это не тип файлов, а тип данных (домен `dataType` в automation_settings), и в
+ * словаре типов файлов его нет и быть не должно. Поэтому разворачивать его в
+ * расширения нельзя: раньше он шёл общей дорогой, получал пустой список и
+ * отсекал проект причиной `unknown-search-type` — граф, нарисованный под
+ * папки, онлайн не обрабатывался никогда.
+ */
+export const FOLDER_SEARCH_TYPE = "folders"
+
 export type SearchExtsOutcome =
   | {
       ok: true
+      /**
+       * Граф ищет папки, а не файлы. Расширения тогда не проверяются вовсе:
+       * берётся любая непустая папка, а одиночные файлы в IN — никогда.
+       */
+      foldersOnly: boolean
       searchExts: string[]
       /** Список типов из узла; null — типа в графе нет. */
       searchType: string[] | null
@@ -214,9 +231,15 @@ export function readSearchExts(
   const searchTypes = normalizeSearchTypes(props.searchType)
   const searchType = searchTypes.length > 0 ? searchTypes : null
 
+  // Раньше явных расширений: у поиска папками их нет по смыслу, и случайно
+  // оставшийся в узле `searchExts` не должен превращать его обратно в поиск файлов.
+  if (searchTypes.some((type) => type.toLowerCase() === FOLDER_SEARCH_TYPE)) {
+    return { ok: true, foldersOnly: true, searchExts: [], searchType, fileTypes }
+  }
+
   const explicit = normalizeExts(props.searchExts)
   if (explicit.length > 0) {
-    return { ok: true, searchExts: explicit, searchType, fileTypes }
+    return { ok: true, foldersOnly: false, searchExts: explicit, searchType, fileTypes }
   }
 
   if (searchTypes.length === 0) {
@@ -238,7 +261,7 @@ export function readSearchExts(
           : "unknown-search-type",
     }
   }
-  return { ok: true, searchExts, searchType, fileTypes }
+  return { ok: true, foldersOnly: false, searchExts, searchType, fileTypes }
 }
 
 /**

@@ -41,6 +41,8 @@ export function CompanySetsPanel({
     sections: string[] | null
     /** Зеркало переписки в YouGile (§2.6). Умолчание — включено. */
     chatSync: boolean
+    /** Раздел «Производство» у сотрудников. Умолчание — включено. */
+    production: boolean
     /** Работа за наш счёт (§3). Умолчание — выключено: компания платит. */
     billingFree: boolean
   }
@@ -49,6 +51,7 @@ export function CompanySetsPanel({
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
   const [chatSync, setChatSync] = useState(initial.chatSync)
+  const [production, setProduction] = useState(initial.production)
   const [billingFree, setBillingFree] = useState(initial.billingFree)
   const tools = useKeySet(
     initial.tools,
@@ -75,6 +78,7 @@ export function CompanySetsPanel({
     // правка инструментов молча возвращала бы зеркало к состоянию на момент
     // открытия экрана.
     if (chatSync !== initial.chatSync) body.chatYouGileSync = chatSync
+    if (production !== initial.production) body.production = production
     if (billingFree !== initial.billingFree) body.billingFree = billingFree
     if (Object.keys(body).length === 0) {
       toast.success(t.coSaved)
@@ -127,6 +131,21 @@ export function CompanySetsPanel({
             label: t[tool.labelKey],
           }))}
         />
+      </div>
+
+      {/* «Производство» — закладка кабинета, а не раздел консоли, поэтому не в
+          колонке разделов: там перечислено то, что видят админы компании, а это
+          видят все её сотрудники. */}
+      <div className="flex items-start gap-3 rounded-lg border border-border/60 p-3">
+        <Switch
+          checked={production}
+          disabled={busy}
+          onCheckedChange={setProduction}
+        />
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-foreground">{t.coSetsProduction}</p>
+          <p className="text-[11px] text-muted-foreground">{t.coSetsProductionHint}</p>
+        </div>
       </div>
 
       {/* Зеркало чата — не колонка набора, а отдельная строка: наборы отвечают

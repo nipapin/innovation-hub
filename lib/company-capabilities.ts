@@ -34,9 +34,36 @@ export const COMPANY_CAPABILITIES = [
    * Делиться с коллегой по своей компании тег не требует — это обычная работа.
    */
   "people.invite",
+  /**
+   * Заводить пайплайны производства — docs/PRODUCTION_PLAN.md §6.4.
+   *
+   * РАБОЧИЙ тег (см. COMPANY_WORKSPACE_CAPABILITIES): выдаётся и рядовому
+   * сотруднику. Пайплайны заводит продюсер, а не админ компании, и делать его
+   * админом ради одного права значило бы открыть ему консоль и журнал.
+   */
+  "production.manage",
 ] as const
 
 export type CompanyCapability = (typeof COMPANY_CAPABILITIES)[number]
+
+/**
+ * Рабочие теги — те, что действуют в рабочем месте, а не в консоли, и потому
+ * выдаются и участнику (`member`), не только админу.
+ *
+ * Консоль участнику по-прежнему закрыта: гейт (lib/company-auth.ts, `resolve`)
+ * отсекает его раньше, чем дело дойдёт до тегов. Рабочий тег открывает только
+ * действие в кабинете.
+ *
+ * `people.invite` сюда не входит, хотя тоже живёт в рабочем месте: он решает за
+ * компанию, кого из посторонних пускать к её файлам, и остаётся за админами.
+ */
+export const COMPANY_WORKSPACE_CAPABILITIES: readonly CompanyCapability[] = [
+  "production.manage",
+]
+
+export function isWorkspaceCapability(capability: CompanyCapability): boolean {
+  return COMPANY_WORKSPACE_CAPABILITIES.includes(capability)
+}
 
 export function isCompanyCapability(value: unknown): value is CompanyCapability {
   return (
@@ -57,6 +84,11 @@ export function hasCompanyCapability(
   needed: CompanyCapability,
 ): boolean {
   if (role === "owner") return true
+  if (role === "member") {
+    // Участнику открывают только рабочие теги; консольный, оставшийся от
+    // прошлой жизни админом, ничего не открывает.
+    return isWorkspaceCapability(needed) && (granted?.includes(needed) ?? false)
+  }
   if (role !== "admin") return false
   return granted?.includes(needed) ?? false
 }

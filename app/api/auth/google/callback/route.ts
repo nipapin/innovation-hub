@@ -5,6 +5,7 @@ import {
   buildSessionCookieConfig,
   createSessionToken,
 } from "@/lib/auth"
+import { profileAfterSignIn } from "@/lib/profile-switch"
 import {
   buildGoogleRedirectUri,
   exchangeCodeForToken,
@@ -147,13 +148,18 @@ export async function GET(request: Request) {
     return loginErrorRedirect(request, "account_inactive")
   }
 
-  // Google привязан только ко входу (подпрофилю привязку не даёт CHECK), так что
-  // и здесь сессия открывается во входе — в «Личном».
-  const sessionToken = await createSessionToken({
-    sub: user.id,
-    lid: user.id,
+  // Google привязан только ко входу (подпрофилю привязку не даёт CHECK), а
+  // открывается то рабочее место, где человек работал в прошлый раз (§17.6).
+  const workspace = await profileAfterSignIn({
+    id: user.id,
     role: user.role,
     email: user.email,
+  })
+  const sessionToken = await createSessionToken({
+    sub: workspace.id,
+    lid: user.id,
+    role: workspace.role,
+    email: workspace.email,
   })
 
   const target = new URL(next, request.url)

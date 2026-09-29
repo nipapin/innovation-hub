@@ -7,7 +7,11 @@ import {
   createSessionToken,
 } from "@/lib/auth"
 import type { UserRole } from "@/lib/domain-types"
-import { findUserById } from "@/lib/repositories/users"
+import {
+  findUserById,
+  readLastProfileId,
+  rememberLastProfile,
+} from "@/lib/repositories/users"
 
 /** Профиль, в который переключаемся: ровно то, что уходит в токен. */
 export type SwitchTarget = { id: string; role: UserRole; email: string }
@@ -106,4 +110,40 @@ export async function profileRedirectFor(input: {
     to: target.id,
     next: input.path,
   }).toString()}`
+}
+
+/**
+ * Куда пустить человека после входа — туда, где он работал в прошлый раз
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §17.6).
+ *
+ * Аккаунт, заведённый компанией, помечен её профилем с самого заведения, так
+ * что и первый вход открывает компанию. Профиль больше не годится (человека
+ * вывели из компании, компанию выключили — профиль неактивен) — «Личное».
+ */
+export async function profileAfterSignIn(login: SwitchTarget): Promise<SwitchTarget> {
+  try {
+    const lastProfileId = await readLastProfileId(login.id)
+    if (!lastProfileId || lastProfileId === login.id) return login
+    const target = await resolveSwitchTarget({
+      loginUserId: login.id,
+      profileId: lastProfileId,
+    })
+    return target ?? login
+  } catch (error) {
+    // Не смогли выяснить — впускаем в «Личное»: вход важнее удобства.
+    console.error("[profile-switch] last profile lookup failed", error)
+    return login
+  }
+}
+
+/**
+ * Запомнить, где человек теперь работает, — для следующего входа. Сбой записи
+ * переключение не отменяет: оно уже состоялось.
+ */
+export async function rememberProfile(loginUserId: string, profileId: string): Promise<void> {
+  try {
+    await rememberLastProfile(loginUserId, profileId)
+  } catch (error) {
+    console.error("[profile-switch] remember last profile failed", error)
+  }
 }

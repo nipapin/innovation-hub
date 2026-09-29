@@ -72,6 +72,37 @@ export const getSessionLogin = cache(async (): Promise<SessionLogin | null> => {
   return { profileId: session.userId, loginUserId }
 })
 
+export type LoginAdmin = {
+  /** Профиль, в котором живут админские права, — сам вход, то есть «Личное». */
+  profileId: string
+  role: UserRole
+  capabilities: AdminCapability[]
+}
+
+/**
+ * Админ ли ВХОД человека, когда активный профиль — не админ.
+ *
+ * Права админки принадлежат входу («Личному»), а у профиля компании роль своя
+ * и обычная. Меню же обещает админку из любого рабочего места, поэтому оно
+ * узнаёт здесь, есть ли что обещать, а сам переход идёт через переключение
+ * профиля. Гвардам это НЕ источник прав: они, как и прежде, смотрят только на
+ * активный профиль.
+ *
+ * `null` — активный профиль и есть вход, или вход не админ.
+ */
+export const getLoginAdmin = cache(async (): Promise<LoginAdmin | null> => {
+  const session = await getSessionLogin()
+  if (!session || session.profileId === session.loginUserId) return null
+
+  const login = await findUserById(session.loginUserId)
+  if (!login || !login.isActive || !isElevated(login.role)) return null
+
+  const capabilities = isSuperAdmin(login.role)
+    ? []
+    : await listCapabilitiesFor(login.id)
+  return { profileId: login.id, role: login.role, capabilities }
+})
+
 export type AuthenticatedApiUser = {
   userId: string
   email: string

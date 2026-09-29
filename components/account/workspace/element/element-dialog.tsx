@@ -19,6 +19,7 @@ import {
   elementDisplayName,
   elementFolderName,
   freeElementName,
+  isDashed,
 } from "@/lib/tools/element/names"
 import { nameTemplateOf } from "@/lib/tools/element/site-form"
 import {
@@ -240,6 +241,15 @@ export function ElementDialog() {
    */
   const failed = folder ? ws.inStatusOf(folder) === "failed" : false
 
+  /** Дефиса нет — папка отдана в обработку, и кнопка её останавливает. */
+  const launched = folder ? !isDashed(folder.name) : false
+  /**
+   * Задачу уже взяли или она отработала: переименование ничего не остановит.
+   * Для повтора готового есть «Обработать заново» в меню папки.
+   */
+  const status = folder ? ws.inStatusOf(folder) : null
+  const processing = status === "running" || status === "done"
+
   const openText = useCallback(
     (target: TextTarget) => {
       setText(target)
@@ -304,11 +314,19 @@ export function ElementDialog() {
       const res = await fetch("/api/storage/v1/rename", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: ws.selectedId, fileId: folder.id, name }),
+        // Новое имя всегда с дефисом, то есть для запущенной папки это ещё и
+        // «Остановить» — та же сверка с задачей, что у кнопки.
+        body: JSON.stringify({
+          projectId: ws.selectedId,
+          fileId: folder.id,
+          name,
+          releaseInTask: true,
+        }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         toast.error(data.message ?? "Failed")
+        await refresh()
         return
       }
       setFolderName(name)
@@ -319,38 +337,69 @@ export function ElementDialog() {
     }
   }, [nameDraft, folder, inFolder, ws.selectedId, refresh])
 
+  /** Переименовать папку элемента и продолжить следить за ней под новым именем. */
+  const renameFolder = useCallback(
+    async (name: string, done: string) => {
+      if (!folder || !ws.selectedId) return
+      setBusy(true)
+      try {
+        const res = await fetch("/api/storage/v1/rename", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // Сервер сверит папку с её задачей: взятую не отдаст, из очереди снимет.
+          body: JSON.stringify({
+            projectId: ws.selectedId,
+            fileId: folder.id,
+            name,
+            releaseInTask: true,
+          }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          toast.error(data.message ?? "Failed")
+          // 409 чаще всего значит «задачу уже взяли» — перечитываем, чтобы
+          // кнопка выключилась, а не предлагала то же самое ещё раз.
+          await refresh()
+          return
+        }
+        setFolderName(name)
+        structureRef.current = name
+        toast.success(done)
+        await refresh()
+      } finally {
+        setBusy(false)
+      }
+    },
+    [folder, ws.selectedId, refresh],
+  )
+
   /**
    * «Запустить» — снять дефис с имени папки.
    *
    * Больше ничего: это `move`-событие внутри `IN`, и событийная линия заводит
    * задачу за секунды сама (docs/PIPELINE.md). Всё остальное уже сохранено —
-   * подтверждения ждал только запуск.
+   * подтверждения ждал только запуск. Окно остаётся открытым: кнопка в нём
+   * становится «Остановить».
    */
   const run = useCallback(async () => {
-    if (!folder || !ws.selectedId) return
-    setBusy(true)
-    try {
-      const res = await fetch("/api/storage/v1/rename", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: ws.selectedId,
-          fileId: folder.id,
-          name: elementDisplayName(folder.name),
-        }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        toast.error(data.message ?? "Failed")
-        return
-      }
-      toast.success(t.elementRunStarted)
-      closeElementDialog()
-      await refresh()
-    } finally {
-      setBusy(false)
-    }
-  }, [folder, ws.selectedId, t, closeElementDialog, refresh])
+    if (!folder) return
+    await renameFolder(elementDisplayName(folder.name), t.elementRunStarted)
+  }, [folder, renameFolder, t])
+
+  /**
+   * «Остановить» — вернуть дефис, обратная дорога к «Запустить».
+   *
+   * Работает, пока задачу не взяли: обе линии сборки пропускают папку с
+   * дефисом. Уже идущую обработку переименование не остановит, а только
+   * выдернет исходник из-под неё — поэтому на `running` кнопка выключена.
+   */
+  const stop = useCallback(async () => {
+    if (!folder) return
+    const taken = (inFolder?.children ?? [])
+      .filter((child) => child.id !== folder.id)
+      .map((child) => child.name)
+    await renameFolder(freeElementName(taken, elementFolderName(folder.name)), t.elementStopped)
+  }, [folder, inFolder, renameFolder, t])
 
   /** В шапке — имя папки, а пока её нет, то имя, которое она получит. */
   const title =
@@ -408,7 +457,17 @@ export function ElementDialog() {
                 </DialogTitle>
               )}
 
-              {ready ? (
+              {ready && launched ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void stop()}
+                  disabled={busy || processing}
+                  className="shrink-0 border-foreground/10 bg-transparent text-ws-1 hover:bg-foreground/5"
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t.elementStop}
+                </Button>
+              ) : ready ? (
                 <Button
                   type="button"
                   onClick={() => void run()}
@@ -531,7 +590,13 @@ export function ElementDialog() {
             >
               {!ready
                 ? ""
-                : missing.length > 0
+                : launched
+                  ? status === "done"
+                    ? t.elementRunDone
+                    : processing
+                      ? t.elementRunBusy
+                      : t.elementRunQueued
+                  : missing.length > 0
                   ? tf(t.elementRunMissing, { what: missing.join(", ") })
                   : t.elementRunReady}
             </p>

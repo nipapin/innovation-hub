@@ -6,6 +6,7 @@ import {
   type InEntry,
   type SkipReason,
 } from "@/lib/pipeline/scan"
+import { undashInSource } from "@/lib/pipeline/quarantine"
 import { projectPrefix } from "@/lib/storage/keys"
 
 /**
@@ -55,6 +56,8 @@ type SourceRow = {
 export async function reprocessItem(input: {
   projectId: string
   fileId: string
+  /** Кто нажал: снятие дефиса пишется от его имени. */
+  actorUserId: string | null
 }): Promise<ReprocessResult> {
   const project = (await listWatchedProjects()).find(
     (item) => item.projectId === input.projectId,
@@ -76,6 +79,21 @@ export async function reprocessItem(input: {
   if (!row) return { ok: false, reason: "no-source" }
   if (row.folderPath !== "IN") return { ok: false, reason: "not-in-in" }
 
+  // Дефис в имени — пометка упавшей обработки (lib/pipeline/quarantine.ts) или
+  // «ещё не готово». «Обработать заново» — явное «готово, прогоняй»: снимаем
+  // пометку сами, а не отказываем. Иначе кнопка не работала ровно там, где нужна
+  // чаще всего, — на упавшем элементе, который всегда помечен.
+  const heldBack = isHeldBack(row.name)
+  if (heldBack) {
+    row.name = await undashInSource({
+      storageOwnerId: project.storageOwnerId,
+      projectId: project.projectId,
+      fileId: input.fileId,
+      name: row.name,
+      actorUserId: input.actorUserId,
+    })
+  }
+
   // Идентичность элемента считаем ровно так же, как обе линии сборки: у файла
   // это физический ключ, у папки — собранный, потому что у строки-папки s3_key
   // нет по схеме. Разойдись это здесь — задача уехала бы с чужим source_key.
@@ -89,11 +107,6 @@ export async function reprocessItem(input: {
       ? { name: row.name, key: row.s3Key, isFolder: false }
       : null
   if (!entry) return { ok: false, reason: "no-source" }
-
-  // И папка, и файл (см. isHeldBack): дефис в имени — явный отказ брать в работу.
-  if (isHeldBack(entry.name)) {
-    return { ok: false, reason: "folder-not-ready" }
-  }
 
   // Живая задача — не повод заводить вторую: она и так сейчас обрабатывается.
   // Уникальный индекс отказал бы и сам, но молча, а человеку нужно объяснение.
@@ -115,10 +128,11 @@ export async function reprocessItem(input: {
         fileId: row.isFolder ? null : input.fileId,
         sizeBytes: Number(row.sizeBytes),
         contentHash: row.contentHash,
-        // Актора нет: это не событие заливки. Цепочка contact доедет до
-        // заливщика из каталога — ровно как при обходе.
+        // Заливки здесь нет: для файла цепочка contact доедет до заливщика
+        // из каталога — ровно как при обходе.
         putActorUserId: null,
-        readyActorUserId: null,
+        // Снятый здесь дефис — событие готовности, и совершил его нажавший.
+        readyActorUserId: heldBack && row.isFolder ? input.actorUserId : null,
       },
     ],
     watchedById: new Map([[project.projectId, project]]),
@@ -126,5 +140,10 @@ export async function reprocessItem(input: {
   })
 
   if (result.created > 0) return { ok: true }
+  // Снятие дефиса само журналируется как `move`, и событийная линия могла
+  // завести задачу раньше нас. Для человека это тот же успех.
+  if (heldBack && result.skipped[0]?.reason === "already-queued") {
+    return { ok: true }
+  }
   return { ok: false, reason: result.skipped[0]?.reason ?? "no-match" }
 }

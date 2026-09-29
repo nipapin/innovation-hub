@@ -46,6 +46,7 @@ export default async function AdminLayout({
         role={user.role}
         capabilities={user.capabilities}
         balanceCents={user.balanceCents ?? 0}
+        personalProfile={!user.companyId}
         companyNav={
           companyContext
             ? {

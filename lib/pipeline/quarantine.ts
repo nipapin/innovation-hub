@@ -263,6 +263,41 @@ export async function restoreTaskSource(taskId: string): Promise<RestoreResult> 
 }
 
 /**
+ * Снять пометку с элемента IN по его строке каталога, а не по задаче.
+ *
+ * Нужна «Обработать заново»: упавший элемент всегда помечен дефисом, и отказ
+ * `folder-not-ready` в ответ на «прогони ещё раз» оставлял человеку только
+ * переименование руками. Задачи здесь может уже не быть вовсе — её удалили из
+ * очереди, — поэтому `restoreTaskSource` не подходит.
+ *
+ * Актор — человек, нажавший кнопку: для папки это событие готовности, и contact
+ * витка уедет на него (lib/pipeline/scan.ts).
+ */
+export async function undashInSource(input: {
+  storageOwnerId: string
+  projectId: string
+  fileId: string
+  name: string
+  actorUserId: string | null
+}): Promise<string> {
+  const name = await freeName(
+    input.projectId,
+    "IN",
+    undash(input.name),
+    input.fileId,
+  )
+  await writeRename({
+    storageOwnerId: input.storageOwnerId,
+    projectId: input.projectId,
+    fileId: input.fileId,
+    name,
+    folderPath: "IN",
+    actor: { userId: input.actorUserId },
+  })
+  return name
+}
+
+/**
  * Перенос в карантин с проглоченной ошибкой — форма для вызова из очереди.
  *
  * Падение задачи уже случилось и записано; если сверх того не удалось передвинуть

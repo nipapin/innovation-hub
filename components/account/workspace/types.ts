@@ -60,7 +60,7 @@ export type Project = {
    * null — проект свой, права владельца. Матрица — lib/project-access.ts,
    * её клиентская половина — ./access.ts.
    */
-  memberRole?: "viewer" | "editor" | "full" | null
+  memberRole?: "viewer" | "commenter" | "editor" | "full" | null
   driveFolderId: string | null
   createdAt: string
   updatedAt: string
