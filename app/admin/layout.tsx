@@ -7,6 +7,7 @@ import { AdminShell } from "@/components/admin/shell/admin-shell"
 import { getCurrentUser } from "@/lib/admin-auth"
 import { isElevated } from "@/lib/admin-roles"
 import { getCompanyContext } from "@/lib/company-auth"
+import { isProductionAvailable } from "@/lib/production/availability"
 
 export const dynamic = "force-dynamic"
 
@@ -36,6 +37,7 @@ export default async function AdminLayout({
   if (!user || !user.isActive || !isElevated(user.role)) {
     redirect("/login")
   }
+  const production = await isProductionAvailable(user.id)
 
   return (
     <div className={ibmPlex.variable}>
@@ -47,6 +49,7 @@ export default async function AdminLayout({
         capabilities={user.capabilities}
         balanceCents={user.balanceCents ?? 0}
         personalProfile={!user.companyId}
+        production={production}
         companyNav={
           companyContext
             ? {

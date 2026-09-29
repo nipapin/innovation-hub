@@ -191,6 +191,25 @@ export type WorkspaceUser = {
    * то же сравнение уже решает, красить ли оболочку в цвета клиента.
    */
   companyGuest?: boolean
+  /**
+   * Человек сидит в «Личном» профиле — без компании
+   * (docs/MULTI_COMPANY_PROFILES_PLAN.md §3.1). Только тогда в меню есть
+   * «Ключи и аккаунты»: у сотрудника компании ключи общие и живут в «Доступах»
+   * консоли, а у личного профиля консоли нет, и других дверей к ключам тоже.
+   */
+  personalProfile?: boolean
+  /**
+   * Виден ли раздел «Производство» — ответ lib/production/availability.ts
+   * (выключатель установки и выключатель компании). Оболочка рисует по нему
+   * пункт меню и раздаёт его контекстом переключателю в верхней панели.
+   */
+  production?: boolean
+  /**
+   * Вход человека — админ, а активный профиль нет (сидит в компании).
+   * Тогда «Админка» в переключателе ведёт через смену профиля на «Личное»:
+   * права админки живут у входа, а не у профиля компании. См. getLoginAdmin.
+   */
+  loginAdmin?: LoginAdmin | null
 }
 
 type ShellProps = WorkspaceUser & {
@@ -309,8 +328,23 @@ function SidebarContent({
   const tab = searchParams.get("tab") ?? "projects"
   const isTab = (name: ProjectTab) => inProjects && tab === name
   const isProfile = pathname.startsWith("/account/profile")
-  // Разделы, поднятые из «Админки» на верхний уровень, подсвечивают сами себя:
-  // свёртка при них не считается активной и не раскрывается.
+  /**
+   * Админка и кабинет делят одну колонку по очереди: какой набор разделов
+   * показан, решает адрес, а переключаются они в выпадающем списке под
+   * названием (ProfileSwitcher). Так панель не растягивается на два экрана
+   * у суперадмина и не прячет админку от того, кто в ней работает.
+   */
+  const adminAreas = isElevated(user.role)
+    ? visibleAreas(user.role, user.capabilities, disabledAdminTools)
+    : []
+  const adminEntry = adminAreas.length > 0
+    ? {
+        href: areaHref(adminAreas[0], user.role, user.capabilities, disabledAdminTools),
+        active: pathname === "/admin" || pathname.startsWith("/admin/"),
+        switchesProfile: false,
+      }
+    : loginAdminEntry(user.loginAdmin, disabledAdminTools)
+  const inAdmin = Boolean(adminEntry?.active)
   const signOut = async () => {
     await fetch("/api/auth/signout", { method: "POST" })
     router.push("/login")
@@ -480,34 +514,24 @@ function SidebarContent({
               </div>
             )
           })}
-          {/* Личных ключей в рабочем месте больше нет: внешние сервисы в
-              компании общие, и подключают их в «Доступах» консоли — одно место
-              на всю компанию. Пункт, ведущий в собственные ключи, обещал бы
-              вторую, личную связку, которой у сотрудника компании не бывает.
-              Сама страница /account/vendor-keys пока жива: на неё ссылаются
-              настройки проекта. */}
-        </nav>
+          {/* Чужие секреты человека: ключи сервисов и аккаунты площадок —
+              только в «Личном» профиле. В компании внешние сервисы общие и
+              подключаются в «Доступах» консоли; пункт с собственными ключами
+              обещал бы сотруднику вторую, личную связку, которой у него нет.
+              А у личного профиля консоли нет, и без пункта ключ завести негде.
 
-        <div className="flex-1" />
-
-        <nav className="flex shrink-0 flex-col gap-1 px-3 pb-2">
-          {/* Консоль компании — над админкой и отдельно от неё: это разные оси
-              прав (COMPANY_ACCOUNTS_PLAN.md §4). Сотрудник компании обычно
-              обычный пользователь на сайте, и админского блока ниже у него нет
-              вовсе; суперадмин увидит оба.
-
-              Отбивка и подпись такие же, как у админского блока ниже, и по той
-              же причине: это распоряжение, а не работа, и от рабочего места оно
-              должно быть отделено видимой чертой. Раньше подпись была только у
-              админки, и у сотрудника компании его консоль висела просто
-              последним пунктом рабочего места — то есть выглядела его частью. */}
-          {user.companyNav ? (
-            <CompanyConsoleNav
-              nav={user.companyNav}
-              collapsed={collapsed}
-              pathname={pathname}
-              onNavigate={onNavigate}
-            />
+              Пункт один, инструментов внутри два: их различают в колонке
+              раздела (KeysShell). */}
+          {user.personalProfile ? (
+            <div onClick={onNavigate}>
+              <NavItem
+                href="/account/vendor-keys"
+                active={isKeysPath(pathname)}
+                collapsed={collapsed}
+                icon={<KeyRound className="h-5 w-5" />}
+                label={t.keysAreaNav}
+              />
+            </div>
           ) : null}
         </nav>
 
@@ -648,6 +672,9 @@ function WorkspaceShellInner({
   balanceCents,
   companyNav,
   companyGuest,
+  personalProfile,
+  production,
+  loginAdmin,
   children,
 }: ShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -659,6 +686,9 @@ function WorkspaceShellInner({
     balanceCents,
     companyNav,
     companyGuest,
+    personalProfile,
+    production,
+    loginAdmin,
   }
   const { t } = useI18n()
   const branding = useBranding()
