@@ -1,18 +1,16 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
 import {
   ExternalLink,
   FileText,
   ImageIcon,
   Loader2,
+  LogOut,
   Plus,
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
-import { ProcessingIndicator } from "@/components/account/processing-indicator"
-import { tf, useI18n } from "@/components/account/i18n"
 import { kotliarFileMarkdown, kotliarMarkdownToHtml } from "@/lib/kotliar/markdown"
 import { kotliarPagePublicPath } from "@/lib/kotliar/owner"
 import { cn } from "@/lib/utils"
@@ -38,9 +36,7 @@ type PageFile = {
 
 type PageDetail = PageSummary & { files: PageFile[] }
 
-export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
-  const { t } = useI18n()
-  const router = useRouter()
+export function KotliarEditor({ publicOrigin }: { publicOrigin: string }) {
   const [pages, setPages] = useState<PageSummary[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<PageDetail | null>(null)
@@ -55,33 +51,28 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const loadPages = useCallback(async () => {
-    const res = await fetch("/api/account/kotliar/pages", { cache: "no-store" })
+    const res = await fetch("/api/kotliar/pages", { cache: "no-store" })
     if (!res.ok) {
-      toast.error(t.siteLoadFailed)
+      toast.error("Не удалось загрузить")
       return [] as PageSummary[]
     }
     const data = (await res.json()) as { pages: PageSummary[] }
     setPages(data.pages)
     return data.pages
-  }, [t.siteLoadFailed])
+  }, [])
 
-  const loadDetail = useCallback(
-    async (id: string) => {
-      const res = await fetch(`/api/account/kotliar/pages/${id}`, {
-        cache: "no-store",
-      })
-      if (!res.ok) {
-        toast.error(t.siteLoadFailed)
-        return
-      }
-      const data = (await res.json()) as { page: PageDetail }
-      setDetail(data.page)
-      setTitle(data.page.title)
-      setSlug(data.page.slug)
-      setBody(data.page.body)
-    },
-    [t.siteLoadFailed],
-  )
+  const loadDetail = useCallback(async (id: string) => {
+    const res = await fetch(`/api/kotliar/pages/${id}`, { cache: "no-store" })
+    if (!res.ok) {
+      toast.error("Не удалось загрузить")
+      return
+    }
+    const data = (await res.json()) as { page: PageDetail }
+    setDetail(data.page)
+    setTitle(data.page.title)
+    setSlug(data.page.slug)
+    setBody(data.page.body)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -108,15 +99,17 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
   }
 
   const createPage = async () => {
-    const res = await fetch("/api/account/kotliar/pages", {
+    const res = await fetch("/api/kotliar/pages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: t.siteNewPage }),
+      body: JSON.stringify({ title: "Новая страница" }),
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       toast.error(
-        res.status === 409 ? t.siteSlugTaken : (data.message ?? t.siteCreateFailed),
+        res.status === 409
+          ? "Такой адрес уже занят"
+          : (data.message ?? "Не удалось создать страницу"),
       )
       return
     }
@@ -130,7 +123,7 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
     if (!selectedId) return
     setSaving(true)
     try {
-      const res = await fetch(`/api/account/kotliar/pages/${selectedId}`, {
+      const res = await fetch(`/api/kotliar/pages/${selectedId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, slug, body }),
@@ -138,7 +131,9 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         toast.error(
-          res.status === 409 ? t.siteSlugTaken : (data.message ?? t.siteSaveFailed),
+          res.status === 409
+            ? "Такой адрес уже занят"
+            : (data.message ?? "Не удалось сохранить"),
         )
         return
       }
@@ -147,7 +142,7 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
       setPages((list) =>
         list.map((item) => (item.id === page.id ? { ...item, ...page } : item)),
       )
-      toast.success(t.siteSaved)
+      toast.success("Сохранено")
     } finally {
       setSaving(false)
     }
@@ -155,16 +150,16 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
 
   const deletePage = async () => {
     if (!selectedId || !detail) return
-    const label = detail.title.trim() || t.siteUntitled
-    if (!window.confirm(tf(t.siteDeleteConfirm, { title: label }))) return
-    const res = await fetch(`/api/account/kotliar/pages/${selectedId}`, {
-      method: "DELETE",
-    })
-    if (!res.ok) {
-      toast.error(t.siteDeleteFailed)
+    const label = detail.title.trim() || "Без названия"
+    if (!window.confirm(`Удалить «${label}» вместе с файлами? Это нельзя отменить.`)) {
       return
     }
-    toast.success(t.siteDeleted)
+    const res = await fetch(`/api/kotliar/pages/${selectedId}`, { method: "DELETE" })
+    if (!res.ok) {
+      toast.error("Не удалось удалить")
+      return
+    }
+    toast.success("Страница удалена")
     const list = await loadPages()
     const next = list[0]
     if (next) {
@@ -205,7 +200,7 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
     try {
       for (const file of Array.from(fileList)) {
         const res = await fetch(
-          `/api/account/kotliar/pages/${selectedId}/files?fileName=${encodeURIComponent(file.name)}`,
+          `/api/kotliar/pages/${selectedId}/files?fileName=${encodeURIComponent(file.name)}`,
           {
             method: "POST",
             headers: {
@@ -217,19 +212,21 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
         )
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
-          if (res.status === 400) toast.error(t.siteTypeRejected)
-          else if (res.status === 413) toast.error(t.siteTooLarge)
-          else toast.error(data.message ?? t.siteUploadFailed)
+          if (res.status === 400) {
+            toast.error("Можно jpeg, png, webp, gif или PDF. Видео не принимаем.")
+          } else if (res.status === 413) {
+            toast.error("Файл слишком большой")
+          } else {
+            toast.error(data.message ?? "Не удалось загрузить файл")
+          }
           continue
         }
         const uploaded = data.file as PageFile
         setDetail((current) =>
-          current
-            ? { ...current, files: [...current.files, uploaded] }
-            : current,
+          current ? { ...current, files: [...current.files, uploaded] } : current,
         )
         insertAtCursor(kotliarFileMarkdown(uploaded))
-        toast.success(t.siteUploaded)
+        toast.success("Файл загружен")
       }
     } finally {
       setUploading(false)
@@ -238,11 +235,9 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
   }
 
   const deleteFile = async (file: PageFile) => {
-    const res = await fetch(`/api/account/kotliar/files/${file.id}`, {
-      method: "DELETE",
-    })
+    const res = await fetch(`/api/kotliar/files/${file.id}`, { method: "DELETE" })
     if (!res.ok) {
-      toast.error(t.siteDeleteFailed)
+      toast.error("Не удалось удалить")
       return
     }
     setDetail((current) =>
@@ -252,63 +247,66 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
     )
   }
 
+  const signOut = async () => {
+    await fetch("/api/auth/signout", { method: "POST" })
+    window.location.assign("/login")
+  }
+
   const previewHtml = useMemo(() => kotliarMarkdownToHtml(body), [body])
   const publicHref = `${publicOrigin}${kotliarPagePublicPath(slug)}`
-
   const inputClass =
-    "h-[42px] w-full rounded-[10px] border border-foreground/10 bg-surface-1 px-3.5 text-[15px] text-foreground outline-none placeholder:text-muted-foreground/65 focus:border-primary"
+    "h-[42px] w-full rounded-[10px] border border-black/10 bg-white px-3.5 text-[15px] text-[#1c1b18] outline-none placeholder:text-[#8a8780] focus:border-[#3b5bdb]"
 
   return (
-    <main className="flex h-full min-w-0 flex-col overflow-hidden bg-background">
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-foreground/[0.07] px-4 md:px-6">
-        <div className="text-[13px] text-muted-foreground/90">
-          <span
-            className="cursor-pointer hover:text-foreground"
-            onClick={() => router.push("/account/projects")}
-          >
-            {t.accountCrumb}
-          </span>
-          <span className="text-muted-foreground/50"> / </span>
-          <span className="text-foreground">{t.siteNav}</span>
-        </div>
+    <div
+      data-theme="light"
+      className="flex min-h-screen flex-col bg-[#f7f5f0] text-[#1c1b18]"
+    >
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-black/8 px-4 md:px-6">
+        <span className="text-[15px] font-semibold">Редактор</span>
         <div className="flex items-center gap-2">
           <a
-            href={publicOrigin}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
+            href="/"
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-[#4a4843] hover:bg-black/5"
           >
             <ExternalLink className="h-4 w-4" />
-            {t.siteOpenPublic}
+            Сайт
           </a>
-          <ProcessingIndicator />
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-[#4a4843] hover:bg-black/5"
+          >
+            <LogOut className="h-4 w-4" />
+            Выйти
+          </button>
         </div>
-      </div>
+      </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
-        <aside className="shrink-0 border-b border-foreground/[0.07] lg:w-[260px] lg:border-b-0 lg:border-r">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <aside className="shrink-0 border-b border-black/8 lg:w-[260px] lg:border-b-0 lg:border-r">
           <div className="flex items-center justify-between px-4 py-3">
-            <div className="text-[11px] font-semibold tracking-[1.4px] text-muted-foreground/70">
-              {t.sitePages}
+            <div className="text-[11px] font-semibold tracking-[1.4px] text-[#6b6860]">
+              Страницы
             </div>
             <button
               type="button"
               onClick={() => void createPage()}
-              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[13px] text-foreground hover:bg-foreground/5"
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[13px] hover:bg-black/5"
             >
               <Plus className="h-4 w-4" />
-              {t.siteNewPage}
+              Новая
             </button>
           </div>
           <div className="flex gap-2 overflow-x-auto px-3 pb-3 lg:flex-col lg:overflow-y-auto lg:px-2">
             {loading && pages.length === 0 ? (
-              <div className="flex items-center gap-2 px-2 py-2 text-[13px] text-muted-foreground">
+              <div className="flex items-center gap-2 px-2 py-2 text-[13px] text-[#6b6860]">
                 <Loader2 className="h-4 w-4 animate-spin" />
               </div>
             ) : null}
             {pages.length === 0 && !loading ? (
-              <p className="px-3 py-2 text-[13px] text-muted-foreground">
-                {t.siteNoPages}
+              <p className="px-3 py-2 text-[13px] text-[#6b6860]">
+                Страниц пока нет — создайте первую.
               </p>
             ) : null}
             {pages.map((page) => (
@@ -319,15 +317,13 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
                 className={cn(
                   "shrink-0 rounded-[10px] px-3 py-2 text-left text-[14px] lg:w-full",
                   selectedId === page.id
-                    ? "bg-primary/15 text-foreground"
-                    : "text-secondary-foreground hover:bg-foreground/5",
+                    ? "bg-[#3b5bdb]/15 font-medium"
+                    : "text-[#4a4843] hover:bg-black/5",
                 )}
               >
-                <div className="truncate font-medium">
-                  {page.title.trim() || t.siteUntitled}
-                </div>
-                <div className="truncate text-[12px] text-muted-foreground/80">
-                  {page.slug ? `/${page.slug}` : t.siteHomeLabel}
+                <div className="truncate">{page.title.trim() || "Без названия"}</div>
+                <div className="truncate text-[12px] text-[#6b6860]">
+                  {page.slug ? `/${page.slug}` : "Главная"}
                 </div>
               </button>
             ))}
@@ -337,45 +333,44 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
         <section className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6">
           {!selectedId || !detail ? (
             !loading ? (
-              <p className="text-[15px] text-muted-foreground">{t.siteNoPages}</p>
+              <p className="text-[15px] text-[#6b6860]">Страниц пока нет — создайте первую.</p>
             ) : null
           ) : (
             <div className="mx-auto max-w-[820px] space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h1 className="text-[28px] font-bold">{t.siteTitle}</h1>
+                <h1 className="text-[28px] font-bold">Страница</h1>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => setMode(mode === "edit" ? "preview" : "edit")}
-                    className="rounded-lg border border-foreground/10 px-3 py-2 text-[13px] hover:bg-foreground/5"
+                    className="rounded-lg border border-black/10 px-3 py-2 text-[13px] hover:bg-black/5"
                   >
-                    {mode === "edit" ? t.sitePreview : t.siteEdit}
+                    {mode === "edit" ? "Просмотр" : "Правка"}
                   </button>
                   <button
                     type="button"
                     disabled={saving}
                     onClick={() => void savePage()}
-                    className="rounded-lg bg-primary px-3 py-2 text-[13px] font-medium text-primary-foreground disabled:opacity-50"
+                    className="rounded-lg bg-[#3b5bdb] px-3 py-2 text-[13px] font-medium text-white disabled:opacity-50"
                   >
-                    {saving ? t.siteSaving : t.saveChanges}
+                    {saving ? "Сохранение…" : "Сохранить"}
                   </button>
                   <button
                     type="button"
                     onClick={() => void deletePage()}
-                    className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-[13px] text-destructive hover:bg-destructive/10"
+                    className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-[13px] text-[#b42318] hover:bg-[#b42318]/10"
                   >
                     <Trash2 className="h-4 w-4" />
-                    {t.siteDeletePage}
+                    Удалить
                   </button>
                 </div>
               </div>
-              <p className="text-[14px] text-muted-foreground">{t.siteSub}</p>
+              <p className="text-[14px] text-[#6b6860]">
+                Обычный markdown. Картинки и PDF — ссылками /files/…
+              </p>
 
               {mode === "preview" ? (
-                <div
-                  data-theme="light"
-                  className="rounded-2xl bg-[#f7f5f0] px-5 py-8 text-[#1c1b18]"
-                >
+                <div className="rounded-2xl bg-white px-5 py-8">
                   {title.trim() ? (
                     <h2 className="mb-6 text-[1.7rem] font-semibold">{title.trim()}</h2>
                   ) : null}
@@ -388,9 +383,7 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
               ) : (
                 <>
                   <label className="block space-y-1.5">
-                    <span className="text-[12px] font-medium text-muted-foreground">
-                      {t.sitePageTitle}
-                    </span>
+                    <span className="text-[12px] font-medium text-[#6b6860]">Заголовок</span>
                     <input
                       className={inputClass}
                       value={title}
@@ -398,57 +391,48 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
                     />
                   </label>
                   <label className="block space-y-1.5">
-                    <span className="text-[12px] font-medium text-muted-foreground">
-                      {t.siteSlug}
-                    </span>
+                    <span className="text-[12px] font-medium text-[#6b6860]">Адрес</span>
                     <input
                       className={inputClass}
                       value={slug}
                       onChange={(event) => setSlug(event.target.value)}
-                      placeholder={t.siteHomeLabel}
+                      placeholder="Главная — оставить пустым"
                     />
-                    <span className="block text-[12px] text-muted-foreground">
-                      {t.siteSlugHint}
+                    <span className="block text-[12px] text-[#6b6860]">
+                      Латиница и дефис. Пусто — главная страница.
                     </span>
                     <a
                       href={publicHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[12px] text-primary hover:underline"
+                      className="inline-block text-[12px] text-[#3b5bdb] hover:underline"
                     >
                       {publicHref}
                     </a>
                   </label>
                   <label className="block space-y-1.5">
-                    <span className="text-[12px] font-medium text-muted-foreground">
-                      {t.siteBody}
-                    </span>
+                    <span className="text-[12px] font-medium text-[#6b6860]">Текст</span>
                     <textarea
                       ref={bodyRef}
                       value={body}
                       onChange={(event) => setBody(event.target.value)}
                       rows={18}
-                      className="w-full rounded-[10px] border border-foreground/10 bg-surface-1 px-3.5 py-3 font-mono text-[14px] text-foreground outline-none focus:border-primary"
+                      className="w-full rounded-[10px] border border-black/10 bg-white px-3.5 py-3 font-mono text-[14px] outline-none focus:border-[#3b5bdb]"
                     />
-                    <span className="block text-[12px] text-muted-foreground">
-                      {t.siteBodyHint}
-                    </span>
                   </label>
                 </>
               )}
 
-              <div className="space-y-3 rounded-2xl border border-foreground/10 p-4">
+              <div className="space-y-3 rounded-2xl border border-black/10 bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-[12px] font-semibold tracking-[1.2px] text-muted-foreground">
-                    {t.siteFiles}
+                  <div className="text-[12px] font-semibold tracking-[1.2px] text-[#6b6860]">
+                    Файлы
                   </div>
                   <button
                     type="button"
                     disabled={uploading}
                     onClick={() => fileRef.current?.click()}
-                    className="rounded-lg border border-foreground/10 px-3 py-1.5 text-[13px] disabled:opacity-50"
+                    className="rounded-lg border border-black/10 px-3 py-1.5 text-[13px] disabled:opacity-50"
                   >
-                    {uploading ? t.siteUploading : t.siteUpload}
+                    {uploading ? "Загрузка…" : "Загрузить файл"}
                   </button>
                   <input
                     ref={fileRef}
@@ -460,37 +444,37 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
                   />
                 </div>
                 {detail.files.length === 0 ? (
-                  <p className="text-[13px] text-muted-foreground">{t.siteNoFiles}</p>
+                  <p className="text-[13px] text-[#6b6860]">Файлов пока нет</p>
                 ) : (
                   <ul className="space-y-2">
                     {detail.files.map((file) => (
                       <li
                         key={file.id}
-                        className="flex items-center gap-2 rounded-lg bg-foreground/[0.03] px-3 py-2"
+                        className="flex items-center gap-2 rounded-lg bg-[#f7f5f0] px-3 py-2"
                       >
                         {file.contentType.startsWith("image/") ? (
-                          <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <ImageIcon className="h-4 w-4 shrink-0 text-[#6b6860]" />
                         ) : (
-                          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <FileText className="h-4 w-4 shrink-0 text-[#6b6860]" />
                         )}
                         <span className="min-w-0 flex-1 truncate text-[13px]">
                           {file.originalName}
                         </span>
-                        <code className="hidden text-[11px] text-muted-foreground sm:inline">
+                        <code className="hidden text-[11px] text-[#6b6860] sm:inline">
                           /files/{file.id}
                         </code>
                         <button
                           type="button"
                           onClick={() => insertAtCursor(kotliarFileMarkdown(file))}
-                          className="text-[12px] text-primary hover:underline"
+                          className="text-[12px] text-[#3b5bdb] hover:underline"
                         >
-                          {t.siteInsert}
+                          Вставить
                         </button>
                         <button
                           type="button"
                           onClick={() => void deleteFile(file)}
-                          className="text-muted-foreground hover:text-destructive"
-                          title={t.siteDeleteFile}
+                          className="text-[#6b6860] hover:text-[#b42318]"
+                          title="Удалить файл"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -503,6 +487,6 @@ export function KotliarSitePage({ publicOrigin }: { publicOrigin: string }) {
           )}
         </section>
       </div>
-    </main>
+    </div>
   )
 }

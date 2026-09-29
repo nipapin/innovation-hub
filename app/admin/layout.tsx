@@ -7,7 +7,6 @@ import { AdminShell } from "@/components/admin/shell/admin-shell"
 import { getCurrentUser } from "@/lib/admin-auth"
 import { isElevated } from "@/lib/admin-roles"
 import { getCompanyContext } from "@/lib/company-auth"
-import { isKotliarSiteOwner } from "@/lib/kotliar/owner"
 
 export const dynamic = "force-dynamic"
 
@@ -57,7 +56,6 @@ export default async function AdminLayout({
               }
             : null
         }
-        kotliarSite={isKotliarSiteOwner(user.id)}
       >
         <AdminShell
           email={user.email}

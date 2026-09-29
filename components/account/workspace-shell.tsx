@@ -12,7 +12,6 @@ import {
   ChevronRight,
   FolderOpen,
   KeyRound,
-  Globe,
   Trash2,
   Wrench,
   type LucideIcon,
@@ -700,9 +699,7 @@ function WorkspaceShellInner({
             ? t.productionNav
           : pathname.startsWith("/account/profile")
             ? t.profileTitle
-            : pathname.startsWith("/account/site")
-              ? t.siteNav
-              : pathname.startsWith("/admin")
+            : pathname.startsWith("/admin")
               ? t.adminPanel
               : branding.name
 

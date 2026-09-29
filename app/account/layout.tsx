@@ -6,7 +6,6 @@ import { WorkspaceShell } from "@/components/account/workspace-shell"
 import { getCurrentUser, getLoginAdmin, getSessionLogin } from "@/lib/admin-auth"
 import { getCompanyContext } from "@/lib/company-auth"
 import { isProductionAvailable } from "@/lib/production/availability"
-import { isKotliarSiteOwner } from "@/lib/kotliar/owner"
 
 export const dynamic = "force-dynamic"
 
@@ -91,7 +90,6 @@ export default async function AccountLayout({
               }
             : null
         }
-        kotliarSite={isKotliarSiteOwner(user.id)}
       >
         {children}
       </WorkspaceShell>

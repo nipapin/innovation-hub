@@ -1,5 +1,6 @@
 /**
- * Кто правит страничку. Один аккаунт, заданный окружением — не фича для всех.
+ * Кто правит страничку на kotliar.ffworks.pro/edit.
+ * Публичный сайт эту проверку не использует.
  */
 
 export function kotliarSiteOwnerId(): string | null {
@@ -7,9 +8,28 @@ export function kotliarSiteOwnerId(): string | null {
   return id || null
 }
 
-export function isKotliarSiteOwner(userId: string): boolean {
-  const owner = kotliarSiteOwnerId()
-  return owner !== null && owner === userId
+export function kotliarSiteOwnerEmail(): string | null {
+  const email = process.env.KOTLIAR_SITE_OWNER_EMAIL?.trim().toLowerCase()
+  return email || null
+}
+
+export function isKotliarSiteOwner(user: {
+  id: string
+  email: string
+  loginUserId?: string | null
+}): boolean {
+  const ownerId = kotliarSiteOwnerId()
+  if (
+    ownerId &&
+    (user.id === ownerId || user.loginUserId === ownerId)
+  ) {
+    return true
+  }
+  const ownerEmail = kotliarSiteOwnerEmail()
+  if (ownerEmail && user.email.trim().toLowerCase() === ownerEmail) {
+    return true
+  }
+  return false
 }
 
 export function kotliarPublicOrigin(): string {

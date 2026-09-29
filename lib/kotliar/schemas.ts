@@ -8,6 +8,8 @@ export const KOTLIAR_RESERVED_SLUGS = new Set([
   "admin",
   "company",
   "login",
+  "edit",
+  "logout",
   "register",
   "kotliar-site",
   "_next",
