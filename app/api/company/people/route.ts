@@ -9,11 +9,15 @@ import {
   sendCompanyWelcomeEmail,
 } from "@/lib/mail/send"
 import {
-  clearCompanyCapabilities,
+  clearConsoleCapabilities,
   countCompanyOwners,
 } from "@/lib/repositories/company-capabilities"
 import { deactivateSubprofile } from "@/lib/repositories/companies"
-import { findLoginByEmail, findUserById } from "@/lib/repositories/users"
+import {
+  findLoginByEmail,
+  findUserById,
+  rememberLastProfile,
+} from "@/lib/repositories/users"
 import {
   listPeople,
   readMemberRole,
@@ -107,9 +111,10 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ message: "Person not found." }, { status: 404 })
   }
 
-  // Теги есть только у админов: у участника они ничего не открывают, но всплыли
-  // бы обратно при повторном повышении, молча вернув выданное когда-то.
-  if (companyRole === "member") await clearCompanyCapabilities(userId)
+  // Консольные теги есть только у админов: у участника они ничего не открывают,
+  // но всплыли бы обратно при повторном повышении, молча вернув выданное
+  // когда-то. Рабочие теги остаются — участнику они и нужны.
+  if (companyRole === "member") await clearConsoleCapabilities(userId)
 
   await auditFrom(request, { userId: auth.userId, email: auth.email })({
     action: "company.role_changed",
@@ -222,6 +227,15 @@ export async function POST(request: NextRequest) {
     if (added.outcome === "already") {
       results.push({ email, outcome: "already" })
       continue
+    }
+
+    // Аккаунт завела компания — и первый вход откроет её, а не пустое «Личное»
+    // (docs/MULTI_COMPANY_PROFILES_PLAN.md §17.6). У того, кто уже был у нас,
+    // не трогаем: он работает где-то ещё, компания появится в переключателе.
+    if (temporaryPassword) {
+      await rememberLastProfile(loginUserId, added.profileId).catch((error) => {
+        console.error("[company/people] remember first profile failed", error)
+      })
     }
 
     const mail = temporaryPassword

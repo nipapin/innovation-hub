@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { getSessionLogin } from "@/lib/admin-auth"
 import {
+  rememberProfile,
   resolveSwitchTarget,
   safeNextPath,
   setProfileSession,
@@ -41,6 +42,8 @@ export async function POST(request: NextRequest) {
   if (!target) {
     return NextResponse.json({ message: "Forbidden." }, { status: 403 })
   }
+  // Следующий вход откроет это же рабочее место (§17.6).
+  await rememberProfile(session.loginUserId, target.id)
 
   return setProfileSession(NextResponse.json({ ok: true, profileId: target.id }), {
     profile: target,
@@ -75,6 +78,7 @@ export async function GET(request: NextRequest) {
     profileId: to,
   })
   if (!target) return redirect
+  await rememberProfile(session.loginUserId, target.id)
 
   return setProfileSession(redirect, {
     profile: target,

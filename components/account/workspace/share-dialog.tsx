@@ -23,7 +23,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useWorkspace } from "./workspace-context"
 
-type MemberRole = "viewer" | "editor" | "full"
+type MemberRole = "viewer" | "commenter" | "editor" | "full"
 
 /** Роль смотрящего: владелец видит и меняет всё, полный доступ — не всё. */
 type ViewerRole = MemberRole | "owner"
@@ -80,15 +80,17 @@ function tokenize(raw: string): string[] {
 
 function roleLabel(role: MemberRole, t: Dictionary): string {
   if (role === "full") return t.shareFull
-  return role === "editor" ? t.shareEditor : t.shareViewer
+  if (role === "editor") return t.shareEditor
+  return role === "commenter" ? t.shareCommenter : t.shareViewer
 }
 
 function roleHint(role: MemberRole, t: Dictionary): string {
   if (role === "full") return t.shareFullHint
-  return role === "editor" ? t.shareEditorHint : t.shareViewerHint
+  if (role === "editor") return t.shareEditorHint
+  return role === "commenter" ? t.shareCommenterHint : t.shareViewerHint
 }
 
-const ROLES: MemberRole[] = ["viewer", "editor", "full"]
+const ROLES: MemberRole[] = ["viewer", "commenter", "editor", "full"]
 
 /**
  * Может ли смотрящий распоряжаться доступом этого человека.

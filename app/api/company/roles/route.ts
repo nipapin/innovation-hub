@@ -2,7 +2,10 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { auditFrom } from "@/lib/audit"
 import { requireCompanyApi } from "@/lib/company-auth"
-import { COMPANY_CAPABILITIES } from "@/lib/company-capabilities"
+import {
+  COMPANY_CAPABILITIES,
+  isWorkspaceCapability,
+} from "@/lib/company-capabilities"
 import {
   listCompanyCapabilitiesForMany,
   setCompanyCapabilities,
@@ -14,19 +17,24 @@ import {
 
 export const runtime = "nodejs"
 
-/** Админы компании и их теги: экран выдачи строится из одного ответа. */
+/**
+ * Люди компании и их теги: экран выдачи строится из одного ответа.
+ *
+ * Участники — тоже: им выдаются рабочие теги (lib/company-capabilities.ts,
+ * COMPANY_WORKSPACE_CAPABILITIES). Какие галочки рисовать у участника, решает
+ * экран по тому же реестру.
+ */
 export async function GET(request: NextRequest) {
   const auth = await requireCompanyApi(request, "roles.manage")
   if (auth instanceof NextResponse) return auth
 
   const people = await listPeople(auth.companyId)
-  const admins = people.filter((person) => person.companyRole !== "member")
   const capabilities = await listCompanyCapabilitiesForMany(
-    admins.map((person) => person.userId),
+    people.map((person) => person.userId),
   )
 
   return NextResponse.json({
-    people: admins.map((person) => ({
+    people: people.map((person) => ({
       ...person,
       capabilities: capabilities.get(person.userId) ?? [],
     })),
@@ -78,7 +86,9 @@ export async function PUT(request: NextRequest) {
       { status: 400 },
     )
   }
-  if (role === "member") {
+  // Участнику — только рабочие теги. Консольный ему ничего бы не открыл
+  // (hasCompanyCapability), а строка в таблице выглядела бы выданным правом.
+  if (role === "member" && !capabilities.every(isWorkspaceCapability)) {
     return NextResponse.json(
       { message: "Make this person an admin first.", code: "member" },
       { status: 400 },

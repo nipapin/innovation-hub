@@ -2,10 +2,11 @@ import { IBM_Plex_Sans } from "next/font/google"
 import { redirect } from "next/navigation"
 import { WorkspaceShell } from "@/components/account/workspace-shell"
 import { CompanyShell } from "@/components/company/company-shell"
-import { getCurrentUser, getSessionLogin } from "@/lib/admin-auth"
+import { getCurrentUser, getLoginAdmin, getSessionLogin } from "@/lib/admin-auth"
 import { isSuperAdmin } from "@/lib/admin-roles"
 import { accentCss, DEFAULT_ACCENT, readBranding } from "@/lib/branding"
 import { getCompanyContext } from "@/lib/company-auth"
+import { isProductionAvailable } from "@/lib/production/availability"
 import { findCompanyById, listCompanies } from "@/lib/repositories/companies"
 import { isKotliarSiteOwner } from "@/lib/kotliar/owner"
 
@@ -33,7 +34,11 @@ export default async function CompanyLayout({
 }: {
   children: React.ReactNode
 }) {
-  const [user, context] = await Promise.all([getCurrentUser(), getCompanyContext()])
+  const [user, context, loginAdmin] = await Promise.all([
+    getCurrentUser(),
+    getCompanyContext(),
+    getLoginAdmin(),
+  ])
 
   if (!user) redirect("/login")
   if (!user.isActive) {
@@ -51,6 +56,7 @@ export default async function CompanyLayout({
   }
   // Консоли для него нет: не в компании, участник, или компания выключена.
   if (!context) redirect("/account")
+  const production = await isProductionAvailable(user.id)
 
   // Переключатель — только суперадмину сайта: админ компании видит одну свою, и
   // список выбора из одного пункта был бы обещанием выбора, которого нет.
@@ -105,12 +111,15 @@ export default async function CompanyLayout({
         role={user.role}
         capabilities={user.capabilities}
         balanceCents={user.balanceCents ?? 0}
+        personalProfile={!user.companyId}
         companyNav={{
           role: context.companyRole,
           capabilities: context.capabilities,
           sections: context.companySections,
         }}
         companyGuest={isGuest}
+        production={production}
+        loginAdmin={loginAdmin}
         kotliarSite={isKotliarSiteOwner(user.id)}
       >
         {/* Прокрутку оболочка не даёт: её область содержимого `overflow-hidden`,

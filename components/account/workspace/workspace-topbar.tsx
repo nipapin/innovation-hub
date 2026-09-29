@@ -20,6 +20,7 @@ import type { TrashSort } from "./trash-model"
 import type { Density, ViewMode } from "./types"
 import { useWorkspace } from "./workspace-context"
 import { ProcessingIndicator } from "@/components/account/processing-indicator"
+import { WorkplaceModeSwitch } from "@/components/account/production/mode-switch"
 
 function SegButton({
   active,
@@ -192,6 +193,9 @@ export function WorkspaceTopbar() {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-foreground/[0.07] px-3 md:px-6">
       <div className="flex min-w-0 items-center gap-2">
+        {/* «Проекты | Производство» — первым слева, как на эскизе
+            (docs/PRODUCTION_PLAN.md §9.1). Раздел недоступен — его нет вовсе. */}
+        <WorkplaceModeSwitch className="mr-2" />
         <button
           type="button"
           onClick={clearSelection}

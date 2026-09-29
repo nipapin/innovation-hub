@@ -60,7 +60,7 @@ export type Project = {
    * null — проект свой, права владельца. Матрица — lib/project-access.ts,
    * её клиентская половина — ./access.ts.
    */
-  memberRole?: "viewer" | "editor" | "full" | null
+  memberRole?: "viewer" | "commenter" | "editor" | "full" | null
   driveFolderId: string | null
   createdAt: string
   updatedAt: string
@@ -306,6 +306,11 @@ export type WorkspaceSource = {
    * решением, каким роутом её обслуживать.
    */
   reprocessUrl?: (projectId: string, fileId: string) => string
+  /**
+   * Только состояния обработки элементов IN — для опроса, пока что-то идёт.
+   * Пусто — отметки обновляются лишь вместе с деревом.
+   */
+  inStatusUrl?: (projectId: string) => string
   /**
    * Развёрнутое описание проекта — options/description.md. Наличие адреса
    * включает панель описания: GET есть в обеих зонах, а PUT принимает только

@@ -149,6 +149,18 @@ export const FEATURES = [
     labelKey: "featureWorkspaceElement",
     descriptionKey: "featureWorkspaceElementDesc",
   },
+  // Раздел «Производство» в кабинете: пайплайны, ролики, чаты этапов
+  // (docs/PRODUCTION_PLAN.md). `subsystem`, а не `tool`: это не карточка
+  // каталога, а отдельная закладка рядом с «Проектами». Выключение прячет
+  // закладку; пайплайны, папки этапов и переписка остаются в базе нетронутыми.
+  {
+    key: "production",
+    kind: "subsystem",
+    group: "tools",
+    source: "runtime",
+    labelKey: "featureProduction",
+    descriptionKey: "featureProductionDesc",
+  },
   {
     key: "tool.voice-over",
     kind: "tool",

@@ -30,7 +30,7 @@ export { escapeHtml }
 const FONT =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
-export type ShareRole = "viewer" | "editor" | "full"
+export type ShareRole = "viewer" | "commenter" | "editor" | "full"
 
 function roleCopy(role: ShareRole): { label: string; hint: string } {
   if (role === "full") {
@@ -43,6 +43,12 @@ function roleCopy(role: ShareRole): { label: string; hint: string } {
     return {
       label: "Editor",
       hint: "You can open this project, view files, and make changes.",
+    }
+  }
+  if (role === "commenter") {
+    return {
+      label: "Commenter",
+      hint: "You can open this project, view its files, and write in the chat.",
     }
   }
   return {

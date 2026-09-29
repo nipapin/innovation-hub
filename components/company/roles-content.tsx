@@ -8,6 +8,7 @@ import { Section } from "@/components/admin/billing/fields"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   COMPANY_CAPABILITIES,
+  isWorkspaceCapability,
   type CompanyCapability,
 } from "@/lib/company-capabilities"
 import type { CompanyRole } from "@/lib/domain-types"
@@ -28,6 +29,12 @@ const LABEL_KEY: Record<CompanyCapability, keyof Dictionary> = {
   "keys.manage": "coCapKeys",
   "machines.manage": "coCapMachines",
   "people.invite": "coCapInvite",
+  "production.manage": "coCapProduction",
+}
+
+function roleText(role: CompanyRole, t: Dictionary): string {
+  if (role === "owner") return t.coRoleOwner
+  return role === "admin" ? t.coRoleAdmin : t.coRoleMember
 }
 
 /**
@@ -113,7 +120,7 @@ export function CompanyRoles({ currentUserId }: { currentUserId: string }) {
               <p className="text-sm font-medium text-foreground">
                 {person.email}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">
-                  {person.companyRole === "owner" ? t.coRoleOwner : t.coRoleAdmin}
+                  {roleText(person.companyRole, t)}
                 </span>
               </p>
 
@@ -123,7 +130,13 @@ export function CompanyRoles({ currentUserId }: { currentUserId: string }) {
                 </p>
               ) : (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {COMPANY_CAPABILITIES.map((capability) => {
+                  {/* Участнику — только рабочие теги: консоль ему закрыта, и
+                      консольная галочка ничего бы не открыла. */}
+                  {COMPANY_CAPABILITIES.filter(
+                    (capability) =>
+                      person.companyRole !== "member" ||
+                      isWorkspaceCapability(capability),
+                  ).map((capability) => {
                     const allowed = grantable.includes(capability)
                     const id = `${person.userId}-${capability}`
                     return (

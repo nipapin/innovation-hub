@@ -38,6 +38,8 @@ const schema = z.object({
   folderPath: z.string().optional(),
   items: z.array(itemSchema).min(1).max(500).optional(),
   eventId: z.string().optional(),
+  /** Окно сборки элемента: см. `releaseInTask` у writeRename. */
+  releaseInTask: z.boolean().optional(),
 })
 
 /** Косая черта в имени превратила бы переименование в перенос по чужому пути. */
@@ -156,6 +158,7 @@ export async function POST(request: NextRequest) {
       // Снятие `-` с имени папки приходит сюда: это событие готовности витка, и
       // его актор становится contact задачи (lib/pipeline/scan.ts).
       actor: actorFromAuth(auth),
+      releaseInTask: data.releaseInTask,
     })
     if (!file) {
       return NextResponse.json({ message: "File not found." }, { status: 404 })

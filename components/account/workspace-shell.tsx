@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FolderOpen,
+  KeyRound,
   Globe,
   Trash2,
   Wrench,
@@ -18,8 +19,8 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  Shield,
   Wallet,
+  Workflow,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -31,6 +32,7 @@ import {
   visibleCompanyAreas,
 } from "@/components/company/nav-config"
 import { BalanceWidget } from "@/components/account/balance-widget"
+import { isKeysPath } from "@/components/account/keys/keys-shell"
 import { ProfileSwitcher } from "@/components/account/profile-switcher"
 import { ResizeGrip } from "@/components/account/resize-grip"
 import { useBranding } from "@/components/branding/branding-context"
@@ -38,6 +40,7 @@ import { ThemeSwitch } from "@/components/account/theme-switch"
 import { useDragSize } from "@/components/account/use-drag-size"
 import { useProjectCounts } from "@/components/account/use-project-counts"
 import { useAdminChatUnread } from "@/components/admin/use-admin-chat-unread"
+import { ProductionAvailableProvider } from "@/components/account/production/availability"
 import type { ProjectTab } from "@/components/account/workspace/workspace-context"
 import {
   I18nProvider,
@@ -51,6 +54,7 @@ import {
   visibleAreas,
 } from "@/components/admin/shell/nav-config"
 import type { AdminCapability } from "@/lib/admin-capabilities"
+import type { LoginAdmin } from "@/lib/admin-auth"
 
 /** Ширины боковой панели: свёрнутая, развёрнутая по умолчанию и минимум развёрнутой. */
 const SIDEBAR_COLLAPSED = 72
@@ -145,6 +149,26 @@ function CompanyConsoleNav({
   )
 }
 
+/**
+ * «Админка» из профиля компании: сначала смена профиля на «Личное», потом сама
+ * админка. Роут переключения ставит куку и уводит на `next` — полная загрузка,
+ * как у любого переключения рабочего места.
+ */
+function loginAdminEntry(
+  admin: LoginAdmin | null | undefined,
+  disabledAdminTools: ReturnType<typeof useDisabledAdminTools>,
+) {
+  if (!admin) return null
+  const areas = visibleAreas(admin.role, admin.capabilities, disabledAdminTools)
+  if (areas.length === 0) return null
+  const next = areaHref(areas[0], admin.role, admin.capabilities, disabledAdminTools)
+  return {
+    href: `/api/auth/switch-profile?${new URLSearchParams({ to: admin.profileId, next }).toString()}`,
+    active: false,
+    switchesProfile: true,
+  }
+}
+
 export type WorkspaceUser = {
   email: string
   fullName: string
@@ -168,8 +192,6 @@ export type WorkspaceUser = {
    * то же сравнение уже решает, красить ли оболочку в цвета клиента.
    */
   companyGuest?: boolean
-  /** Публичная страничка kotliar.ffworks.pro — только у её владельца. */
-  kotliarSite?: boolean
 }
 
 type ShellProps = WorkspaceUser & {
@@ -288,7 +310,6 @@ function SidebarContent({
   const tab = searchParams.get("tab") ?? "projects"
   const isTab = (name: ProjectTab) => inProjects && tab === name
   const isProfile = pathname.startsWith("/account/profile")
-  const isSite = pathname.startsWith("/account/site")
   // Разделы, поднятые из «Админки» на верхний уровень, подсвечивают сами себя:
   // свёртка при них не считается активной и не раскрывается.
   const signOut = async () => {
@@ -341,7 +362,7 @@ function SidebarContent({
           <>
             {/* Название рабочего места и есть переключатель между ними: у
                 человека в нескольких компаниях он открывает выбор. */}
-            <ProfileSwitcher label={branding.name} />
+            <ProfileSwitcher label={branding.name} admin={adminEntry} />
             {onToggle && (
               <button
                 type="button"
@@ -361,7 +382,7 @@ function SidebarContent({
           обрезаются, а листаются колесом. Шапка и подвал с профилем
           остаются на месте. */}
       <div className="scrollbar-elegant flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-        <div className="shrink-0 px-3 pb-1 pt-1.5">
+        <div className={cn("shrink-0 px-3 pb-1 pt-1.5", inAdmin && "hidden")}>
           <div
             className={cn(
               "rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 to-primary/[0.03]",
@@ -410,7 +431,7 @@ function SidebarContent({
         <nav
           className={cn(
             "flex shrink-0 flex-col gap-1 px-3 py-2",
-            user.companyGuest && "hidden",
+            (user.companyGuest || inAdmin) && "hidden",
           )}
         >
           {!collapsed && (
@@ -443,20 +464,23 @@ function SidebarContent({
                   label={t[section.labelKey]}
                   count={counts[section.tab]}
                 />
+                {/* «Производство» — сразу под «Проектами»: это второе рабочее
+                    место, а не раздел проектов (docs/PRODUCTION_PLAN.md §9.1).
+                    На широком экране в него же ведёт переключатель в верхней
+                    панели; пункт меню нужен ещё и потому, что на телефоне
+                    верхней панели с переключателем нет. */}
+                {section.tab === "projects" && user.production ? (
+                  <NavItem
+                    href="/account/production"
+                    active={pathname.startsWith("/account/production")}
+                    collapsed={collapsed}
+                    icon={<Workflow className="h-5 w-5" />}
+                    label={t.productionNav}
+                  />
+                ) : null}
               </div>
             )
           })}
-          {user.kotliarSite ? (
-            <div onClick={onNavigate}>
-              <NavItem
-                href="/account/site"
-                active={isSite}
-                collapsed={collapsed}
-                icon={<Globe className="h-5 w-5" />}
-                label={t.siteNav}
-              />
-            </div>
-          ) : null}
           {/* Личных ключей в рабочем месте больше нет: внешние сервисы в
               компании общие, и подключают их в «Доступах» консоли — одно место
               на всю компанию. Пункт, ведущий в собственные ключи, обещал бы
@@ -486,50 +510,54 @@ function SidebarContent({
               onNavigate={onNavigate}
             />
           ) : null}
-          {isElevated(user.role) && (
-            <div className="flex flex-col gap-0.5">
-              {/* Отбивка: админская зона отделена от рабочего места.
-                  Свёртки здесь нет намеренно — разделы админки лежат так же
-                  плоско, как разделы кабинета выше, а что внутри раздела,
-                  показывает вторая колонка. Свёртка добавляла клик перед каждым
-                  переходом и прятала половину админки от глаз. */}
-              <div
-                className={cn(
-                  "mb-1 h-px bg-foreground/10",
-                  collapsed ? "mx-1" : "mx-2.5",
-                )}
-              />
-              {!collapsed ? (
-                <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
-                  {t.adminPanel}
-                </p>
-              ) : null}
-              {visibleAreas(user.role, user.capabilities, disabledAdminTools).map((area) => {
-                const Icon = area.icon
-                return (
-                  <div key={area.key} onClick={onNavigate}>
-                    <NavItem
-                      // Не `area.href`: у «Конвейера» и «Автопостинга» хаб —
-                      // сам инструмент со своим тегом, и кнопка должна вести
-                      // туда, куда этого человека пустят.
-                      href={areaHref(
-                        area,
-                        user.role,
-                        user.capabilities,
-                        disabledAdminTools,
-                      )}
-                      active={isAreaActive(area, pathname)}
-                      collapsed={collapsed}
-                      icon={<Icon className="h-5 w-5" />}
-                      label={t[area.labelKey]}
-                      badge={area.key === "chats" ? chatUnread : undefined}
-                    />
-                  </div>
-                )
-              })}
-            </div>
-          )}
         </nav>
+
+        {inAdmin ? (
+          <nav className="flex shrink-0 flex-col gap-1 px-3 py-2">
+            {/* Разделы админки лежат плоско, как разделы кабинета: что внутри
+                раздела, показывает вторая колонка. */}
+            {adminAreas.map((area) => {
+              const Icon = area.icon
+              return (
+                <div key={area.key} onClick={onNavigate}>
+                  <NavItem
+                    // Не `area.href`: у «Конвейера» и «Автопостинга» хаб —
+                    // сам инструмент со своим тегом, и кнопка должна вести
+                    // туда, куда этого человека пустят.
+                    href={areaHref(
+                      area,
+                      user.role,
+                      user.capabilities,
+                      disabledAdminTools,
+                    )}
+                    active={isAreaActive(area, pathname)}
+                    collapsed={collapsed}
+                    icon={<Icon className="h-5 w-5" />}
+                    label={t[area.labelKey]}
+                    badge={area.key === "chats" ? chatUnread : undefined}
+                  />
+                </div>
+              )
+            })}
+          </nav>
+        ) : null}
+
+        <div className="flex-1" />
+
+        {/* Консоль компании — отдельно от рабочего места и внизу: это разные
+            оси прав (COMPANY_ACCOUNTS_PLAN.md §4) — распоряжение, а не работа,
+            и от рабочего места оно отделено видимой чертой. В админке её нет:
+            там колонка целиком отдана админским разделам. */}
+        {user.companyNav && !inAdmin ? (
+          <nav className="flex shrink-0 flex-col gap-1 px-3 pb-2">
+            <CompanyConsoleNav
+              nav={user.companyNav}
+              collapsed={collapsed}
+              pathname={pathname}
+              onNavigate={onNavigate}
+            />
+          </nav>
+        ) : null}
       </div>
 
       {/* Тема — рядом с языком: оба про то, как человек смотрит на сайт, а не
@@ -621,7 +649,6 @@ function WorkspaceShellInner({
   balanceCents,
   companyNav,
   companyGuest,
-  kotliarSite,
   children,
 }: ShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -633,7 +660,6 @@ function WorkspaceShellInner({
     balanceCents,
     companyNav,
     companyGuest,
-    kotliarSite,
   }
   const { t } = useI18n()
   const branding = useBranding()
@@ -670,6 +696,8 @@ function WorkspaceShellInner({
           ? searchParams.get("tab") === "archive"
             ? t.archiveTab
             : t.projects
+          : pathname.startsWith("/account/production")
+            ? t.productionNav
           : pathname.startsWith("/account/profile")
             ? t.profileTitle
             : pathname.startsWith("/account/site")
@@ -722,7 +750,11 @@ function WorkspaceShellInner({
           </Link>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <ProductionAvailableProvider value={Boolean(production)}>
+            {children}
+          </ProductionAvailableProvider>
+        </div>
       </div>
 
       {/* Mobile drawer */}

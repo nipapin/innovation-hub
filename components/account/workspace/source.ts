@@ -37,6 +37,7 @@ export const CABINET_SOURCE: WorkspaceSource = {
   exposedOptionsUrl: (projectId) => `/api/projects/${projectId}/drive/options`,
   reprocessUrl: (projectId, fileId) =>
     `/api/projects/${projectId}/drive/files/${fileId}/reprocess`,
+  inStatusUrl: (projectId) => `/api/projects/${projectId}/drive/in-status`,
   // Только чтение: у роута нет PUT, а `can.editDescription` ниже — false.
   descriptionMdUrl: (projectId) => `/api/projects/${projectId}/description`,
   chatUrl: (projectId) => `/api/projects/${projectId}/chat`,

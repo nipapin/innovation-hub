@@ -8,22 +8,35 @@
  * Порядок лестницы важен: почти все проверки — «не ниже чем», поэтому `full`
  * автоматически проходит там, где хватает `editor`, а владелец — везде.
  */
-export type ProjectAccessRole = "viewer" | "editor" | "full" | "owner"
+export type ProjectAccessRole =
+  | "viewer"
+  | "commenter"
+  | "editor"
+  | "full"
+  | "owner"
 
 /** То, что может стоять в project_members.role. Без владельца. */
-export type ProjectMemberRole = "viewer" | "editor" | "full"
+export type ProjectMemberRole = "viewer" | "commenter" | "editor" | "full"
 
 export const PROJECT_MEMBER_ROLES: readonly ProjectMemberRole[] = [
   "viewer",
+  "commenter",
   "editor",
   "full",
 ]
 
+/**
+ * `commenter` — между читателем и редактором: читает всё и пишет в чат, но
+ * файлов не трогает. Нужен проверяющим этапов производства
+ * (docs/PRODUCTION_PLAN.md §6.2); до него писать в чат и писать файлы
+ * открывались одной ступенью.
+ */
 const RANK: Record<ProjectAccessRole, number> = {
   viewer: 1,
-  editor: 2,
-  full: 3,
-  owner: 4,
+  commenter: 2,
+  editor: 3,
+  full: 4,
+  owner: 5,
 }
 
 export function roleAtLeast(
@@ -37,7 +50,10 @@ export function isProjectMemberRole(
   value: unknown,
 ): value is ProjectMemberRole {
   return (
-    value === "viewer" || value === "editor" || value === "full"
+    value === "viewer" ||
+    value === "commenter" ||
+    value === "editor" ||
+    value === "full"
   )
 }
 
@@ -72,7 +88,7 @@ export type ProjectPermissions = {
 export function permissionsFor(role: ProjectAccessRole): ProjectPermissions {
   return {
     read: true,
-    writeChat: roleAtLeast(role, "editor"),
+    writeChat: roleAtLeast(role, "commenter"),
     writeFiles: roleAtLeast(role, "editor"),
     writeSettings: roleAtLeast(role, "editor"),
     renameProject: roleAtLeast(role, "full"),

@@ -252,6 +252,64 @@ export async function countSubprofiles(loginUserId: string): Promise<number> {
 }
 
 /**
+ * Колонки ещё нет — миграция `2026-09-28-last-profile.sql` не применена.
+ *
+ * «Куда пустить после входа» — удобство, а не условие входа: dev-сервер ходит в
+ * боевую базу, и код, подхваченный раньше миграции, не должен класть вход. Без
+ * колонки человек просто попадает в «Личное», как до неё.
+ */
+function isMissingLastProfileColumn(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "42703"
+  )
+}
+
+/**
+ * Профиль, в котором человек работал в прошлый раз, — у его входа
+ * (docs/MULTI_COMPANY_PROFILES_PLAN.md §17.6). `null` — «Личное» или неизвестно.
+ *
+ * Годен ли он ещё (не выведен ли человек из компании), решает вызывающий:
+ * здесь только то, что записано.
+ */
+export async function readLastProfileId(loginUserId: string): Promise<string | null> {
+  try {
+    const result = await query<{ lastProfileId: string | null }>(
+      `SELECT last_profile_id AS "lastProfileId"
+         FROM users
+        WHERE id = $1 AND login_user_id IS NULL`,
+      [loginUserId],
+    )
+    return result.rows[0]?.lastProfileId ?? null
+  } catch (error) {
+    if (isMissingLastProfileColumn(error)) return null
+    throw error
+  }
+}
+
+/**
+ * Запомнить профиль, в котором человек сейчас работает, — чтобы следующий вход
+ * открыл его же. Сам вход записывается как NULL: «Личное» — умолчание.
+ */
+export async function rememberLastProfile(
+  loginUserId: string,
+  profileId: string,
+): Promise<void> {
+  try {
+    await query(
+      `UPDATE users
+          SET last_profile_id = NULLIF($2::text, $1::text)
+        WHERE id = $1 AND login_user_id IS NULL`,
+      [loginUserId, profileId],
+    )
+  } catch (error) {
+    if (isMissingLastProfileColumn(error)) return
+    throw error
+  }
+}
+
+/**
  * Общие поля человека — на входе и во всех его подпрофилях одной транзакцией.
  *
  * Почта, имя и подпись в статистике у человека одни (§3.3 плана): у подпрофиля

@@ -72,7 +72,7 @@ export async function findProjectMembership(
  * было бы неоднозначным.
  */
 function memberRoleRank(column: string): string {
-  return `CASE ${column} WHEN 'full' THEN 3 WHEN 'editor' THEN 2 WHEN 'viewer' THEN 1 ELSE 0 END`
+  return `CASE ${column} WHEN 'full' THEN 4 WHEN 'editor' THEN 3 WHEN 'commenter' THEN 2 WHEN 'viewer' THEN 1 ELSE 0 END`
 }
 
 /**

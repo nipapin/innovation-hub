@@ -37,7 +37,7 @@ export const runtime = "nodejs"
 
 type Params = { params: Promise<{ id: string }> }
 
-const roleSchema = z.enum(["viewer", "editor", "full"])
+const roleSchema = z.enum(["viewer", "commenter", "editor", "full"])
 
 const inviteSchema = z
   .object({

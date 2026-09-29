@@ -75,6 +75,8 @@ const CHAT_POLL_INTERVAL_MS = 6000
 const VIEW_KEY = "ffworks-ws-view"
 const BOTTOM_TAB_KEY = "ui-ws-bottom-tab"
 const DELTA_INTERVAL_MS = 4000
+/** Опрос отметок IN, пока там что-то ждёт или идёт. Реже дельты: отметка не спешит. */
+const IN_STATUS_POLL_MS = 5000
 
 /**
  * Раздел списка проектов. Живёт в URL (`?tab=…`), потому что в боковом меню
@@ -1518,6 +1520,39 @@ export function WorkspaceProvider({
     (file: DriveFile) => inStatus[file.id] ?? null,
     [inStatus],
   )
+
+  /**
+   * Пока в IN что-то ждёт или идёт — опрашиваем одни отметки.
+   *
+   * Дерево само их не освежит: оно живёт дельтой журнала хранилища, а смена
+   * статуса задачи в хранилище не пишется. Без опроса крутилка у элемента
+   * держалась до перезагрузки страницы, хотя обработка давно закончилась.
+   * Когда живых не осталось, опрос останавливается сам.
+   */
+  const hasLiveInStatus = Object.values(inStatus).some(
+    (status) => status === "queued" || status === "running",
+  )
+  useEffect(() => {
+    const url = sourceRef.current.inStatusUrl
+    if (!url || !filesProjectId || !hasLiveInStatus) return
+    const projectId = filesProjectId
+    let cancelled = false
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(url(projectId))
+        if (!res.ok || cancelled) return
+        const data = await res.json()
+        if (cancelled || !data?.inStatus || typeof data.inStatus !== "object") return
+        setInStatus(data.inStatus as Record<string, InItemStatus>)
+      } catch {
+        // Сеть моргнула — следующий тик попробует снова.
+      }
+    }, IN_STATUS_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [filesProjectId, hasLiveInStatus])
 
   /**
    * «Обработать заново» — поставить элемент IN в очередь ещё раз.

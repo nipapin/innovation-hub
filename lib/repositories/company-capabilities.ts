@@ -1,5 +1,6 @@
 import { query } from "@/lib/db"
 import {
+  COMPANY_WORKSPACE_CAPABILITIES,
   isCompanyCapability,
   type CompanyCapability,
 } from "@/lib/company-capabilities"
@@ -126,9 +127,25 @@ export async function setCompanyCapabilities(input: {
   return { ok: true, added, removed }
 }
 
-/** Понижение до участника: теги есть только у админов компании. */
+/** Выход из компании: снимаются все теги. */
 export async function clearCompanyCapabilities(userId: string): Promise<void> {
   await query(`DELETE FROM company_capabilities WHERE user_id = $1`, [userId])
+}
+
+/**
+ * Смена роли в компании: снимаются консольные теги, рабочие остаются.
+ *
+ * Консольные снимаем, как и раньше: всплыв при повторном повышении, они молча
+ * вернули бы то, чего никто не выдавал. Рабочие одинаково значимы для участника
+ * и админа (lib/company-capabilities.ts), и повышение продюсера до админа не
+ * должно отнимать у него право заводить пайплайны.
+ */
+export async function clearConsoleCapabilities(userId: string): Promise<void> {
+  await query(
+    `DELETE FROM company_capabilities
+      WHERE user_id = $1 AND NOT (capability = ANY($2::text[]))`,
+    [userId, [...COMPANY_WORKSPACE_CAPABILITIES]],
+  )
 }
 
 /**

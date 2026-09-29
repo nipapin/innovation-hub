@@ -12,6 +12,7 @@ import {
   AUTOMATION_ENABLED_KEY,
   BILLING_FREE_KEY,
   CHAT_YOUGILE_SYNC_KEY,
+  PRODUCTION_KEY,
   COMPANY_SECTIONS_KEY,
   COMPANY_TOOLS_KEY,
 } from "@/lib/company-features"
@@ -45,6 +46,8 @@ const patchSchema = z
      * не подлежит. Здесь решается только судьба зеркала.
      */
     chatYouGileSync: z.boolean().optional(),
+    /** Раздел «Производство» у сотрудников (docs/PRODUCTION_PLAN.md §6.4). */
+    production: z.boolean().optional(),
     /**
      * Работа за наш счёт (docs/COMPANY_SETUP_PANEL_PLAN.md §3).
      *
@@ -148,6 +151,23 @@ export async function PATCH(
       action: parsed.data.chatYouGileSync
         ? "company.chat_sync_enabled"
         : "company.chat_sync_disabled",
+      targetType: "company",
+      targetId: company.id,
+      targetLabel: company.title,
+      companyId: company.id,
+    })
+  }
+
+  if (parsed.data.production !== undefined) {
+    company =
+      (await patchCompanyFeatures({
+        companyId: id,
+        patch: { [PRODUCTION_KEY]: parsed.data.production },
+      })) ?? company
+    await audit({
+      action: parsed.data.production
+        ? "company.production_enabled"
+        : "company.production_disabled",
       targetType: "company",
       targetId: company.id,
       targetLabel: company.title,

@@ -414,6 +414,7 @@ export function mapProject(raw: Record<string, unknown>): Project {
     ownerCompany: readOwnerCompany(raw.ownerCompany),
     memberRole:
       raw.memberRole === "viewer" ||
+      raw.memberRole === "commenter" ||
       raw.memberRole === "editor" ||
       raw.memberRole === "full"
         ? raw.memberRole

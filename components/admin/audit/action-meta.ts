@@ -330,6 +330,18 @@ export const ACTION_META: Record<
     icon: Plug,
     tone: "neutral",
   },
+  // `Workflow` — производство это цепочка этапов. «neutral»: раздел прячется или
+  // открывается, доступа к чужому он никому не раздаёт.
+  "company.production_enabled": {
+    labelKey: "auditCompanyProductionEnabled",
+    icon: Workflow,
+    tone: "neutral",
+  },
+  "company.production_disabled": {
+    labelKey: "auditCompanyProductionDisabled",
+    icon: Workflow,
+    tone: "neutral",
+  },
   // `Gift` — работа за наш счёт это подарок и есть. Тон не «neutral»: доступа
   // флаг не раздаёт, но деньги двигает, и в ленте журнала он должен выделяться.
   "company.billing_free_enabled": {

@@ -60,6 +60,17 @@ export const COMPANY_SECTIONS_KEY = "companySections"
 export const CHAT_YOUGILE_SYNC_KEY = "chatYouGileSync"
 
 /**
+ * Раздел «Производство» у сотрудников компании — docs/PRODUCTION_PLAN.md §6.4.
+ *
+ * Умолчание — «включено», как у зеркала чата: раздел задуман основным местом
+ * работы, и забытый ключ не должен его прятать. Выключает только явный `false`.
+ *
+ * Сужает, но не расширяет: выключенное на установке (флаг `production` в
+ * lib/features.ts) компания включить не может.
+ */
+export const PRODUCTION_KEY = "production"
+
+/**
  * Компания работает за наш счёт — docs/COMPANY_SETUP_PANEL_PLAN.md §3.
  *
  * Умолчание ОБРАТНОЕ соседям: отсутствие ключа значит «платит». Здесь так и
@@ -113,6 +124,8 @@ export type CompanyFeatures = {
   companySections: string[] | null
   /** Чат компании зеркалится в наш YouGile — §2.6. Сам чат есть всегда. */
   chatYouGileSync: boolean
+  /** Сотрудникам виден раздел «Производство». Умолчание — да. */
+  production: boolean
   /**
    * Работа этой компании идёт за наш счёт — §3.
    *
@@ -233,6 +246,8 @@ export function readCompanyFeatures(raw: unknown): CompanyFeatures {
     // И снова выключает только явный `false`: у зеркала то же умолчание, что у
     // обработки выше, и по той же причине.
     chatYouGileSync: value[CHAT_YOUGILE_SYNC_KEY] !== false,
+    // Тот же порядок, что у зеркала: прячет только явный `false`.
+    production: value[PRODUCTION_KEY] !== false,
     // Строго `true`, как у «только свои машины»: бесплатная работа должна быть
     // названа явно, а не получиться из мусора под ключом.
     billingFree: value[BILLING_FREE_KEY] === true,

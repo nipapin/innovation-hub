@@ -2,8 +2,8 @@ import { GetObjectCommand } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { NextResponse, type NextRequest } from "next/server"
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth"
+import { resolveProjectAccess } from "@/lib/project-access"
 import { findFileByS3Key } from "@/lib/repositories/project-files"
-import { findProjectById } from "@/lib/repositories/projects"
 import { findUserById } from "@/lib/repositories/users"
 import { getS3Bucket, isAllowedMediaObjectKey } from "@/lib/s3-config"
 import { getS3Client } from "@/lib/s3-client"
@@ -75,7 +75,7 @@ async function authorizeProjectKey(
     if (hasCapability(user.role, capabilities, "projects.access")) return null
   }
 
-  // Владение спрашиваем у базы, а не у ключа.
+  // Доступ спрашиваем у базы, а не у ключа.
   //
   // Раньше здесь стоял быстрый путь `keyUserId === user.id`: сегмент ключа и был
   // владельцем, поэтому лишний запрос выглядел ненужным. С передачей проекта
@@ -83,17 +83,25 @@ async function authorizeProjectKey(
   // прежним навсегда (`projects.storage_owner_id`), и по нему бывший владелец
   // продолжал бы открывать файлы проекта, которого у него больше нет.
   // См. docs/ADMIN_WORKSPACE_PLAN.md §5.4.
+  //
+  // Смотреть файл может не только владелец, а любой участник проекта, начиная с
+  // читателя: право `read` у всех ролей (lib/project-roles.ts). Раньше здесь
+  // стояло строгое `ownerId === user.id`, и тот, с кем поделились проектом, не
+  // мог открыть в нём ни одного видео. Проверка — та же `resolveProjectAccess`,
+  // что у роутов кабинета: владелец строго этим профилем, участие — своё или
+  // входа. Нет доступа — 404, как везде: чужой проект не подтверждает, что он есть.
   if (isCurrentProjectKey && keyProjectId) {
-    const project = await findProjectById(keyProjectId)
-    if (!project || project.ownerId !== user.id) {
+    const access = await resolveProjectAccess(keyProjectId, user.id)
+    if (!access) {
       return NextResponse.json({ message: "Not found." }, { status: 404 })
     }
     return null
   }
 
-  // During migration, legacy object keys still need a DB ownership check.
+  // Старые ключи без проекта в пути: проект узнаём по строке каталога.
   const file = await findFileByS3Key(key)
-  if (!file || file.ownerId !== user.id) {
+  const access = file ? await resolveProjectAccess(file.projectId, user.id) : null
+  if (!access) {
     return NextResponse.json({ message: "Not found." }, { status: 404 })
   }
   return null

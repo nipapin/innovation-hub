@@ -6,6 +6,7 @@ import {
   createSessionToken,
   verifyPassword,
 } from "@/lib/auth"
+import { profileAfterSignIn } from "@/lib/profile-switch"
 import { findLoginByEmail } from "@/lib/repositories/users"
 
 export async function POST(request: Request) {
@@ -73,13 +74,19 @@ export async function POST(request: Request) {
       )
     }
 
-    // Входят всегда во вход, то есть в «Личное»: в компанию попадают
-    // переключателем (docs/MULTI_COMPANY_PROFILES_PLAN.md §2).
-    const token = await createSessionToken({
-      sub: user.id,
-      lid: user.id,
+    // Входят во вход, а открывается то рабочее место, где человек работал в
+    // прошлый раз; аккаунт, заведённый компанией, — сразу в компании
+    // (docs/MULTI_COMPANY_PROFILES_PLAN.md §17.6).
+    const profile = await profileAfterSignIn({
+      id: user.id,
       role: user.role,
       email: user.email,
+    })
+    const token = await createSessionToken({
+      sub: profile.id,
+      lid: user.id,
+      role: profile.role,
+      email: profile.email,
     })
 
     const response = NextResponse.json(

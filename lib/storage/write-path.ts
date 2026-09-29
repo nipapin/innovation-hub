@@ -795,6 +795,68 @@ export async function writeFileDelete(input: {
 }
 
 /**
+ * Папка верхнего уровня `IN` уходит из-под своего имени — что с её задачей.
+ *
+ * Идентичность папки для конвейера — собранный ключ `IN/<имя>` (у строки-папки
+ * `s3_key` нет), поэтому переименование отрывает папку от её задачи:
+ *
+ * - задачу уже взяли (`claimed`/`running`) — отказ. Машина работает по
+ *   манифесту, и переименование обработку не остановит, а только оставит её
+ *   результат без источника в `IN`;
+ * - задача ждёт очереди, а папке возвращают `-` («Остановить» в окне сборки) —
+ *   задача удаляется. Именно удаляется, а не снимается в `failed`: иначе
+ *   следующее «Запустить» вернуло бы папку к упавшей задаче, и обе линии
+ *   сборки её бы уже не взяли. Резерв денег освобождается сам — он считается
+ *   по живым задачам.
+ *
+ * Блокировка строки задачи держит гонку с `claimNextTask`: тот берёт задачи
+ * через `SKIP LOCKED` и заблокированную пропустит, а если успел первым — здесь
+ * увидим `claimed`.
+ */
+async function releaseInFolderTask(
+  client: PoolClient,
+  input: {
+    storageOwnerId: string
+    projectId: string
+    existing: ProjectFileRecord
+    newFolder: string
+    newName: string
+  },
+): Promise<void> {
+  const { existing } = input
+  if (!existing.isFolder || existing.folderPath !== "IN") return
+  if (input.newFolder === existing.folderPath && input.newName === existing.name) return
+
+  const live = await client.query<{ id: string; status: string }>(
+    `SELECT id, status
+       FROM tasks
+      WHERE project_id = $1
+        AND source_key = $2
+        AND status IN ('queued', 'claimed', 'running')
+      FOR UPDATE`,
+    [
+      input.projectId,
+      `${projectPrefix(input.storageOwnerId, input.projectId)}IN/${existing.name}`,
+    ],
+  )
+  if (live.rows.length === 0) return
+
+  if (live.rows.some((row) => row.status !== "queued")) {
+    throw new StorageWriteError(
+      "This element is already being processed and can no longer be renamed.",
+      409,
+    )
+  }
+
+  const heldBack = input.newFolder === "IN" && input.newName.startsWith("-")
+  if (!heldBack) return
+
+  await client.query(`DELETE FROM tasks WHERE id = ANY($1::text[])`, [
+    live.rows.map((row) => row.id),
+  ])
+}
+
+/**
  * Переименование / перемещение.
  *
  * `actor` здесь особенно важен: снятие `-` с имени папки приезжает именно сюда, а
@@ -809,6 +871,12 @@ export async function writeRename(input: {
   folderPath?: string
   eventId?: string
   actor?: StorageActor | null
+  /**
+   * Сверить папку верхнего уровня `IN` с её задачей (`releaseInFolderTask`).
+   * Включает только окно сборки элемента: машины метят брак дефисом тем же
+   * путём и в тот момент, когда их задача ещё жива, — им отказ не нужен.
+   */
+  releaseInTask?: boolean
 }): Promise<ProjectFileRecord | null> {
   return withTransaction(async (client) => {
     const found = await client.query<ProjectFileRecord>(
@@ -860,6 +928,16 @@ export async function writeRename(input: {
       name: newName,
       excludeId: existing.id,
     })
+
+    if (input.releaseInTask) {
+      await releaseInFolderTask(client, {
+        storageOwnerId: input.storageOwnerId,
+        projectId: input.projectId,
+        existing,
+        newFolder,
+        newName,
+      })
+    }
 
     if (existing.isFolder) {
       const oldPrefix = folderPrefix(existing.folderPath, existing.name)

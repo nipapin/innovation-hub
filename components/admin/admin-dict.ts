@@ -211,6 +211,8 @@ export const adminDict = {
     auditCompanyMachinesPolicy: "Правило обработки компании изменено",
     auditCompanyAutomationEnabled: "Обработка компании включена",
     auditCompanyAutomationDisabled: "Обработка компании выключена",
+    auditCompanyProductionEnabled: "Компании открыто «Производство»",
+    auditCompanyProductionDisabled: "У компании скрыто «Производство»",
     auditCompanyChatSyncEnabled: "Переписка компании дублируется в YouGile",
     auditCompanyChatSyncDisabled: "Переписка компании не дублируется в YouGile",
     auditCompanyBillingFreeEnabled: "Компания работает за наш счёт",
@@ -224,7 +226,7 @@ export const adminDict = {
     capsPresetContent: "Контент",
     capsPresetSupport: "Поддержка проектов",
     capsPresetManager: "Ведение клиентов",
-    capsPresetPipeline: "Конвейер",
+    capsPresetPipeline: "Обработка",
     capsPresetPosting: "Автопостинг",
     capsPresetFull: "Полный",
     capsSave: "Сохранить доступы",
@@ -238,7 +240,7 @@ export const adminDict = {
     capUsersRead: "Люди — просмотр",
     capUsersManage: "Люди — управление",
     capContentManage: "Контент сайта",
-    capPipelineOperate: "Конвейер",
+    capPipelineOperate: "Обработка",
     capPostingOperate: "Автопостинг",
     capSettingsWrite: "Общие словари",
     capMachinesManage: "Выпуск токенов компьютеров",
@@ -257,8 +259,8 @@ export const adminDict = {
     auditProjectUnshared: "Доступ к проекту снят",
     workspacesUnderConstruction: "Раздел собирается",
     workspacesUnderConstructionDesc:
-      "Здесь появятся три колонки: люди, их проекты и файлы. Пока работа с чужими папками живёт в «Конвейере».",
-    workspacesOpenPipeline: "Открыть «Конвейер»",
+      "Здесь появятся три колонки: люди, их проекты и файлы. Пока работа с чужими папками живёт в «Обработке».",
+    workspacesOpenPipeline: "Открыть «Обработку»",
     capStatisticsView: "Статистика",
     capStatisticsImport: "Импорт статистики",
     capVisitorsView: "Посетители",
@@ -475,7 +477,7 @@ export const adminDict = {
     kindIdea: "идею",
 
     // pipeline
-    pipelineNarrowScreen: "Конвейер доступен на экране шириной от 1024 пикселей.",
+    pipelineNarrowScreen: "«Обработка» доступна на экране шириной от 1024 пикселей.",
     pipelineUsersLoadError: "Не удалось загрузить список пользователей.",
     pipelineUsers: "Пользователи",
     pipelineUserSearch: "Поиск по имени, почте или компании",
@@ -561,7 +563,7 @@ export const adminDict = {
     postingSkipInFlight: "предыдущая публикация ещё не завершилась",
     postingSkipNoFiles: "новых файлов нет",
     postingSkipPlatformNotReady: "публикация этой площадкой ещё не сделана",
-    pipelineToggleError: "Не удалось изменить состояние конвейера.",
+    pipelineToggleError: "Не удалось изменить состояние обработки.",
     pipelineWatchStarted: "Слежение включено — задачи будут появляться сами.",
     pipelineWatchStopped: "Слежение остановлено.",
     pipelineWatching: "следим за папками IN",
@@ -620,7 +622,7 @@ export const adminDict = {
       "Файл остался в IN, но помечен дефисом в начале имени — ни обход, ни события его больше не возьмут. Чтобы прогнать заново, снимите пометку.",
     pipelineTaskRequeue: "Снять пометку",
     pipelineTaskRequeueTitle:
-      "Убрать дефис из начала имени. Конвейер увидит переименование событием и заведёт новую задачу.",
+      "Убрать дефис из начала имени. Обработка увидит переименование событием и заведёт новую задачу.",
     pipelineTaskRequeued: "Пометка снята — файл снова в работе.",
 
     // токены доступа и машины под ними
@@ -686,7 +688,7 @@ export const adminDict = {
     // pipeline · страховочный обход папок IN
     settingsDomainSweep: "Обход IN",
     settingsDomainSweepHint:
-      "Задачи создаются по событиям заливки — это основная линия, и она мгновенная. Обход — страховка на случай, когда события не хватило: конвейер был выключен во время обновления, проект стоял на паузе, options.json был битый. Он идёт по каталогу, сравнивает содержимое папок IN с уже созданными задачами и добирает разницу. Обход подчинён тумблеру слежения: пока стоит «Стоп», задачи не появляются ни по событию, ни обходом.",
+      "Задачи создаются по событиям заливки — это основная линия, и она мгновенная. Обход — страховка на случай, когда события не хватило: обработка была выключена во время обновления, проект стоял на паузе, options.json был битый. Он идёт по каталогу, сравнивает содержимое папок IN с уже созданными задачами и добирает разницу. Обход подчинён тумблеру слежения: пока стоит «Стоп», задачи не появляются ни по событию, ни обходом.",
     settingsSweepInterval: "Обходить каждые",
     settingsSweepIntervalUnit: "минут",
     settingsSweepIntervalHint:
@@ -720,7 +722,7 @@ export const adminDict = {
     settingsSweepTruncated: " Часть элементов осталась на следующий обход.",
     settingsSweepError: "Не удалось выполнить обход.",
     settingsSweepStopped:
-      "Конвейер остановлен — сначала включите слежение на странице.",
+      "Обработка остановлена — сначала включите слежение на странице.",
     settingsSweepSaved: "Настройки обхода сохранены.",
     settingsSweepSaveError: "Не удалось сохранить настройки обхода.",
     settingsSweepStateUnavailable: "Состояние обхода недоступно ({status})",
@@ -775,6 +777,9 @@ export const adminDict = {
     featureToolVoiceOver: "Озвучка",
     featureToolVoiceOverDesc:
       "Инструмент кабинета: генерация реплик. Уже добавленные экземпляры сохраняются.",
+    featureProduction: "Производство",
+    featureProductionDesc:
+      "Закладка «Производство» в кабинете: пайплайны, ролики по ним и чаты этапов. Выключение прячет закладку; пайплайны, папки этапов и переписка остаются на месте.",
     featureWorkspaceElement: "Сборка элемента",
     featureWorkspaceElementDesc:
       "Кнопка «Новый элемент» в папке IN: форма, собирающая папку по требованиям графа. Уже собранные папки остаются и обрабатываются.",
@@ -979,6 +984,8 @@ export const adminDict = {
     auditCompanyMachinesPolicy: "Company processing rule changed",
     auditCompanyAutomationEnabled: "Company processing enabled",
     auditCompanyAutomationDisabled: "Company processing disabled",
+    auditCompanyProductionEnabled: "Production opened for the company",
+    auditCompanyProductionDisabled: "Production hidden for the company",
     auditCompanyChatSyncEnabled: "Company chat mirrored to YouGile",
     auditCompanyChatSyncDisabled: "Company chat no longer mirrored to YouGile",
     auditCompanyBillingFreeEnabled: "Company now works at our expense",
@@ -992,7 +999,7 @@ export const adminDict = {
     capsPresetContent: "Content",
     capsPresetSupport: "Project support",
     capsPresetManager: "Client management",
-    capsPresetPipeline: "Pipeline",
+    capsPresetPipeline: "Processing",
     capsPresetPosting: "Autoposting",
     capsPresetFull: "Full",
     capsSave: "Save access",
@@ -1006,7 +1013,7 @@ export const adminDict = {
     capUsersRead: "People — view",
     capUsersManage: "People — manage",
     capContentManage: "Site content",
-    capPipelineOperate: "Pipeline",
+    capPipelineOperate: "Processing",
     capPostingOperate: "Autoposting",
     capSettingsWrite: "Shared dictionaries",
     capMachinesManage: "Issue computer tokens",
@@ -1025,8 +1032,8 @@ export const adminDict = {
     auditProjectUnshared: "Project access revoked",
     workspacesUnderConstruction: "Section under construction",
     workspacesUnderConstructionDesc:
-      "Three columns will live here: people, their projects and files. For now, other people's folders are handled in the Pipeline.",
-    workspacesOpenPipeline: "Open the Pipeline",
+      "Three columns will live here: people, their projects and files. For now, other people's folders are handled in Processing.",
+    workspacesOpenPipeline: "Open Processing",
     capStatisticsView: "Statistics",
     capStatisticsImport: "Statistics import",
     capVisitorsView: "Visitors",
@@ -1238,7 +1245,7 @@ export const adminDict = {
     kindIdea: "idea",
 
     // pipeline
-    pipelineNarrowScreen: "The pipeline needs a screen at least 1024 pixels wide.",
+    pipelineNarrowScreen: "Processing needs a screen at least 1024 pixels wide.",
     pipelineUsersLoadError: "Could not load the list of users.",
     pipelineUsers: "Users",
     pipelineUserSearch: "Search by name, email or company",
@@ -1322,7 +1329,7 @@ export const adminDict = {
     postingSkipInFlight: "the previous publication has not finished",
     postingSkipNoFiles: "no new files",
     postingSkipPlatformNotReady: "publishing to this platform is not implemented yet",
-    pipelineToggleError: "Could not change the pipeline state.",
+    pipelineToggleError: "Could not change the processing state.",
     pipelineWatchStarted: "Watching is on — tasks will appear on their own.",
     pipelineWatchStopped: "Watching stopped.",
     pipelineWatching: "watching IN folders",
@@ -1381,7 +1388,7 @@ export const adminDict = {
       "The file stayed in IN but its name was prefixed with a dash — neither the sweep nor events will pick it up. To run it again, remove the mark.",
     pipelineTaskRequeue: "Remove the mark",
     pipelineTaskRequeueTitle:
-      "Strip the leading dash from the name. The pipeline sees the rename as an event and creates a new task.",
+      "Strip the leading dash from the name. Processing sees the rename as an event and creates a new task.",
     pipelineTaskRequeued: "Mark removed — the file is back in play.",
 
     // access tokens and their machines
@@ -1447,7 +1454,7 @@ export const adminDict = {
     // pipeline · IN folder safety sweep
     settingsDomainSweep: "IN sweep",
     settingsDomainSweepHint:
-      "Tasks are created from upload events — that is the primary line and it is instant. The sweep is the safety net for when an event was not enough: the pipeline was off during an update, the project was paused, options.json was broken. It walks the catalog, compares the contents of IN folders against existing tasks and picks up the difference. The sweep obeys the watch toggle: while it says Stop, no tasks appear at all — neither from events nor from sweeps.",
+      "Tasks are created from upload events — that is the primary line and it is instant. The sweep is the safety net for when an event was not enough: processing was off during an update, the project was paused, options.json was broken. It walks the catalog, compares the contents of IN folders against existing tasks and picks up the difference. The sweep obeys the watch toggle: while it says Stop, no tasks appear at all — neither from events nor from sweeps.",
     settingsSweepInterval: "Sweep every",
     settingsSweepIntervalUnit: "minutes",
     settingsSweepIntervalHint:
@@ -1481,7 +1488,7 @@ export const adminDict = {
     skipNoVendorAccount: "no vendor account required by the graph",
     settingsSweepTruncated: " Some elements are left for the next sweep.",
     settingsSweepError: "Could not run the sweep.",
-    settingsSweepStopped: "The pipeline is stopped — start watching first.",
+    settingsSweepStopped: "Processing is stopped — start watching first.",
     settingsSweepSaved: "Sweep settings saved.",
     settingsSweepSaveError: "Could not save the sweep settings.",
     settingsSweepStateUnavailable: "Sweep state unavailable ({status})",
@@ -1536,6 +1543,9 @@ export const adminDict = {
     featureToolVoiceOver: "Voice-over",
     featureToolVoiceOverDesc:
       "Workspace tool: line generation. Existing instances are kept.",
+    featureProduction: "Production",
+    featureProductionDesc:
+      "The Production tab in the account: pipelines, videos made with them and stage chats. Turning it off hides the tab; pipelines, stage folders and conversations stay where they are.",
     featureWorkspaceElement: "Element assembly",
     featureWorkspaceElementDesc:
       "The “New element” button in the IN folder: a form that assembles a folder from the graph's requirements. Folders already assembled are kept and still processed.",

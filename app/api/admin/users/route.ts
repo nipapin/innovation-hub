@@ -12,6 +12,7 @@ import {
   createUser,
   findLoginByEmail,
   listUsers,
+  rememberLastProfile,
   updateUser,
 } from "@/lib/repositories/users"
 import { syncUserMeta } from "@/lib/project-storage"
@@ -127,6 +128,10 @@ export async function POST(request: NextRequest) {
         )
       }
       companyProfileId = added.profileId
+      // Заведён сразу в компанию — первый вход откроет её (§17.6 плана).
+      await rememberLastProfile(user.id, added.profileId).catch((error) => {
+        console.error("[admin/users] remember first profile failed", error)
+      })
     }
 
     await auditFrom(request, auth)({

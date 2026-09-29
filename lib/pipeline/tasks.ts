@@ -201,16 +201,23 @@ export async function listPipelineTasks(
 
   return result.rows.map((row) => {
     const reported = progress.get(row.id)
+    const finished = row.status === "done" || row.status === "failed"
     const steps: TaskStep[] = (row.stepIds ?? []).map((stepId) => {
       const meta = row.stepMeta?.[stepId]
       const seen = reported?.get(stepId)
+      // `running` у завершённой задачи — шаг, который начался и не отчитался о
+      // конце: задача оборвалась на соседнем, параллельном ему. Идти ему уже
+      // некуда, и пульсирующий «в работе» квадратик врал бы. Показываем как
+      // недошедший — тем же цветом, что и шаги, до которых дело не дошло.
+      const status =
+        finished && seen?.status === "running" ? "queued" : seen?.status
       return {
         stepId,
         label: meta?.pluginId || stepId,
         nodeType: meta?.nodeType ?? null,
         // Шаг, о котором машина ещё не отчитывалась, — queued. Так цепочка видна
         // целиком с самого начала, а не наполняется по мере отчётов.
-        status: seen?.status ?? "queued",
+        status: status ?? "queued",
         message: seen?.message ?? null,
         updatedAt: seen?.updatedAt.toISOString() ?? null,
       }

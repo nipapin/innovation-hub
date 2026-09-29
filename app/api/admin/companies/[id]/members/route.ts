@@ -5,7 +5,7 @@ import { auditFrom } from "@/lib/audit"
 import { companyTransferSchema } from "@/lib/admin-schemas"
 import { addLoginToCompany } from "@/lib/invite-account"
 import { mailBrandForCompany, sendCompanyAddedEmail } from "@/lib/mail/send"
-import { clearCompanyCapabilities } from "@/lib/repositories/company-capabilities"
+import { clearConsoleCapabilities } from "@/lib/repositories/company-capabilities"
 import { setMemberRole } from "@/lib/repositories/company-console"
 import { findUserById } from "@/lib/repositories/users"
 import {
@@ -80,9 +80,10 @@ export async function PUT(
       userId: target.id,
       companyRole: parsed.data.companyRole,
     })
-    // Теги — у админов компании; при смене роли снимаем, как снимал прежний
-    // перевод: всплывшие обратно, они вернули бы то, чего никто не выдавал.
-    await clearCompanyCapabilities(target.id)
+    // Консольные теги — у админов компании; при смене роли снимаем, как снимал
+    // прежний перевод: всплывшие обратно, они вернули бы то, чего никто не
+    // выдавал. Рабочие остаются — они значимы при любой роли.
+    await clearConsoleCapabilities(target.id)
     await audit({
       action: "company.role_changed",
       targetType: "user",

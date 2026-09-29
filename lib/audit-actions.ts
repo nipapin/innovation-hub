@@ -132,6 +132,11 @@ export const AUDIT_ACTIONS = [
   // перестали приходить в доску».
   "company.chat_sync_enabled",
   "company.chat_sync_disabled",
+  // Раздел «Производство» у компании (docs/PRODUCTION_PLAN.md §6.4). Своё
+  // действие, а не `sets_changed`: набор — это инструменты и разделы консоли, а
+  // производство — отдельная закладка кабинета, и спрашивают о ней отдельно.
+  "company.production_enabled",
+  "company.production_disabled",
   // Работа за наш счёт (§3). Своё действие, а не `sets_changed`: это решение про
   // деньги, и в журнале его ищут отдельно — «с какого числа мы платим за них».
   "company.billing_free_enabled",
