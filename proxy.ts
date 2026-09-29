@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server"
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth"
 import { isElevated } from "@/lib/admin-roles"
 import { isEnvFeatureEnabled } from "@/lib/features-env"
+import { isKotliarRequest } from "@/lib/kotliar/host"
 
 /**
  * Disable HTML caching where the answer depends on the visitor's session —
@@ -28,7 +29,30 @@ async function hasSession(request: NextRequest): Promise<boolean> {
   return Boolean(session?.userId)
 }
 
+function rewriteToKotliarSite(request: NextRequest): NextResponse {
+  const pathname = request.nextUrl.pathname
+  if (pathname.startsWith("/_next") || pathname.startsWith("/api/")) {
+    return NextResponse.next()
+  }
+  if (pathname.startsWith("/kotliar-site")) {
+    return NextResponse.next()
+  }
+  const url = request.nextUrl.clone()
+  url.pathname = pathname === "/" ? "/kotliar-site" : `/kotliar-site${pathname}`
+  return NextResponse.rewrite(url)
+}
+
 export async function proxy(request: NextRequest) {
+  /**
+   * Отдельный хост — отдельный сайт. Без этой переписи корень ушёл бы в кабинет
+   * (ниже), а страницы `/{slug}` открылись бы как роуты основного приложения.
+   * Статика `/_next` и API не трогаются: файлы отдаёт `/files/{id}` через
+   * внутренний роут `app/kotliar-site/files`.
+   */
+  if (isKotliarRequest(request.headers)) {
+    return rewriteToKotliarSite(request)
+  }
+
   const pathname = request.nextUrl.pathname
 
   /**
@@ -85,5 +109,13 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/admin/:path*", "/company/:path*"],
+  matcher: [
+    "/",
+    "/admin/:path*",
+    "/company/:path*",
+    // Kotliar host: pages (`/{slug}`) and files (`/files/{id}`). On the main
+    // host these extra matches are a cheap next() after the host check.
+    "/files/:path*",
+    "/((?!_next/|api/|files/).*)",
+  ],
 }

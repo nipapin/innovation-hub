@@ -76,6 +76,8 @@ export function isAllowedMediaObjectKey(key: string): boolean {
     // класс, что `admin/`: публичное оформление, а не чужие файлы.
     key.startsWith("companies/") ||
     key.startsWith("innohub/") ||
+    // `ffworks/kotliar/` is the personal site objects. Public reads go through
+    // `/files/{id}` (id from kotliar_files), not this session-aware proxy.
     key.startsWith("ffworks/")
   )
 }

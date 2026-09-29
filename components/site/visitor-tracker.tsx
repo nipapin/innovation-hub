@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
+import { KOTLIAR_HOSTS } from "@/lib/kotliar/host"
 
 /**
  * Reports every client-side navigation to /api/visitors/track. We dedupe by
@@ -19,6 +20,8 @@ export function VisitorTracker() {
     if (!pathname) return
     if (pathname.startsWith("/admin")) return
     if (pathname.startsWith("/api")) return
+    if (pathname.startsWith("/kotliar-site")) return
+    if (KOTLIAR_HOSTS.has(window.location.hostname)) return
 
     const query = searchParams?.toString() ?? ""
     const key = `${pathname}?${query}`

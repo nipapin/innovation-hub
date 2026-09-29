@@ -7,6 +7,7 @@ import { isSuperAdmin } from "@/lib/admin-roles"
 import { accentCss, DEFAULT_ACCENT, readBranding } from "@/lib/branding"
 import { getCompanyContext } from "@/lib/company-auth"
 import { findCompanyById, listCompanies } from "@/lib/repositories/companies"
+import { isKotliarSiteOwner } from "@/lib/kotliar/owner"
 
 export const dynamic = "force-dynamic"
 
@@ -110,6 +111,7 @@ export default async function CompanyLayout({
           sections: context.companySections,
         }}
         companyGuest={isGuest}
+        kotliarSite={isKotliarSiteOwner(user.id)}
       >
         {/* Прокрутку оболочка не даёт: её область содержимого `overflow-hidden`,
             и скроллер ставит каждая поверхность сама — как AdminShell. Без него

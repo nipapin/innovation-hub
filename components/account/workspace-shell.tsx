@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FolderOpen,
+  Globe,
   Trash2,
   Wrench,
   type LucideIcon,
@@ -167,6 +168,8 @@ export type WorkspaceUser = {
    * то же сравнение уже решает, красить ли оболочку в цвета клиента.
    */
   companyGuest?: boolean
+  /** Публичная страничка kotliar.ffworks.pro — только у её владельца. */
+  kotliarSite?: boolean
 }
 
 type ShellProps = WorkspaceUser & {
@@ -285,6 +288,7 @@ function SidebarContent({
   const tab = searchParams.get("tab") ?? "projects"
   const isTab = (name: ProjectTab) => inProjects && tab === name
   const isProfile = pathname.startsWith("/account/profile")
+  const isSite = pathname.startsWith("/account/site")
   // Разделы, поднятые из «Админки» на верхний уровень, подсвечивают сами себя:
   // свёртка при них не считается активной и не раскрывается.
   const signOut = async () => {
@@ -442,6 +446,17 @@ function SidebarContent({
               </div>
             )
           })}
+          {user.kotliarSite ? (
+            <div onClick={onNavigate}>
+              <NavItem
+                href="/account/site"
+                active={isSite}
+                collapsed={collapsed}
+                icon={<Globe className="h-5 w-5" />}
+                label={t.siteNav}
+              />
+            </div>
+          ) : null}
           {/* Личных ключей в рабочем месте больше нет: внешние сервисы в
               компании общие, и подключают их в «Доступах» консоли — одно место
               на всю компанию. Пункт, ведущий в собственные ключи, обещал бы
@@ -606,6 +621,7 @@ function WorkspaceShellInner({
   balanceCents,
   companyNav,
   companyGuest,
+  kotliarSite,
   children,
 }: ShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -617,6 +633,7 @@ function WorkspaceShellInner({
     balanceCents,
     companyNav,
     companyGuest,
+    kotliarSite,
   }
   const { t } = useI18n()
   const branding = useBranding()
@@ -655,7 +672,9 @@ function WorkspaceShellInner({
             : t.projects
           : pathname.startsWith("/account/profile")
             ? t.profileTitle
-            : pathname.startsWith("/admin")
+            : pathname.startsWith("/account/site")
+              ? t.siteNav
+              : pathname.startsWith("/admin")
               ? t.adminPanel
               : branding.name
 

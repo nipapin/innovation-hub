@@ -112,6 +112,11 @@ export async function GET(request: NextRequest, { params }: Params) {
     return NextResponse.json({ message: "Not found." }, { status: 404 })
   }
 
+  // Kotliar files are public by opaque id (`/files/{id}`), not by object key.
+  if (key.startsWith("ffworks/kotliar/")) {
+    return NextResponse.json({ message: "Not found." }, { status: 404 })
+  }
+
   const denied = await authorizeProjectKey(request, key)
   if (denied) return denied
 

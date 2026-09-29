@@ -5,6 +5,7 @@ import { redirect } from "next/navigation"
 import { WorkspaceShell } from "@/components/account/workspace-shell"
 import { getCurrentUser, getSessionLogin } from "@/lib/admin-auth"
 import { getCompanyContext } from "@/lib/company-auth"
+import { isKotliarSiteOwner } from "@/lib/kotliar/owner"
 
 export const dynamic = "force-dynamic"
 
@@ -80,6 +81,7 @@ export default async function AccountLayout({
               }
             : null
         }
+        kotliarSite={isKotliarSiteOwner(user.id)}
       >
         {children}
       </WorkspaceShell>
