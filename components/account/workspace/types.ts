@@ -307,6 +307,11 @@ export type WorkspaceSource = {
    */
   reprocessUrl?: (projectId: string, fileId: string) => string
   /**
+   * Только состояния обработки элементов IN — для опроса, пока что-то идёт.
+   * Пусто — отметки обновляются лишь вместе с деревом.
+   */
+  inStatusUrl?: (projectId: string) => string
+  /**
    * Развёрнутое описание проекта — options/description.md. Наличие адреса
    * включает панель описания: GET есть в обеих зонах, а PUT принимает только
    * админский роут — за это отвечает право `can.editDescription`.

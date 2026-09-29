@@ -22,7 +22,13 @@ export type AccountTask = {
   id: string
   projectId: string
   projectName: string
-  /** Логическое имя элемента: то, что человек видит в дереве. */
+  /**
+   * Что показываем строкой. У готовой задачи с результатом — САМ результат:
+   * один файл — его имя, несколько — папка, где они лежат (тогда `isFolder`).
+   * Исходника к этому моменту может уже не быть вовсе («удалить после
+   * обработки»), а спрашивает человек про то, что получилось. В остальных
+   * случаях — логическое имя исходника, как в дереве.
+   */
   name: string
   isFolder: boolean
   status: AccountTaskStatus
@@ -171,12 +177,21 @@ function resultLocation(
 
 function toTask(row: Row): AccountTask {
   const result = resultLocation(row.outFiles)
+  // Папка результата без имени — `OUT` целиком; показываем её последний сегмент.
+  const shown = result
+    ? result.fileName
+      ? { name: result.fileName, isFolder: false }
+      : {
+          name: result.folderPath.split("/").pop() || result.folderPath || row.name,
+          isFolder: true,
+        }
+    : { name: row.name, isFolder: row.isFolder }
   return {
     id: row.id,
     projectId: row.projectId,
     projectName: row.projectName,
-    name: row.name,
-    isFolder: row.isFolder,
+    name: shown.name,
+    isFolder: shown.isFolder,
     status: row.status === "claimed" ? "running" : row.status,
     stepsDone: Number(row.stepsDone),
     stepsTotal: row.stepsTotal,
