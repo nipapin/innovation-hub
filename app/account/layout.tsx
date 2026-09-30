@@ -6,6 +6,8 @@ import { WorkspaceShell } from "@/components/account/workspace-shell"
 import { getCurrentUser, getLoginAdmin, getSessionLogin } from "@/lib/admin-auth"
 import { getCompanyContext } from "@/lib/company-auth"
 import { isProductionAvailable } from "@/lib/production/availability"
+import { avatarUrlForKey } from "@/lib/avatar"
+import { findAvatarKey } from "@/lib/repositories/users"
 
 export const dynamic = "force-dynamic"
 
@@ -47,7 +49,10 @@ export default async function AccountLayout({
   if (!user) {
     redirect("/login")
   }
-  const production = await isProductionAvailable(user.id)
+  const [production, avatarKey] = await Promise.all([
+    isProductionAvailable(user.id),
+    findAvatarKey(user.id),
+  ])
 
   if (!user.isActive) {
     // Выведенного из компании — обратно в «Личное», а не на порог
@@ -71,6 +76,7 @@ export default async function AccountLayout({
       <WorkspaceShell
         email={user.email}
         fullName={user.fullName ?? ""}
+        avatarUrl={avatarUrlForKey(avatarKey)}
         role={user.role}
         capabilities={user.capabilities}
         balanceCents={user.balanceCents ?? 0}

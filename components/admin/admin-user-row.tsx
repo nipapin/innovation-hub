@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils"
 import { isElevated } from "@/lib/admin-roles"
 
 import {
+  ChevronDown,
   KeyRound,
   MoreHorizontal,
   Pencil,
@@ -38,6 +39,12 @@ type Props = {
   onToggleRole: () => void
   onToggleActive: () => void
   onDelete: () => void
+  /** Строка подпрофиля под строкой входа — с отступом. */
+  nested?: boolean
+  /** Сколько у входа профилей в компаниях; 0 — переключателя нет. */
+  profilesCount?: number
+  profilesOpen?: boolean
+  onToggleProfiles?: () => void
 }
 
 function avatarLetter(value: string) {
@@ -69,6 +76,10 @@ export function AdminUserRow({
   onToggleRole,
   onToggleActive,
   onDelete,
+  nested = false,
+  profilesCount = 0,
+  profilesOpen = false,
+  onToggleProfiles,
 }: Props) {
   const t = useAdminI18n()
 
@@ -103,7 +114,10 @@ export function AdminUserRow({
         }
       }}
       title={t.openCardHint}
-      className="flex select-text items-center gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-card/70"
+      className={cn(
+        "flex select-text items-center gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-card/70",
+        nested && "ml-10 bg-card/50 py-3",
+      )}
     >
       <Avatar className="h-10 w-10 border border-border/60">
         <AvatarFallback className="bg-primary/15 text-sm font-semibold text-primary">
@@ -121,9 +135,27 @@ export function AdminUserRow({
               {t.you}
             </Badge>
           ) : null}
-          {/* Подпрофиль — отдельной строкой, а не скрыт: через него идут
-              гранты, статистика и разбор «почему у сотрудника нет кошелька»
-              (MULTI_COMPANY_PROFILES_PLAN.md §10). */}
+          {/* Подпрофиль не скрыт совсем: через него идут гранты, статистика и
+              разбор «почему у сотрудника нет кошелька»
+              (MULTI_COMPANY_PROFILES_PLAN.md §10). Но это тот же человек, и
+              отдельной строкой в общем списке он читался дублем — поэтому он
+              вложен под свой вход и раскрывается по требованию. */}
+          {profilesCount > 0 ? (
+            <button
+              type="button"
+              data-no-edit
+              onClick={onToggleProfiles}
+              className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground hover:bg-secondary/80"
+            >
+              {tf(t.profilesCount, { n: String(profilesCount) })}
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 transition-transform",
+                  profilesOpen && "rotate-180",
+                )}
+              />
+            </button>
+          ) : null}
           {user.loginUserId ? (
             <Badge
               variant="secondary"

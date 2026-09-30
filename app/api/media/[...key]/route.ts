@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth"
 import { resolveProjectAccess } from "@/lib/project-access"
 import { findFileByS3Key } from "@/lib/repositories/project-files"
+import { canReadProductionFile } from "@/lib/production/media-access"
 import { findUserById } from "@/lib/repositories/users"
 import { getS3Bucket, isAllowedMediaObjectKey } from "@/lib/s3-config"
 import { getS3Client } from "@/lib/s3-client"
@@ -92,10 +93,15 @@ async function authorizeProjectKey(
   // входа. Нет доступа — 404, как везде: чужой проект не подтверждает, что он есть.
   if (isCurrentProjectKey && keyProjectId) {
     const access = await resolveProjectAccess(keyProjectId, user.id)
-    if (!access) {
-      return NextResponse.json({ message: "Not found." }, { status: 404 })
+    if (access) return null
+    // Доступа к папке нет — но файл может быть исходником или файлом своего
+    // этапа в производстве (docs/PRODUCTION_PLAN.md §4.4): участник чата этапа
+    // читает FINAL предыдущих этапов своего ролика, не получая прав на их папки.
+    const file = await findFileByS3Key(key)
+    if (file && file.projectId === keyProjectId && (await canReadProductionFile(user.id, file))) {
+      return null
     }
-    return null
+    return NextResponse.json({ message: "Not found." }, { status: 404 })
   }
 
   // Старые ключи без проекта в пути: проект узнаём по строке каталога.

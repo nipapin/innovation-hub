@@ -75,6 +75,10 @@ export function isAllowedMediaObjectKey(key: string): boolean {
     // по домену, — то есть его обязан увидеть тот, кто ещё не вошёл. Это тот же
     // класс, что `admin/`: публичное оформление, а не чужие файлы.
     key.startsWith("companies/") ||
+    // Аватары людей: рисуются в чужих списках (участники проекта), так что
+    // отдаются так же открыто, как логотипы. В ключе метка времени — перебором
+    // не угадывается.
+    key.startsWith("avatars/") ||
     key.startsWith("innohub/") ||
     // `ffworks/kotliar/` is the personal site objects. Public reads go through
     // `/files/{id}` (id from kotliar_files), not this session-aware proxy.

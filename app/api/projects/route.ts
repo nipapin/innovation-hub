@@ -219,6 +219,15 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Папки этапов пайплайнов живут в «Производстве», а не в «Проектах»
+    // (docs/PRODUCTION_PLAN.md §2.2): иначе двадцать роликов по шесть этапов
+    // засыпали бы список. В каталоге хранилища для программы они остаются —
+    // машинным этапам они там и нужны.
+    const notProduction = (p: { groupName?: string | null }) => p.groupName !== "production"
+    owned = owned.filter(notProduction)
+    shared = shared.filter(notProduction)
+    deleted = deleted.filter(notProduction)
+
     const allIds = [
       ...owned.map((p) => p.id),
       ...shared.map((p) => p.id),

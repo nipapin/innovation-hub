@@ -129,6 +129,8 @@ export function ShareDialog() {
   const [owner, setOwner] = useState<Person | null>(null)
   const [members, setMembers] = useState<Person[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
+  /** Коллеги по компании, совпавшие с набранным, — ищет сервер. */
+  const [colleagues, setColleagues] = useState<Contact[]>([])
   const [suggestOpen, setSuggestOpen] = useState(false)
   /** −1 — ничего не подсвечено: Enter тогда разбирает набранное, а не выбирает. */
   const [active, setActive] = useState(-1)
@@ -263,7 +265,8 @@ export function ShareDialog() {
    * Фильтр — по всей набранной строке, а не по последнему слову: имя пишется с
    * пробелом, и «Иван Пет» должно находить «Иван Петров».
    *
-   * ПУСТОЕ ПОЛЕ — ПУСТОЙ СПИСОК, а не «показать всех».
+   * ПУСТОЕ ПОЛЕ — ПУСТОЙ СПИСОК ИСТОРИИ, а не «показать всех». Исключение —
+   * коллеги по компании: это не чья-то переписка, а свой состав.
    *
    * Раньше диалог открывался с готовым списком тех, кого этот человек уже
    * приглашал. В компании это почти весь её состав: кто с кем работал, кто чей
@@ -272,16 +275,60 @@ export function ShareDialog() {
    * случайному зрителю за плечом — тем более. Подсказка обязана быть ответом на
    * вопрос, а не описью.
    */
+  // Коллеги по компании: история знает только тех, кого уже звали, а внутри
+  // компании делятся со своими — и весь её состав виден сразу. В личном
+  // профиле сервер отвечает пустым списком, и остаётся одна история.
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch("/api/account/share-colleagues")
+        if (!res.ok) return
+        const data = await res.json().catch(() => ({}))
+        if (cancelled || !Array.isArray(data.colleagues)) return
+        setColleagues(
+          data.colleagues
+            .filter(
+              (c: unknown): c is Contact =>
+                typeof (c as Contact)?.email === "string",
+            )
+            .map((c: Contact) => ({
+              email: c.email.toLowerCase(),
+              fullName: typeof c.fullName === "string" ? c.fullName : "",
+            })),
+        )
+      } catch {
+        // Подсказка — удобство: без неё остаётся история и ввод почты.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  /** История сверху, за ней коллеги, которых в истории нет. */
+  const known = useMemo(() => {
+    const seen = new Set(contacts.map((c) => c.email))
+    return [...contacts, ...colleagues.filter((c) => !seen.has(c.email))]
+  }, [contacts, colleagues])
+
+  const historyEmails = useMemo(
+    () => new Set(contacts.map((c) => c.email)),
+    [contacts],
+  )
+
   const suggestions = useMemo(() => {
     const q = draft.trim().toLowerCase()
-    if (!q) return []
-    return contacts
+    // Пустое поле в компании — её состав: это свои люди, не чужая переписка.
+    if (!q) return colleagues.filter((c) => !taken.has(c.email)).slice(0, 50)
+    return known
       .filter((c) => !taken.has(c.email))
       .filter(
         (c) => c.email.includes(q) || c.fullName.toLowerCase().includes(q),
       )
       .slice(0, 8)
-  }, [contacts, draft, taken])
+  }, [known, colleagues, draft, taken])
 
   /**
    * Набранное → человек из истории, если он там один.
@@ -296,19 +343,19 @@ export function ShareDialog() {
       // Набран целый адрес — берём его буквально: частичное совпадение иначе
       // подменило бы новый адрес похожим знакомым (`van@corp.co` → знакомый
       // `ivan@corp.com`), и доступ ушёл бы не тому.
-      if (EMAIL_RE.test(q)) return contacts.find((c) => c.email === q) ?? null
-      const exact = contacts.filter(
+      if (EMAIL_RE.test(q)) return known.find((c) => c.email === q) ?? null
+      const exact = known.filter(
         (c) => c.email === q || c.fullName.trim().toLowerCase() === q,
       )
       // Список приходит «свежие сверху»: у полных тёзок берём того, кого звали
       // последним.
       if (exact.length) return exact[0]!
-      const partial = contacts.filter(
+      const partial = known.filter(
         (c) => c.email.includes(q) || c.fullName.toLowerCase().includes(q),
       )
       return partial.length === 1 ? partial[0]! : null
     },
-    [contacts],
+    [known],
   )
 
   /**
@@ -721,16 +768,20 @@ export function ShareDialog() {
                           </span>
                         </span>
                       </button>
-                      <button
-                        type="button"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ws-4 hover:bg-foreground/10 hover:text-destructive"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => void forget(contact)}
-                        aria-label={t.shareForget}
-                        title={t.shareForget}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {/* Забыть можно только историю: коллега из компании в
+                          ней не записан. */}
+                      {historyEmails.has(contact.email) ? (
+                        <button
+                          type="button"
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ws-4 hover:bg-foreground/10 hover:text-destructive"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => void forget(contact)}
+                          aria-label={t.shareForget}
+                          title={t.shareForget}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

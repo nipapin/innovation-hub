@@ -4,7 +4,7 @@ import type { UserRole } from "@/lib/domain-types"
 import { useEffect, useState } from "react"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import { useAdminI18n } from "@/components/admin/admin-dict"
+import { tf, useAdminI18n } from "@/components/admin/admin-dict"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -65,6 +65,9 @@ type Props = {
   canManageRoles: boolean
   onOpenChange: (open: boolean) => void
   onSubmit: (draft: UserDraft, user?: AdminUser) => Promise<boolean>
+  /** Профили этого входа в компаниях — показываются в карточке входа. */
+  profiles?: AdminUser[]
+  onOpenProfile?: (profile: AdminUser) => void
 }
 
 export function AdminUserDialog({
@@ -75,6 +78,8 @@ export function AdminUserDialog({
   canManageRoles,
   onOpenChange,
   onSubmit,
+  profiles = [],
+  onOpenProfile,
 }: Props) {
   const t = useAdminI18n()
   const [draft, setDraft] = useState<UserDraft>(emptyDraft)
@@ -359,6 +364,35 @@ export function AdminUserDialog({
                 </p>
               ) : null}
             </div>
+
+            {/* Профили входа в компаниях. В общем списке они свёрнуты под
+                входом, здесь — всегда на виду: щелчок открывает карточку
+                профиля. */}
+            {mode === "edit" && profiles.length > 0 ? (
+              <div className="space-y-1.5">
+                <Label>{t.companyProfilesTitle}</Label>
+                <ul className="space-y-1">
+                  {profiles.map((p) => (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        onClick={() => onOpenProfile?.(p)}
+                        className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/70 bg-card/40 px-3 py-2 text-left text-sm hover:border-primary/40"
+                      >
+                        <span className="truncate text-foreground">
+                          {tf(t.subprofileBadge, {
+                            company: p.companyTitle ?? "—",
+                          })}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {p.isActive ? t.active : t.suspended}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
         </div>
 

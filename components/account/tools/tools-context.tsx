@@ -118,6 +118,7 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
     (id: string | null) => {
       const params = new URLSearchParams(searchParams.toString())
       params.set("tab", "tools")
+      params.delete("toolKey")
       if (id) params.set("tool", id)
       else params.delete("tool")
       return `/account/projects?${params.toString()}`
@@ -238,6 +239,19 @@ export function ToolsProvider({ children }: { children: React.ReactNode }) {
     (toolKey: string) => tools.find((x) => x.toolKey === toolKey) ?? null,
     [tools],
   )
+
+  /**
+   * `?toolKey=` — вход из производства: «Открыть в инструменте» в этапе
+   * (docs/PRODUCTION_PLAN.md §3.2б). Экземпляр у человека есть — открываем его,
+   * нет — показываем каталог, чтобы добавить.
+   */
+  const wantedKey = searchParams.get("toolKey")
+  useEffect(() => {
+    if (!wantedKey || loading || selectedId) return
+    const existing = tools.find((x) => x.toolKey === wantedKey)
+    if (existing) openTool(existing.id)
+    else setCatalogOpen(true)
+  }, [wantedKey, loading, selectedId, tools, openTool])
 
   const selected = useMemo(
     () => tools.find((x) => x.id === selectedId) ?? null,

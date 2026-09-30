@@ -343,6 +343,8 @@ export type AccessToken = {
   kind: "computer" | "machine"
   id: string
   name: string
+  /** Описание, заданное при выпуске. Есть только у `rc_`: у `mch_` его не заводят. */
+  description: string | null
   ownerEmail: string
   /** Токен, привязанный к одному проекту: остальные ему не видны. */
   projectId: string | null
@@ -379,6 +381,7 @@ export async function listAccessTokens(): Promise<AccessToken[]> {
   const computers = await query<{
     id: string
     name: string
+    description: string
     ownerEmail: string
     status: RemoteComputerStatus
     machineUuid: string | null
@@ -392,6 +395,7 @@ export async function listAccessTokens(): Promise<AccessToken[]> {
   }>(
     `SELECT rc.id,
             rc.name,
+            rc.description,
             u.email AS "ownerEmail",
             rc.status,
             rc.machine_uuid AS "machineUuid",
@@ -460,6 +464,7 @@ export async function listAccessTokens(): Promise<AccessToken[]> {
     kind: "machine",
     id: token.id,
     name: token.name,
+    description: null,
     ownerEmail: token.ownerEmail,
     projectId: token.projectId,
     createdAt: token.createdAt.toISOString(),
@@ -474,6 +479,7 @@ export async function listAccessTokens(): Promise<AccessToken[]> {
       kind: "computer",
       id: row.id,
       name: row.name,
+      description: row.description?.trim() || null,
       ownerEmail: row.ownerEmail,
       projectId: null,
       createdAt: row.createdAt.toISOString(),

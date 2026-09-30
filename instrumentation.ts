@@ -30,6 +30,16 @@ export async function register() {
     const { startStatsLoop } = await import("@/lib/statistics/stats-loop")
     startStatsLoop()
 
+    // Срок хранения файлов производства: варианты и промежуточные финалы
+    // сданных роликов (lib/production/retention.ts).
+    const { startProductionRetentionLoop } = await import("@/lib/production/retention")
+    startProductionRetentionLoop()
+
+    // Автоматика производства следит за задачами конвейера своих элементов
+    // в IN (lib/production/machines.ts).
+    const { startProductionMachinesLoop } = await import("@/lib/production/machines")
+    startProductionMachinesLoop()
+
     // Не await: сид не должен задерживать старт процесса и тем более ронять его,
     // если база ещё не поднялась.
     void import("@/lib/repositories/automation-settings")

@@ -370,6 +370,26 @@ export async function listCompanyMembers(companyId: string): Promise<CompanyMemb
 }
 
 /**
+ * Коллеги по компании для подсказок диалога «Поделиться»: действующие люди
+ * той же компании, кроме самого спрашивающего.
+ */
+export async function listCompanyColleagues(input: {
+  companyId: string
+  excludeUserId: string
+}): Promise<{ email: string; fullName: string }[]> {
+  const result = await query<{ email: string; fullName: string }>(
+    `SELECT email, full_name AS "fullName"
+       FROM users
+      WHERE company_id = $1 AND kind = 'person' AND is_active
+        AND id <> $2
+      ORDER BY lower(COALESCE(NULLIF(full_name, ''), email))
+      LIMIT 500`,
+    [input.companyId, input.excludeUserId],
+  )
+  return result.rows
+}
+
+/**
  * Кто платит за работу сотрудника этой компании — её кошелёк.
  *
  * Одно место на весь код, куда ведёт вопрос «чей кошелёк у сотрудника»: прежде

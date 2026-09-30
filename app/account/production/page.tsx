@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { redirect } from "next/navigation"
 import { ProductionWorkspace } from "@/components/account/production/production-workspace"
 import { getCurrentUser } from "@/lib/admin-auth"
@@ -17,5 +18,11 @@ export default async function ProductionPage() {
   if (!user) redirect("/login")
   if (!(await isProductionAvailable(user.id))) redirect("/account/projects")
 
-  return <ProductionWorkspace />
+  // Suspense — из-за `useSearchParams` (выбранный этап в адресе), как у
+  // страницы проектов.
+  return (
+    <Suspense fallback={null}>
+      <ProductionWorkspace />
+    </Suspense>
+  )
 }

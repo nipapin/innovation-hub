@@ -570,6 +570,14 @@ export function AdminDataProvider({
             : false
         }
         canManageRoles={canManageRoles}
+        profiles={
+          userDialog.open && userDialog.mode === "edit"
+            ? users.filter((u) => u.loginUserId === userDialog.user.id)
+            : []
+        }
+        onOpenProfile={(profile) =>
+          setUserDialog({ open: true, mode: "edit", user: profile })
+        }
         onOpenChange={(open) => {
           if (!open) setUserDialog({ open: false })
         }}

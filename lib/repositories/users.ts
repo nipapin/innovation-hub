@@ -623,3 +623,43 @@ export class DuplicateEmailError extends Error {
     this.name = "DuplicateEmailError"
   }
 }
+
+/**
+ * Ключ аватара человека — со ВХОДА, из какого бы профиля ни спрашивали.
+ *
+ * Отдельным запросом, а не в PUBLIC_USER_FIELDS: колонка приходит миграцией
+ * 2026-09-29-user-avatars.sql, а код и база выезжают не одновременно. Пока
+ * колонки нет (42703), ответ — «аватара нет», и кружок рисует инициалы, а не
+ * роняет каждую страницу кабинета.
+ */
+export async function findAvatarKey(userId: string): Promise<string | null> {
+  try {
+    const result = await query<{ key: string | null }>(
+      `SELECT l.avatar_key AS key
+         FROM users u
+         JOIN users l ON l.id = COALESCE(u.login_user_id, u.id)
+        WHERE u.id = $1`,
+      [userId],
+    )
+    return result.rows[0]?.key ?? null
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code === "42703") return null
+    throw error
+  }
+}
+
+/** Поставить или снять аватар входа. Возвращает прежний ключ — его удаляют. */
+export async function setAvatarKey(
+  loginUserId: string,
+  key: string | null,
+): Promise<{ previous: string | null } | null> {
+  const result = await query<{ previous: string | null }>(
+    `UPDATE users u
+        SET avatar_key = $2
+       FROM (SELECT avatar_key FROM users WHERE id = $1) old
+      WHERE u.id = $1
+      RETURNING old.avatar_key AS previous`,
+    [loginUserId, key],
+  )
+  return result.rows[0] ?? null
+}

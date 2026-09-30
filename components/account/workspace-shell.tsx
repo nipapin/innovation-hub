@@ -43,10 +43,10 @@ import { ProductionAvailableProvider } from "@/components/account/production/ava
 import type { ProjectTab } from "@/components/account/workspace/workspace-context"
 import {
   I18nProvider,
-  avatarInitials,
   formatBalance,
   useI18n,
 } from "@/components/account/i18n"
+import { UserAvatar } from "@/components/account/user-avatar"
 import {
   areaHref,
   isAreaActive,
@@ -171,6 +171,8 @@ function loginAdminEntry(
 export type WorkspaceUser = {
   email: string
   fullName: string
+  /** Фото в кружке; нет — инициалы. */
+  avatarUrl?: string | null
   role: UserRole
   /** Теги админа: по ним фильтруется свёртка «Админка» в боковом меню. */
   capabilities: AdminCapability[]
@@ -308,7 +310,6 @@ function SidebarContent({
   const { t, lang, setLang } = useI18n()
   const disabledAdminTools = useDisabledAdminTools()
   const branding = useBranding()
-  const initials = avatarInitials(user.fullName, user.email)
 
   const counts = useProjectCounts()
   /**
@@ -634,9 +635,12 @@ function SidebarContent({
               collapsed ? "justify-center" : "flex-1",
             )}
           >
-            <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/90 to-primary text-[13px] font-bold text-primary-foreground">
-              {initials}
-            </div>
+            <UserAvatar
+              avatarUrl={user.avatarUrl}
+              fullName={user.fullName}
+              email={user.email}
+              className="h-[34px] w-[34px] text-[13px]"
+            />
             {!collapsed && (
               <div className="min-w-0 flex-1 text-left">
                 <div className="truncate text-[13.5px] text-foreground">
@@ -667,6 +671,7 @@ function SidebarContent({
 function WorkspaceShellInner({
   email,
   fullName,
+  avatarUrl,
   role,
   capabilities,
   balanceCents,
@@ -681,6 +686,7 @@ function WorkspaceShellInner({
   const user: WorkspaceUser = {
     email,
     fullName,
+    avatarUrl,
     role,
     capabilities,
     balanceCents,
@@ -769,11 +775,13 @@ function WorkspaceShellInner({
             <Menu className="h-5 w-5" />
           </button>
           <span className="flex-1 text-[16px] font-semibold">{title}</span>
-          <Link
-            href="/account/profile"
-            className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gradient-to-br from-primary/90 to-primary text-[12.5px] font-bold text-primary-foreground"
-          >
-            {avatarInitials(fullName, email)}
+          <Link href="/account/profile" className="rounded-full">
+            <UserAvatar
+              avatarUrl={avatarUrl}
+              fullName={fullName}
+              email={email}
+              className="h-[38px] w-[38px] text-[12.5px]"
+            />
           </Link>
         </div>
 

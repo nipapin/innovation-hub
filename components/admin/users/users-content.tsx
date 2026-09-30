@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/admin/shared/empty-state"
 import { LoadingBlock } from "@/components/admin/shared/loading-block"
 import { SearchInput } from "@/components/admin/shared/search-input"
 import { isElevated } from "@/lib/admin-roles"
+import type { AdminUser } from "@/components/admin/admin-types"
 import type { UserRole } from "@/lib/domain-types"
 
 type Filter = "all" | "admins" | "members" | "suspended"
@@ -42,26 +43,88 @@ export function UsersContent() {
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
 
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+
+  /**
+   * Человек — это его вход; профили в компаниях висят под ним. Отдельной
+   * строкой подпрофиль выглядел дублем того же человека. Подпрофиль без
+   * входа в списке (не должно быть, но данные бывают всякими) остаётся
+   * самостоятельной строкой, чтобы не пропасть.
+   */
+  const groups = useMemo(() => {
+    const logins = new Set(users.filter((u) => !u.loginUserId).map((u) => u.id))
+    const profiles = new Map<string, AdminUser[]>()
+    for (const u of users) {
+      if (!u.loginUserId || !logins.has(u.loginUserId)) continue
+      const list = profiles.get(u.loginUserId) ?? []
+      list.push(u)
+      profiles.set(u.loginUserId, list)
+    }
+    return users
+      .filter((u) => !u.loginUserId || !logins.has(u.loginUserId))
+      .map((user) => ({ user, profiles: profiles.get(user.id) ?? [] }))
+  }, [users])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return users.filter((user) => {
+    const matches = (user: AdminUser) => {
       if (filter === "admins" && !isElevated(user.role)) return false
       if (filter === "members" && user.role !== "USER") return false
       if (filter === "suspended" && user.isActive) return false
       if (!q) return true
       return (
         user.fullName.toLowerCase().includes(q) ||
-        user.email.toLowerCase().includes(q)
+        user.email.toLowerCase().includes(q) ||
+        (user.companyTitle ?? "").toLowerCase().includes(q)
       )
-    })
-  }, [users, query, filter])
+    }
+    // Группа видна, если подходит вход или любой его профиль: заблокированный
+    // профиль в компании иначе не нашёлся бы фильтром «Заблокированы».
+    return groups.filter((g) => matches(g.user) || g.profiles.some(matches))
+  }, [groups, query, filter])
 
   const counts = {
-    all: users.length,
-    admins: users.filter((u) => isElevated(u.role)).length,
-    members: users.filter((u) => u.role === "USER").length,
-    suspended: users.filter((u) => !u.isActive).length,
+    all: groups.length,
+    admins: groups.filter((g) => isElevated(g.user.role)).length,
+    members: groups.filter((g) => g.user.role === "USER").length,
+    suspended: groups.filter(
+      (g) => !g.user.isActive || g.profiles.some((p) => !p.isActive),
+    ).length,
   }
+
+  const toggleProfiles = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const renderRow = (user: AdminUser, extra: Partial<RowExtra> = {}) => (
+    <AdminUserRow
+      key={user.id}
+      user={user}
+      isCurrent={user.id === currentUserId}
+      canManageRoles={canManageRoles}
+      canManageUsers={can("users.manage")}
+      onEdit={() => openEditUser(user)}
+      onOpenCapabilities={() => openCapabilities(user)}
+      onToggleRole={() =>
+        void patchUser(user.id, {
+          // Ступень вниз, а не сразу в самый низ: понижение суперадмина
+          // до админа — рабочий сценарий (этап 5 плана), а вот сброс его
+          // до обычного пользователя одним щелчком почти всегда промах.
+          // Произвольная роль ставится в диалоге.
+          role: nextRoleDown(user.role),
+        })
+      }
+      onToggleActive={() =>
+        void patchUser(user.id, { isActive: !user.isActive })
+      }
+      onDelete={() => confirmDeleteUser(user)}
+      {...extra}
+    />
+  )
 
   return (
     <div className="space-y-8">
@@ -102,34 +165,32 @@ export function UsersContent() {
         />
       ) : (
         <div className="space-y-2">
-          {filtered.map((user) => (
-            <AdminUserRow
-              key={user.id}
-              user={user}
-              isCurrent={user.id === currentUserId}
-              canManageRoles={canManageRoles}
-              canManageUsers={can("users.manage")}
-              onEdit={() => openEditUser(user)}
-              onOpenCapabilities={() => openCapabilities(user)}
-              onToggleRole={() =>
-                void patchUser(user.id, {
-                  // Ступень вниз, а не сразу в самый низ: понижение суперадмина
-                  // до админа — рабочий сценарий (этап 5 плана), а вот сброс его
-                  // до обычного пользователя одним щелчком почти всегда промах.
-                  // Произвольная роль ставится в диалоге.
-                  role: nextRoleDown(user.role),
-                })
-              }
-              onToggleActive={() =>
-                void patchUser(user.id, { isActive: !user.isActive })
-              }
-              onDelete={() => confirmDeleteUser(user)}
-            />
-          ))}
+          {filtered.map(({ user, profiles }) => {
+            const open = expanded.has(user.id)
+            return (
+              <div key={user.id} className="space-y-2">
+                {renderRow(user, {
+                  profilesCount: profiles.length,
+                  profilesOpen: open,
+                  onToggleProfiles: () => toggleProfiles(user.id),
+                })}
+                {open
+                  ? profiles.map((p) => renderRow(p, { nested: true }))
+                  : null}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
   )
+}
+
+type RowExtra = {
+  nested: boolean
+  profilesCount: number
+  profilesOpen: boolean
+  onToggleProfiles: () => void
 }
 
 type FilterPillsProps = {

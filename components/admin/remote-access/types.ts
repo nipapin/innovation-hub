@@ -23,6 +23,8 @@ export type AccessTokenDto = {
   kind: "computer" | "machine"
   id: string
   name: string
+  /** Описание из выпуска токена. null у `mch_` и у пустого. */
+  description: string | null
   ownerEmail: string
   projectId: string | null
   createdAt: string

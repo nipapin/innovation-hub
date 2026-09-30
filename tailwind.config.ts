@@ -57,6 +57,7 @@ const config: Config = {
         success: 'hsl(var(--success))',
         warning: 'hsl(var(--warning))',
         info: 'hsl(var(--info))',
+        violet: 'hsl(var(--violet))',
         chart: {
           '1': 'hsl(var(--chart-1))',
           '2': 'hsl(var(--chart-2))',

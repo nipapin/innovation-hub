@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Check, Copy, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { tf, useAdminI18n } from "@/components/admin/admin-dict"
@@ -15,24 +15,36 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
 type Props = {
   open: boolean
   computerId: string | null
   computerName: string
+  computerDescription: string
   onOpenChange: (open: boolean) => void
+  /** Описание могли поправить — список надо перечитать. */
+  onRotated?: () => void
 }
 
 export function RotateTokenDialog({
   open,
   computerId,
   computerName,
+  computerDescription,
   onOpenChange,
+  onRotated,
 }: Props) {
   const t = useAdminI18n()
   const [loading, setLoading] = useState(false)
   const [token, setToken] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [description, setDescription] = useState(computerDescription)
+
+  // Подставляем текущее описание при каждом открытии, а не один раз при монтировании.
+  useEffect(() => {
+    if (open) setDescription(computerDescription)
+  }, [open, computerDescription])
 
   const resetAndClose = (next: boolean) => {
     if (!next) {
@@ -49,7 +61,11 @@ export function RotateTokenDialog({
     try {
       const res = await fetch(
         `/api/admin/computers/${computerId}/rotate-token`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description: description.trim() }),
+        },
       )
       const data = (await res.json()) as { message?: string; token?: string }
       if (!res.ok || !data.token) {
@@ -58,6 +74,7 @@ export function RotateTokenDialog({
       }
       setToken(data.token)
       toast.success(t.remoteRotated)
+      onRotated?.()
     } catch {
       toast.error(t.remoteRotateError)
     } finally {
@@ -114,7 +131,20 @@ export function RotateTokenDialog({
               </Button>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor="rotate-desc">{t.remoteDescOptional}</Label>
+            <Textarea
+              id="rotate-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={t.remoteDescPlaceholder}
+              maxLength={500}
+              rows={2}
+              disabled={loading}
+            />
+          </div>
+        )}
 
         <DialogFooter>
           {token ? (

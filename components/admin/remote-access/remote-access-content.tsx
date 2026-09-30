@@ -157,6 +157,8 @@ export function RemoteAccessContent() {
         open={rotateId != null}
         computerId={rotateId}
         computerName={rotateTarget?.name ?? ""}
+        computerDescription={rotateTarget?.description ?? ""}
+        onRotated={() => void load(true)}
         onOpenChange={(open) => {
           if (!open) setRotateId(null)
         }}

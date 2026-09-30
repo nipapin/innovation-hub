@@ -1,11 +1,11 @@
 "use client"
 import { isElevated } from "@/lib/admin-roles"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { KeyRound, Loader2, Mail, User as UserIcon } from "lucide-react"
+import { Camera, KeyRound, Loader2, Mail, User as UserIcon } from "lucide-react"
 import { toast } from "sonner"
 import {
   changePasswordSchema,
@@ -16,16 +16,17 @@ import {
   type UpdateProfileInput,
 } from "@/lib/account-schemas"
 import type { UserRole } from "@/lib/domain-types"
-import { avatarInitials, tf, useI18n } from "@/components/account/i18n"
+import { tf, useI18n } from "@/components/account/i18n"
+import { UserAvatar } from "@/components/account/user-avatar"
 import { SITE_NAME } from "@/lib/site"
 import { ProcessingIndicator } from "@/components/account/processing-indicator"
 
 export type ProfileUser = {
   id: string
   fullName: string
-  /** Имя для статистики обработки; пусто — используется fullName. */
-  contactName: string
   email: string
+  /** Фото в кружке; `null` — инициалы. Общее для всех профилей человека. */
+  avatarUrl: string | null
   role: UserRole
   isActive: boolean
   /**
@@ -53,13 +54,13 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
   const { t, lang } = useI18n()
   const router = useRouter()
   const [current, setCurrent] = useState(user)
-  const initials = avatarInitials(current.fullName, current.email)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [avatarBusy, setAvatarBusy] = useState(false)
 
   const profileForm = useForm<UpdateProfileInput>({
     resolver: zodResolver(updateProfileSchema),
     defaultValues: {
       fullName: current.fullName,
-      contactName: current.contactName,
       email: current.email,
     },
   })
@@ -81,7 +82,6 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
   useEffect(() => {
     profileForm.reset({
       fullName: current.fullName,
-      contactName: current.contactName,
       email: current.email,
     })
   }, [current, profileForm])
@@ -100,11 +100,73 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
     setCurrent((c) => ({
       ...c,
       fullName: values.fullName,
-      contactName: values.contactName ?? "",
       email: values.email,
     }))
     toast.success(t.saveChanges)
     router.refresh()
+  }
+
+  /**
+   * Фото сохраняется сразу, без кнопки «Сохранить» формы: это отдельное
+   * действие, и ждать его вместе с именем и почтой незачем. Файл идёт прямо в
+   * хранилище по подписанной ссылке, сервер потом только запоминает ключ.
+   */
+  const onPickAvatar = async (file: File) => {
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      toast.error(t.avatarType)
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(t.avatarType)
+      return
+    }
+    setAvatarBusy(true)
+    try {
+      const presign = await fetch("/api/account/avatar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, contentType: file.type }),
+      })
+      if (!presign.ok) throw new Error("presign")
+      const { uploadUrl, key } = (await presign.json()) as {
+        uploadUrl: string
+        key: string
+      }
+      const put = await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      })
+      if (!put.ok) throw new Error("upload")
+      const save = await fetch("/api/account/avatar", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      })
+      if (!save.ok) throw new Error("save")
+      const data = (await save.json()) as { avatarUrl: string | null }
+      setCurrent((c) => ({ ...c, avatarUrl: data.avatarUrl }))
+      toast.success(t.avatarSaved)
+      router.refresh()
+    } catch {
+      toast.error(t.avatarFailed)
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
+
+  const onRemoveAvatar = async () => {
+    setAvatarBusy(true)
+    try {
+      const res = await fetch("/api/account/avatar", { method: "DELETE" })
+      if (!res.ok) throw new Error("delete")
+      setCurrent((c) => ({ ...c, avatarUrl: null }))
+      router.refresh()
+    } catch {
+      toast.error(t.avatarFailed)
+    } finally {
+      setAvatarBusy(false)
+    }
   }
 
   const onChangePassword = async (values: ChangePasswordInput) => {
@@ -170,8 +232,50 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
           <div className="mt-6 overflow-hidden rounded-2xl border border-foreground/10 bg-foreground/[0.02]">
             <div className="h-[100px] bg-gradient-to-br from-primary/25 via-chart-2/20 to-primary/10 md:h-[118px]" />
             <div className="-mt-11 flex flex-wrap items-end gap-5 px-5 pb-6 md:px-7">
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-4 border-background bg-gradient-to-br from-primary/90 to-primary text-[28px] font-bold text-primary-foreground md:h-24 md:w-24 md:text-[30px]">
-                {initials}
+              <div className="flex flex-col items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={avatarBusy}
+                  title={t.avatarChange}
+                  aria-label={t.avatarChange}
+                  className="group relative rounded-full"
+                >
+                  <UserAvatar
+                    avatarUrl={current.avatarUrl}
+                    fullName={current.fullName}
+                    email={current.email}
+                    className="h-20 w-20 border-4 border-background text-[28px] md:h-24 md:w-24 md:text-[30px]"
+                  />
+                  <span className="absolute inset-1 flex items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                    {avatarBusy ? (
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    ) : (
+                      <Camera className="h-6 w-6" />
+                    )}
+                  </span>
+                </button>
+                {current.avatarUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => void onRemoveAvatar()}
+                    disabled={avatarBusy}
+                    className="text-[12px] text-muted-foreground hover:text-destructive"
+                  >
+                    {t.avatarRemove}
+                  </button>
+                ) : null}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ""
+                    if (file) void onPickAvatar(file)
+                  }}
+                />
               </div>
               <div className="pb-1">
                 <div className="text-[22px] font-bold md:text-[26px]">
@@ -220,29 +324,15 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
                 {...profileForm.register("fullName")}
               />
             </div>
+            {/* Отдельного «имени в статистике» больше нет: задачи
+                подписываются полным именем как есть, иначе у человека два
+                имени, и одно из них однажды разойдётся с другим. */}
+            <p className="mt-2.5 text-[13px] text-muted-foreground/80">
+              {t.fullNameHint}
+            </p>
             {profileForm.formState.errors.fullName && (
               <p className="mt-1 text-[13px] text-destructive">
                 {profileForm.formState.errors.fullName.message}
-              </p>
-            )}
-
-            <label className="mb-2 mt-4 block text-[14px] font-medium">
-              {t.contactName}
-            </label>
-            <div className="relative">
-              <UserIcon className="absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground/65" />
-              <input
-                className={`${inputClass} pl-[42px]`}
-                placeholder={current.fullName}
-                {...profileForm.register("contactName")}
-              />
-            </div>
-            <p className="mt-2.5 text-[13px] text-muted-foreground/80">
-              {t.contactNameHint}
-            </p>
-            {profileForm.formState.errors.contactName && (
-              <p className="mt-1 text-[13px] text-destructive">
-                {profileForm.formState.errors.contactName.message}
               </p>
             )}
 
@@ -272,7 +362,6 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
                 onClick={() =>
                   profileForm.reset({
                     fullName: current.fullName,
-                    contactName: current.contactName,
                     email: current.email,
                   })
                 }

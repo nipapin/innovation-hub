@@ -22,7 +22,7 @@ export type DriveFile = {
  */
 export type InItemStatus = "queued" | "running" | "done" | "failed"
 
-export type ProjectGroupName = "personal" | "shared" | "tools" | "archive"
+export type ProjectGroupName = "personal" | "shared" | "tools" | "archive" | "production"
 
 /**
  * Чем оплачен проект, если платит не владелец. Форма совпадает с серверной

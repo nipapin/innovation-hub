@@ -112,6 +112,14 @@ export function AccessTokenRow({
         <span className="truncate text-xs text-muted-foreground">
           {token.ownerEmail}
         </span>
+        {token.description ? (
+          <span
+            title={token.description}
+            className="min-w-0 flex-1 truncate text-xs text-muted-foreground/80 before:mr-2 before:content-['·']"
+          >
+            {token.description}
+          </span>
+        ) : null}
         {token.projectId ? (
           <Badge variant="outline" className="text-[10px]">
             {t.tokenScoped}

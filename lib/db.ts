@@ -1,4 +1,4 @@
-import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from "pg"
+import { Client, Pool, type PoolClient, type PoolConfig, type QueryResultRow } from "pg"
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
@@ -191,6 +191,18 @@ export const pool: Pool =
   })
 
 globalForPg.pgPool = pool
+
+/**
+ * Отдельное долгоживущее соединение — для `LISTEN` (живое обновление чатов
+ * производства, lib/production/live.ts).
+ *
+ * Не из пула: `LISTEN` держит соединение всё время жизни процесса, и взятое из
+ * пула оно навсегда заняло бы одно из `PG_POOL_MAX` мест. Конфиг и SSL — те же,
+ * что у пула.
+ */
+export function createDedicatedClient(): Client {
+  return new Client({ ...config, ssl: resolveSsl(config.host) })
+}
 
 /**
  * Обработчик ошибок пула. Без него короткий обрыв сети роняет весь процесс.

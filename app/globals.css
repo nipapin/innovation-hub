@@ -36,6 +36,7 @@
     --success: 150 72% 47%;
     --warning: 40 90% 58%;
     --info: 204 94% 60%;
+    --violet: 265 85% 70%;
     --chart-1: 214 88% 66%;
     --chart-2: 276 90% 72%;
     --chart-3: 174 75% 45%;
@@ -134,6 +135,7 @@
     --success: 150 68% 33%;
     --warning: 36 92% 38%;
     --info: 204 85% 40%;
+    --violet: 265 60% 50%;
     --chart-1: 214 85% 48%;
     --chart-2: 276 70% 52%;
     --chart-3: 174 70% 32%;
@@ -584,4 +586,27 @@
     max-width: 100%;
     height: auto;
   }
+}
+
+/*
+ * Холст редактора пайплайна (@xyflow/react) под токены сайта — обе темы.
+ * docs/PRODUCTION_PLAN.md §3.6. Переменные xyflow, а не переопределение его
+ * классов: так правка переживает обновление библиотеки.
+ */
+.production-flow {
+  --xy-background-color: transparent;
+  --xy-background-pattern-dots-color-default: hsl(var(--foreground) / 0.12);
+  --xy-edge-stroke-default: hsl(var(--foreground) / 0.35);
+  --xy-edge-stroke-selected-default: hsl(var(--ws-accent));
+  --xy-connectionline-stroke-default: hsl(var(--ws-accent));
+  --xy-node-background-color-default: transparent;
+  --xy-node-border-default: none;
+  --xy-node-boxshadow-selected-default: 0 0 0 2px hsl(var(--ws-accent) / 0.6);
+  --xy-controls-button-background-color-default: hsl(var(--ws-control));
+  --xy-controls-button-background-color-hover-default: hsl(var(--ws-hover));
+  --xy-controls-button-color-default: hsl(var(--ws-text-2));
+  --xy-controls-button-border-color-default: hsl(var(--foreground) / 0.1);
+}
+.production-flow .react-flow__node {
+  border-radius: 0.75rem;
 }

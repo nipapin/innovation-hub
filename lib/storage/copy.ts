@@ -61,6 +61,15 @@ async function loadSourceFiles(
   return result.rows
 }
 
+/**
+ * Одна строка-источник для `copySingleFile` — снаружи модуля. Нужна приёмке
+ * этапа производства (lib/production/approval.ts): она копирует принятый
+ * вариант в финальную папку тем же путём, что и остальной сайт.
+ */
+export async function loadCopySource(projectId: string, fileId: string) {
+  return (await loadSourceFiles(projectId, [fileId]))[0] ?? null
+}
+
 async function loadFolderSubtree(
   projectId: string,
   folder: SourceRow,

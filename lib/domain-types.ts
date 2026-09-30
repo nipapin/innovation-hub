@@ -54,7 +54,11 @@ export type UserRecord = {
   loginUserId: string | null
 }
 
-export type ProjectGroupName = "personal" | "shared" | "tools" | "archive"
+/**
+ * `production` — папка этапа пайплайна (docs/PRODUCTION_PLAN.md §2.2): видна
+ * только через раздел «Производство», в «Проектах» не показывается.
+ */
+export type ProjectGroupName = "personal" | "shared" | "tools" | "archive" | "production"
 
 export type ProjectRecord = {
   id: string
