@@ -99,7 +99,10 @@ async function copyObjectInR2(sourceKey: string, destKey: string): Promise<void>
   await getS3Client().send(
     new CopyObjectCommand({
       Bucket: bucket,
-      CopySource: `${bucket}/${sourceKey}`,
+      // Источник копии — заголовок, и S3/R2 ждут его URL-кодированным: без этого
+      // ключ с кириллицей или пробелом («первый ролик/02 Форма/…») не копируется.
+      // По сегменту и целиком: `encodeURI` пропустил бы `#`, `?` и `+` в именах.
+      CopySource: `${bucket}/${sourceKey.split("/").map(encodeURIComponent).join("/")}`,
       Key: destKey,
     }),
   )

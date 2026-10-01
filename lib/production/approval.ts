@@ -1,10 +1,12 @@
 import { query, withTransaction } from "@/lib/db"
 import { findProjectById } from "@/lib/repositories/projects"
 import { copySingleFile, loadCopySource } from "@/lib/storage/copy"
+import { writeFileDelete } from "@/lib/storage/write-path"
 import { insertSystem } from "./chat"
 import { advanceRun, afterOpen, copyInputs, copyTree, listTree, loadRunContext, type FolderFile } from "./flow"
 import { formStatus } from "./form"
 import { isWorkNode } from "./graph"
+import { hasStepRole } from "./step-people"
 import { canSeeStep, listFolderFiles, loadStep, type StepRow } from "./workspace"
 
 /**
@@ -33,12 +35,7 @@ export type ApproveResult =
 /** Принимает проверяющий этапа или автор пайплайна — назначение, а не доступ к папке (§6.3). */
 async function isReviewer(step: StepRow, userId: string): Promise<boolean> {
   if (step.ownerUserId === userId) return true
-  const { rowCount } = await query(
-    `SELECT 1 FROM production_pipeline_people
-      WHERE pipeline_id = $1 AND node_id = $2 AND user_id = $3 AND role = 'reviewer'`,
-    [step.pipelineId, step.nodeId, userId],
-  )
-  return Boolean(rowCount)
+  return hasStepRole(step, userId, "reviewer")
 }
 
 export async function approveStep(input: {
@@ -91,6 +88,22 @@ export async function approveStep(input: {
   // пути, свободное имя, журнал изменений. Автор копии — автор файла.
   let copiedId: string | null = null
   try {
+    // Этап принимают повторно (его вернули в работу) — прежний FINAL уходит в
+    // корзину: в FINAL лежит только принятое сейчас.
+    const previous = await listTree(projectId, final)
+    if (previous.length > 0) {
+      const project = await findProjectById(projectId)
+      for (const file of previous) {
+        if (!project) break
+        await writeFileDelete({
+          storageOwnerId: project.storageOwnerId,
+          projectId,
+          fileId: file.id,
+          deletedBy: input.userId,
+          actor: { userId: input.userId },
+        })
+      }
+    }
     if (variant) {
       const project = await findProjectById(projectId)
       const source = await loadCopySource(projectId, variant.id)
@@ -127,6 +140,7 @@ export async function approveStep(input: {
   }
 
   const { runDone, opened } = await withTransaction(async (client) => {
+    await client.query(`UPDATE production_run_steps SET paths = paths - 'redo' WHERE id = $1`, [step.id])
     if (variant && copiedId) {
       await client.query(`UPDATE production_run_steps SET approved_file_id = $2 WHERE id = $1`, [step.id, copiedId])
       await client.query(

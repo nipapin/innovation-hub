@@ -9,7 +9,9 @@ import {
 import type { UserRole } from "@/lib/domain-types"
 import {
   findUserById,
+  listLoginProfiles,
   readLastProfileId,
+  readWorkspacePrefs,
   rememberLastProfile,
 } from "@/lib/repositories/users"
 
@@ -119,16 +121,25 @@ export async function profileRedirectFor(input: {
  * Аккаунт, заведённый компанией, помечен её профилем с самого заведения, так
  * что и первый вход открывает компанию. Профиль больше не годится (человека
  * вывели из компании, компанию выключили — профиль неактивен) — «Личное».
+ * «Личное» скрыто человеком — первая действующая компания, а если их нет, всё
+ * же «Личное».
  */
 export async function profileAfterSignIn(login: SwitchTarget): Promise<SwitchTarget> {
   try {
     const lastProfileId = await readLastProfileId(login.id)
-    if (!lastProfileId || lastProfileId === login.id) return login
-    const target = await resolveSwitchTarget({
-      loginUserId: login.id,
-      profileId: lastProfileId,
-    })
-    return target ?? login
+    if (lastProfileId && lastProfileId !== login.id) {
+      const target = await resolveSwitchTarget({
+        loginUserId: login.id,
+        profileId: lastProfileId,
+      })
+      if (target) return target
+    }
+    if (!(await readWorkspacePrefs(login.id)).personalHidden) return login
+    const company = (await listLoginProfiles(login.id)).find(
+      (profile) => profile.companyId && profile.isActive,
+    )
+    if (!company) return login
+    return (await resolveSwitchTarget({ loginUserId: login.id, profileId: company.id })) ?? login
   } catch (error) {
     // Не смогли выяснить — впускаем в «Личное»: вход важнее удобства.
     console.error("[profile-switch] last profile lookup failed", error)

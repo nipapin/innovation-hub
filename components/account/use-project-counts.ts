@@ -6,19 +6,24 @@ import { TOOLS_CHANGED_EVENT } from "@/components/account/tools/tools-context"
 import { PROJECTS_CHANGED_EVENT } from "@/components/account/workspace/workspace-context"
 import type { ProjectTab } from "@/components/account/workspace/workspace-context"
 
-type Counts = Record<ProjectTab, number>
+/** `shared` — сколько из `projects` расшарено человеку: дашборд пишет это под числом. */
+type Counts = Record<ProjectTab, number> & { shared: number }
 
-const EMPTY: Counts = { projects: 0, tools: 0, archive: 0, trash: 0 }
+const EMPTY: Counts = { projects: 0, tools: 0, archive: 0, trash: 0, shared: 0 }
 
 /**
- * Числа для разделов бокового меню.
+ * Числа для разделов бокового меню и карточки «Проекты» на дашборде — одни на
+ * оба места, чтобы они не расходились.
  *
  * Меню живёт в шелле — выше страницы проектов, поэтому её контекст ему недоступен
  * и список приходится запрашивать своим запросом. Чтобы числа не отставали после
  * создания или архивации, страница шлёт событие `PROJECTS_CHANGED_EVENT`.
+ *
+ * `null` — ответа ещё нет. Это не то же самое, что нули: пустой раздел меню
+ * гасится, и со стартом от нулей «Проекты» на каждой загрузке мигали бы пустыми.
  */
-export function useProjectCounts() {
-  const [counts, setCounts] = useState<Counts>(EMPTY)
+export function useProjectCounts(): Counts | null {
+  const [counts, setCounts] = useState<Counts | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -35,7 +40,10 @@ export function useProjectCounts() {
         }
         if (p.deletedAt) acc.trash += 1
         // Расшаренные — группа внутри «Проектов», своего раздела у них нет.
-        else if (p.sharedWithMe) acc.projects += 1
+        else if (p.sharedWithMe) {
+          acc.projects += 1
+          acc.shared += 1
+        }
         else if (p.isArchived) acc.archive += 1
         else acc.projects += 1
       }

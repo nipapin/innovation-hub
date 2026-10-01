@@ -19,8 +19,8 @@ import {
 import {
   accentContrast,
   hslToToken,
-  nearestReadable,
   parseHex,
+  readableOn,
   rgbToHsl,
   tokenToHex,
   MIN_CONTRAST,
@@ -99,8 +99,8 @@ export function CompanyBrandingPanel({
   }
 
   const contrast = {
-    light: accentContrast(pair.light, "light"),
-    dark: accentContrast(pair.dark, "dark"),
+    light: accentContrast(pair.light),
+    dark: accentContrast(pair.dark),
   }
   const readable = contrast.light >= MIN_CONTRAST && contrast.dark >= MIN_CONTRAST
 
@@ -298,11 +298,6 @@ export function CompanyBrandingPanel({
               ratio={contrast[theme]}
               disabled={busy}
               onChange={(hex) => setCustomSide(theme, hex)}
-              onFix={() => {
-                const fixed = nearestReadable(pair[theme], theme)
-                if (fixed) setAccent({ ...pair, [theme]: fixed })
-                else toast.error(t.brandContrastHopeless)
-              }}
             />
           ))}
         </div>
@@ -397,14 +392,12 @@ function CustomSide({
   ratio,
   disabled,
   onChange,
-  onFix,
 }: {
   theme: "light" | "dark"
   token: string
   ratio: number
   disabled: boolean
   onChange: (hex: string) => void
-  onFix: () => void
 }) {
   const { t } = useI18n()
   const hex = tokenToHex(token)
@@ -433,12 +426,13 @@ function CustomSide({
         />
       </div>
 
-      {/* Образец ровно того, ради чего проверка: подпись на кнопке. */}
+      {/* Образец ровно того, ради чего проверка: подпись на кнопке. Цвет подписи —
+          тот же автоподбор, что окажется на сайте. */}
       <div
         className="flex h-9 items-center justify-center rounded-md text-[13px] font-medium"
         style={{
           background: `hsl(${token})`,
-          color: theme === "light" ? "#ffffff" : "hsl(224 44% 11%)",
+          color: `hsl(${readableOn(token)})`,
         }}
       >
         {t.brandSample}
@@ -461,16 +455,6 @@ function CustomSide({
             min: MIN_CONTRAST.toFixed(1),
           })}
         </span>
-        {ok ? null : (
-          <button
-            type="button"
-            onClick={onFix}
-            disabled={disabled}
-            className="text-[11px] font-medium text-primary underline-offset-2 hover:underline"
-          >
-            {t.brandContrastFix}
-          </button>
-        )}
       </div>
     </div>
   )

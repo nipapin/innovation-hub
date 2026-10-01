@@ -28,7 +28,7 @@ import { z } from "zod"
 
 import { checkTemplate, isPerRun, type MaskScope, type ResolveError } from "./masks"
 
-export const GRAPH_SCHEMA_VERSION = 3
+export const GRAPH_SCHEMA_VERSION = 4
 
 /** Этапы — ноды, у которых есть своя работа и свой этап в ролике. */
 export const WORK_KINDS = ["tool", "form", "auto", "action"] as const
@@ -81,7 +81,12 @@ const workBase = {
    * проект; `null` — в черновике указано только имя (можно `$pipelineName`),
    * проект заведётся при активации.
    */
-  project: z.object({ id: z.string().min(1).nullable(), name: z.string().trim().min(1).max(200) }),
+  project: z.object({
+    id: z.string().min(1).nullable(),
+    name: z.string().trim().min(1).max(200),
+    /** Шаблон, по которому папка выбрана, — см. `FormProject`. */
+    mask: z.string().trim().min(1).max(200).optional(),
+  }),
   paths: z.object({
     /** Пусто — входы по ссылке; задано — финалы предыдущих копируются сюда. */
     in: segmentsSchema,
@@ -106,13 +111,14 @@ export const FOLDER_ROW_TYPE = "folder"
 
 /**
  * Строка формы — как `FolderRequirementRow` программы и `ElementRow` сайта:
- * название (оно же префикс имени файла), тип файла или `folder`, `>=`/`=` и
- * число. У подпапки внутри — такие же строки, любой вложенности.
+ * название (оно же префикс имени файла), типы файла (подходит любой — «видео
+ * или картинка») либо `["folder"]`, `>=`/`=` и число. У подпапки внутри —
+ * такие же строки, любой вложенности.
  */
 export type FormRow = {
   id: string
   label: string
-  type: string
+  types: string[]
   op: ">=" | "="
   count: number
   children: FormRow[]
@@ -122,7 +128,7 @@ const formRowSchema: z.ZodType<FormRow> = z.lazy(() =>
   z.object({
     id: z.string().min(1).max(40),
     label: z.string().max(120),
-    type: z.string().min(1).max(60),
+    types: z.array(z.string().min(1).max(60)).min(1).max(20),
     op: z.enum([">=", "="]),
     count: z.number().int().min(1).max(999),
     children: z.array(formRowSchema).max(50),
@@ -205,7 +211,7 @@ export function shortId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`
 }
 
-export const DEFAULT_PROJECT: { id: string | null; name: string } = { id: null, name: "$pipelineName" }
+export const DEFAULT_PROJECT: FormProject = { id: null, name: "$pipelineName" }
 export const DEFAULT_WORK_PATH = ["$runTime-$runName", "$stageNum $stageName", "versions"]
 export const DEFAULT_FINAL_PATH = ["$runTime-$runName", "$stageNum $stageName", "final"]
 export const DEFAULT_AUTO_IN = ["IN"]
@@ -245,8 +251,30 @@ export function createWorkNode(kind: WorkKind, name: string, position = { x: 0, 
   }
 }
 
+/**
+ * Свободное имя для нового этапа: «Форма», занято — «Форма 1», «Форма 2»…
+ * Сравнение то же, что у предупреждения `duplicate-stage-name`.
+ */
+export function uniqueStageName(nodes: PipelineNode[], name: string, exceptId?: string): string {
+  const taken = new Set(
+    nodes
+      .filter((n) => isWorkNode(n) && n.id !== exceptId)
+      .map((n) => (n as WorkNode).data.name.trim().toLowerCase()),
+  )
+  const base = name.trim()
+  if (!taken.has(base.toLowerCase())) return base
+  for (let i = 1; ; i++) {
+    const candidate = `${base} ${i}`
+    if (!taken.has(candidate.toLowerCase())) return candidate
+  }
+}
+
 export function createFormRow(type: string): FormRow {
-  return { id: shortId("row"), label: "", type, op: ">=", count: 1, children: [] }
+  return { id: shortId("row"), label: "", types: [type], op: ">=", count: 1, children: [] }
+}
+
+export function isFolderFormRow(row: Pick<FormRow, "types">): boolean {
+  return row.types.includes(FOLDER_ROW_TYPE)
 }
 
 /** Пустой пайплайн: только «Старт». Этапы добавляются в редакторе. */
@@ -286,11 +314,31 @@ function v2Row(raw: Raw): FormRow {
   return {
     id: String(raw.id ?? shortId("row")),
     label: String((folder ? raw.folder : raw.name || raw.folder) ?? ""),
-    type: folder ? FOLDER_ROW_TYPE : raw.type && raw.type !== "any" ? String(raw.type) : "video",
+    types: [folder ? FOLDER_ROW_TYPE : raw.type && raw.type !== "any" ? String(raw.type) : "video"],
     op: raw.op === "eq" ? "=" : ">=",
     count: Math.max(1, Number(raw.count) || 1),
     children: [],
   }
+}
+
+/** Строка формы схемы 3: один `type` → список из одного. */
+function v3Row(raw: Raw): FormRow {
+  const { type, ...rest } = raw as Raw & { type?: unknown }
+  return {
+    ...(rest as Omit<FormRow, "types" | "children">),
+    types: Array.isArray(raw.types) ? (raw.types as string[]) : [String(type ?? "video")],
+    children: ((raw.children as Raw[]) ?? []).map(v3Row),
+  }
+}
+
+/** Схема 3 → 4: отличается только строками формы. */
+function v3Graph(g: { nodes?: unknown[]; edges?: unknown[] }): PipelineGraph {
+  const nodes = (g.nodes ?? []).map((item) => {
+    const n = item as PipelineNode
+    if (n.kind !== "form") return n
+    return { ...n, data: { ...n.data, rows: (n.data.rows as unknown as Raw[]).map(v3Row) } }
+  })
+  return { schemaVersion: GRAPH_SCHEMA_VERSION, nodes, edges: (g.edges ?? []) as PipelineGraph["edges"] }
 }
 
 /**
@@ -302,6 +350,7 @@ function v2Row(raw: Raw): FormRow {
 export function upgradeGraph(raw: unknown): PipelineGraph {
   const g = (raw ?? {}) as { schemaVersion?: number; nodes?: unknown[]; edges?: unknown[] }
   if (g.schemaVersion === GRAPH_SCHEMA_VERSION) return raw as PipelineGraph
+  if (g.schemaVersion === 3) return v3Graph(g)
   const nodes: PipelineNode[] = []
   for (const item of g.nodes ?? []) {
     const n = item as { id: string; kind: string; position: { x: number; y: number }; data: Raw }
@@ -360,7 +409,12 @@ export function upgradeGraph(raw: unknown): PipelineGraph {
   return { schemaVersion: GRAPH_SCHEMA_VERSION, nodes, edges }
 }
 
-type FormProject = { id: string | null; name: string }
+/**
+ * Папка этапа. `mask` — шаблон, по которому папка выбрана (`$pipelineName`): имя
+ * пайплайна сменилось — маска даёт другое имя, и новая версия переводит этап на
+ * папку с новым именем сама (activation.ts, `retargetProjects`).
+ */
+export type FormProject = { id: string | null; name: string; mask?: string }
 
 // ─── Приведение ───────────────────────────────────────────────────────────
 

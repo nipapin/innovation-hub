@@ -46,6 +46,11 @@ export type StepPaths = {
   error?: ResolveError
   /** Автоматика: что положено в `IN` и что с этим сделал конвейер (lib/production/machines.ts). */
   auto?: AutoTracking
+  /**
+   * Этап был принят, но этап до него вернули в работу — его надо пройти
+   * заново (lib/production/reopen.ts). Снимается приёмкой.
+   */
+  redo?: boolean
 }
 
 /**
@@ -187,7 +192,28 @@ export async function openStep(
     `INSERT INTO production_events (pipeline_id, run_id, run_step_id, kind) VALUES ($1, $2, $3, 'step_ready')`,
     [ctx.pipelineId, ctx.runId, row.id],
   )
+  await markSoleExecutor(client, ctx.pipelineId, row.id, row.nodeId)
   if (hasChat(node)) await insertSystem(client, row.id, "step_ready", { actorId })
+}
+
+/**
+ * Исполнитель у этапа один — он и делает, отмечаться ему незачем: этап
+ * назначается на него сам. Повторный вызов ничего не меняет.
+ */
+export async function markSoleExecutor(
+  client: Client,
+  pipelineId: string,
+  stepId: string,
+  nodeId: string,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO production_run_step_executors (run_step_id, user_id)
+     SELECT $3, MIN(user_id) FROM production_pipeline_people
+      WHERE pipeline_id = $1 AND node_id = $2 AND role = 'executor'
+     HAVING COUNT(*) = 1
+     ON CONFLICT DO NOTHING`,
+    [pipelineId, nodeId, stepId],
+  )
 }
 
 /**
@@ -412,7 +438,9 @@ export async function afterOpen(runId: string, stepIds: string[], actorId: strin
         queue.push(...(await runAction(ctx, node, step, actorId)))
         continue
       }
-      await copyInputs(ctx, stepId, actorId)
+      // Открыт повторно (этап до него вернули в работу) — вход новой папкой,
+      // иначе конвейер второй раз его не возьмёт.
+      await copyInputs(ctx, stepId, actorId, (step.paths.auto?.attempt ?? 0) + 1)
       await ensureFormFolders(node, step.paths, actorId)
     } catch (error) {
       console.error("[production] этап открыт, но файлы не разложились", stepId, error)

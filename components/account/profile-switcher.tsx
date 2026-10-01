@@ -165,7 +165,7 @@ export function ProfileSwitcher({
           type="button"
           title={t.profileSwitcher}
           aria-label={t.profileSwitcher}
-          className="-mx-1 flex min-w-0 flex-1 flex-col items-start rounded-md px-1 py-0.5 text-left hover:bg-foreground/5"
+          className="-mx-1 flex min-w-0 flex-1 flex-col items-start rounded-md px-1 py-0.5 text-left outline-none hover:bg-foreground/5 focus-visible:bg-foreground/5"
         >
           <span className="flex w-full min-w-0 items-center gap-1">
             <span className="truncate text-[16px] font-semibold leading-tight text-foreground">

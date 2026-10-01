@@ -93,7 +93,7 @@ export function NewRunButton({ onLaunched }: { onLaunched?: (runId: string) => v
         disabled={!canLaunch}
         onClick={openDialog}
         title={canLaunch ? undefined : t.productionRunNothing}
-        className="flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] bg-ws-action px-3 text-[13px] font-medium text-white hover:bg-ws-action-hover disabled:opacity-50"
+        className="flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] bg-ws-action px-3 text-[13px] font-medium text-primary-foreground hover:bg-ws-action-hover disabled:opacity-50"
       >
         <Plus className="h-4 w-4" />
         {t.productionNewRun}
@@ -118,7 +118,7 @@ export function NewRunButton({ onLaunched }: { onLaunched?: (runId: string) => v
                     className={cn(
                       "h-8 rounded-full border px-3 text-[13px] transition-colors",
                       p.id === pipelineId
-                        ? "border-ws-action bg-ws-action text-white"
+                        ? "border-ws-action bg-ws-action text-primary-foreground"
                         : "border-foreground/10 bg-ws-control text-ws-2 hover:bg-ws-hover",
                     )}
                   >
@@ -149,7 +149,7 @@ export function NewRunButton({ onLaunched }: { onLaunched?: (runId: string) => v
               type="button"
               disabled={busy || !pipelineId || !name.trim()}
               onClick={() => void launch()}
-              className="flex h-9 items-center gap-1.5 rounded-[9px] bg-ws-action px-4 text-[13.5px] font-medium text-white hover:bg-ws-action-hover disabled:opacity-50"
+              className="flex h-9 items-center gap-1.5 rounded-[9px] bg-ws-action px-4 text-[13.5px] font-medium text-primary-foreground hover:bg-ws-action-hover disabled:opacity-50"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {t.productionRunLaunch}

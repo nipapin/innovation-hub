@@ -92,7 +92,7 @@ export function WorkspaceDialogs() {
               type="button"
               onClick={submit}
               disabled={!value.trim()}
-              className="bg-ws-action text-white hover:bg-ws-action-hover"
+              className="bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
             >
               {prompt?.confirmLabel}
             </Button>
@@ -131,7 +131,7 @@ export function WorkspaceDialogs() {
               className={cn(
                 confirm?.destructive
                   ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : "bg-ws-action text-white hover:bg-ws-action-hover",
+                  : "bg-ws-action text-primary-foreground hover:bg-ws-action-hover",
               )}
             >
               {confirm?.confirmLabel}
@@ -208,7 +208,7 @@ export function WorkspaceDialogs() {
               </Button>
               <Button
                 onClick={() => conflict?.decide("overwrite", applyAll)}
-                className="bg-ws-action text-white hover:bg-ws-action-hover"
+                className="bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
               >
                 {t.conflictOverwrite}
               </Button>

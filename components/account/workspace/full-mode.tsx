@@ -203,7 +203,7 @@ function NoProjectSelected() {
             type="button"
             onClick={createProject}
             disabled={creating}
-            className="flex h-10 items-center gap-2 rounded-[10px] bg-ws-action px-5 text-[14px] font-medium text-white hover:bg-ws-action-hover disabled:opacity-60"
+            className="flex h-10 items-center gap-2 rounded-[10px] bg-ws-action px-5 text-[14px] font-medium text-primary-foreground hover:bg-ws-action-hover disabled:opacity-60"
           >
             <Plus className="h-[18px] w-[18px]" />
             {creating ? t.creatingProject : t.newProject}

@@ -151,7 +151,7 @@ export function SrtSettingsDialog({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="h-[34px] rounded bg-ws-action px-4 text-[13px] font-semibold text-white hover:bg-ws-action-hover"
+            className="h-[34px] rounded bg-ws-action px-4 text-[13px] font-semibold text-primary-foreground hover:bg-ws-action-hover"
           >
             {t.srtDone}
           </button>

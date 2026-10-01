@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from "next/server"
 import { requireProductionApi } from "@/lib/production/access"
 import { applyPeopleInPlace, structureChanged } from "@/lib/production/activation"
 import { normalizeGraph, validateGraph } from "@/lib/production/graph"
+import { readCompanyFeatures } from "@/lib/company-features"
+import { enabledToolKeys } from "@/lib/features-state"
+import { findCompanyFeaturesForUser } from "@/lib/repositories/companies"
 import { readFileTypeDictionary } from "@/lib/repositories/automation-settings"
 import { listProjectsByOwner } from "@/lib/repositories/projects"
 import { updatePipelineSchema } from "@/lib/production/schemas"
@@ -27,9 +30,14 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { id } = await params
   const pipeline = await findPipeline(id, auth.userId)
   if (!pipeline) return NextResponse.json({ message: "Not found." }, { status: 404 })
-  const [projects, fileTypes] = await Promise.all([
+  // Инструменты для выбора в ноде — тот же набор, что в каталоге
+  // `/api/account/tools`: выключенные на установке и не проданные компании не
+  // предлагаем.
+  const features = readCompanyFeatures(await findCompanyFeaturesForUser(auth.userId))
+  const [projects, fileTypes, toolKeys] = await Promise.all([
     listProjectsByOwner(pipeline.ownerUserId),
     readFileTypeDictionary().catch(() => ({})),
+    enabledToolKeys(features.companyTools),
   ])
   return NextResponse.json({
     pipeline,
@@ -37,6 +45,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     structureChanged: await structureChanged(pipeline),
     projects: projects.filter((p) => !p.isArchived).map((p) => ({ id: p.id, name: p.name })),
     fileTypes: Object.keys(fileTypes),
+    toolKeys,
   })
 }
 
@@ -69,6 +78,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     graph,
     settings: parsed.data.settings,
     archived: parsed.data.archived,
+    paused: parsed.data.paused,
   })
 
   if (!result.ok && result.reason === "not-found") {

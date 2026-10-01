@@ -45,6 +45,11 @@ export type AdminUser = {
   loginUserId?: string | null
   /** Компания профиля — для пометки подпрофиля в списке. */
   companyTitle?: string | null
+  /**
+   * Роль внутри компании профиля. У подпрофиля в списке показывается она, а не
+   * `role`: роль на сайте — свойство входа, а в каждой компании права свои.
+   */
+  companyRole?: "member" | "admin" | "owner" | null
 }
 
 export type ContentDraft = {

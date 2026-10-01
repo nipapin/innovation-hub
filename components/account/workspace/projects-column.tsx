@@ -270,7 +270,7 @@ export function ProjectsColumn() {
             type="button"
             onClick={createProject}
             disabled={creating}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-[9px] bg-ws-action text-[14px] font-medium text-white hover:bg-ws-action-hover disabled:opacity-60"
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-[9px] bg-ws-action text-[14px] font-medium text-primary-foreground hover:bg-ws-action-hover disabled:opacity-60"
           >
             <Plus className="h-[18px] w-[18px]" />
             {creating ? t.creatingProject : t.newProject}

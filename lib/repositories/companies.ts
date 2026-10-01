@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { readPersonalFeatures } from "@/lib/repositories/personal-features"
 import { query, withTransaction } from "@/lib/db"
 import type { PoolClient } from "pg"
 import type { CompanyRecord, CompanyRole } from "@/lib/domain-types"
@@ -75,8 +76,8 @@ export async function findCompanyByDomain(
  * Настройки компании ЧЕЛОВЕКА — один запрос вместо двух.
  *
  * Нужен кабинету (`/api/account/tools`): там на руках только `userId`, а
- * спросить надо набор проданного его компании. Вне компании человек живёт в
- * общем разделе — ему возвращается `null`, и набор к нему не применяется вовсе.
+ * спросить надо набор проданного его компании. Вне компании — набор «Личного»
+ * (lib/repositories/personal-features.ts) в той же форме.
  */
 export async function findCompanyFeaturesForUser(
   userId: string,
@@ -87,7 +88,9 @@ export async function findCompanyFeaturesForUser(
       WHERE u.id = $1`,
     [userId],
   )
-  return result.rows[0]?.features ?? null
+  // Вне команды — набор «Личного» (2026-10-01-personal-features.sql), а не
+  // пустота: иначе ему нельзя было бы выключить ничего, не выключив всем.
+  return result.rows[0]?.features ?? (await readPersonalFeatures())
 }
 
 export async function setCompanyBranding(input: {

@@ -49,7 +49,7 @@ export function AddToolButton({ size = "md" }: { size?: "md" | "lg" }) {
       type="button"
       onClick={openCatalog}
       className={cn(
-        "flex items-center justify-center gap-2 rounded-[9px] bg-ws-action font-medium text-white hover:bg-ws-action-hover",
+        "flex items-center justify-center gap-2 rounded-[9px] bg-ws-action font-medium text-primary-foreground hover:bg-ws-action-hover",
         size === "lg"
           ? "h-[52px] rounded-xl px-[22px] text-[15px]"
           : "h-10 w-full text-[14px]",
@@ -229,7 +229,7 @@ export function NoToolSelected() {
       <button
         type="button"
         onClick={openCatalog}
-        className="flex h-10 items-center gap-2 rounded-[10px] bg-ws-action px-5 text-[14px] font-medium text-white hover:bg-ws-action-hover"
+        className="flex h-10 items-center gap-2 rounded-[10px] bg-ws-action px-5 text-[14px] font-medium text-primary-foreground hover:bg-ws-action-hover"
       >
         <Plus className="h-[18px] w-[18px]" />
         {t.addTool}

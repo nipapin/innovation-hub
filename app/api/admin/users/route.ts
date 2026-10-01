@@ -13,6 +13,7 @@ import {
   findLoginByEmail,
   listUsers,
   rememberLastProfile,
+  setPersonalHidden,
   updateUser,
 } from "@/lib/repositories/users"
 import { syncUserMeta } from "@/lib/project-storage"
@@ -131,6 +132,11 @@ export async function POST(request: NextRequest) {
       // Заведён сразу в компанию — первый вход откроет её (§17.6 плана).
       await rememberLastProfile(user.id, added.profileId).catch((error) => {
         console.error("[admin/users] remember first profile failed", error)
+      })
+      // Аккаунт компании: «Личное» ему не нужно, пока сам не включит в
+      // настройках профиля.
+      await setPersonalHidden(user.id, true).catch((error) => {
+        console.error("[admin/users] hide personal failed", error)
       })
     }
 

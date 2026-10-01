@@ -125,7 +125,7 @@ function Transport({
         type="button"
         onClick={clock.togglePlay}
         title={labels.play}
-        className="flex h-8 w-8 items-center justify-center rounded bg-ws-action text-white hover:bg-ws-action-hover"
+        className="flex h-8 w-8 items-center justify-center rounded bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
       >
         {clock.playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
       </button>

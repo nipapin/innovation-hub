@@ -7,7 +7,7 @@ import { getCurrentUser, getLoginAdmin, getSessionLogin } from "@/lib/admin-auth
 import { getCompanyContext } from "@/lib/company-auth"
 import { isProductionAvailable } from "@/lib/production/availability"
 import { avatarUrlForKey } from "@/lib/avatar"
-import { findAvatarKey } from "@/lib/repositories/users"
+import { findAvatarKey, readWorkspacePrefs } from "@/lib/repositories/users"
 
 export const dynamic = "force-dynamic"
 
@@ -49,9 +49,10 @@ export default async function AccountLayout({
   if (!user) {
     redirect("/login")
   }
-  const [production, avatarKey] = await Promise.all([
+  const [production, avatarKey, workspacePrefs] = await Promise.all([
     isProductionAvailable(user.id),
     findAvatarKey(user.id),
+    readWorkspacePrefs(user.id),
   ])
 
   if (!user.isActive) {
@@ -81,6 +82,7 @@ export default async function AccountLayout({
         capabilities={user.capabilities}
         balanceCents={user.balanceCents ?? 0}
         personalProfile={!user.companyId}
+        hiddenNav={workspacePrefs.hiddenNav}
         production={production}
         loginAdmin={loginAdmin}
         companyNav={

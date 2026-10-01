@@ -7,6 +7,7 @@ import { isSuperAdmin } from "@/lib/admin-roles"
 import { accentCss, DEFAULT_ACCENT, readBranding } from "@/lib/branding"
 import { getCompanyContext } from "@/lib/company-auth"
 import { isProductionAvailable } from "@/lib/production/availability"
+import { readWorkspacePrefs } from "@/lib/repositories/users"
 import { findCompanyById, listCompanies } from "@/lib/repositories/companies"
 
 export const dynamic = "force-dynamic"
@@ -55,7 +56,10 @@ export default async function CompanyLayout({
   }
   // Консоли для него нет: не в компании, участник, или компания выключена.
   if (!context) redirect("/account")
-  const production = await isProductionAvailable(user.id)
+  const [production, workspacePrefs] = await Promise.all([
+    isProductionAvailable(user.id),
+    readWorkspacePrefs(user.id),
+  ])
 
   // Переключатель — только суперадмину сайта: админ компании видит одну свою, и
   // список выбора из одного пункта был бы обещанием выбора, которого нет.
@@ -111,6 +115,7 @@ export default async function CompanyLayout({
         capabilities={user.capabilities}
         balanceCents={user.balanceCents ?? 0}
         personalProfile={!user.companyId}
+        hiddenNav={workspacePrefs.hiddenNav}
         companyNav={{
           role: context.companyRole,
           capabilities: context.capabilities,

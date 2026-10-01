@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { query, withTransaction } from "@/lib/db"
+import { isWorkspaceNavKey, type WorkspaceNavKey } from "@/lib/workspace-nav"
 import type {
   AuthProvider,
   UserRecord,
@@ -662,4 +663,64 @@ export async function setAvatarKey(
     [loginUserId, key],
   )
   return result.rows[0] ?? null
+}
+
+export type WorkspacePrefs = {
+  /** «Личное» убрано из переключателя — настройка входа. */
+  personalHidden: boolean
+  /** Пункты меню, убранные в ЭТОМ профиле. */
+  hiddenNav: WorkspaceNavKey[]
+}
+
+/**
+ * Настройки меню человека: флаг «Личного» — с входа, скрытые пункты — с
+ * профиля. Колонок нет (миграция `2026-10-01-workspace-visibility.sql` не
+ * применена) — всё видно, как до неё: dev-сервер ходит в боевую базу.
+ */
+export async function readWorkspacePrefs(profileId: string): Promise<WorkspacePrefs> {
+  try {
+    const result = await query<{ personalHidden: boolean; hiddenNav: string[] }>(
+      `SELECT l.personal_hidden AS "personalHidden", u.hidden_nav AS "hiddenNav"
+         FROM users u
+         JOIN users l ON l.id = COALESCE(u.login_user_id, u.id)
+        WHERE u.id = $1`,
+      [profileId],
+    )
+    const row = result.rows[0]
+    if (!row) return { personalHidden: false, hiddenNav: [] }
+    return {
+      personalHidden: row.personalHidden,
+      hiddenNav: row.hiddenNav.filter(isWorkspaceNavKey),
+    }
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code === "42703") {
+      return { personalHidden: false, hiddenNav: [] }
+    }
+    throw error
+  }
+}
+
+/** `false` — колонки ещё нет, сохранить некуда. */
+export async function setPersonalHidden(loginUserId: string, hidden: boolean): Promise<boolean> {
+  try {
+    await query(
+      `UPDATE users SET personal_hidden = $2 WHERE id = $1 AND login_user_id IS NULL`,
+      [loginUserId, hidden],
+    )
+    return true
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code === "42703") return false
+    throw error
+  }
+}
+
+/** `false` — колонки ещё нет, сохранить некуда. */
+export async function setHiddenNav(profileId: string, keys: WorkspaceNavKey[]): Promise<boolean> {
+  try {
+    await query(`UPDATE users SET hidden_nav = $2 WHERE id = $1`, [profileId, keys])
+    return true
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code === "42703") return false
+    throw error
+  }
 }

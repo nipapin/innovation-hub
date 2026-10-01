@@ -5,6 +5,7 @@
  */
 export type {
   MyRun,
+  RunOverview,
   SchemeNodeView,
   StepFile,
   StepStatus,

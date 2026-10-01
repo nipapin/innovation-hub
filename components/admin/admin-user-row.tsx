@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils"
 import { isElevated } from "@/lib/admin-roles"
 
 import {
+  Building2,
   ChevronDown,
   KeyRound,
   MoreHorizontal,
@@ -170,7 +171,26 @@ export function AdminUserRow({
       </div>
 
       <div className="hidden items-center gap-2 sm:flex">
-        {isElevated(user.role) ? (
+        {/* Подпрофиль — роль в его компании: роль на сайте принадлежит входу и
+            видна на его строке, а в разных компаниях права у человека разные. */}
+        {user.loginUserId && user.companyTitle ? (
+          <Badge
+            variant="secondary"
+            title={tf(t.companyRoleHint, { company: user.companyTitle })}
+            className={cn(
+              "gap-1",
+              user.companyRole === "owner" && "border-transparent bg-amber-500/10 text-amber-300 hover:bg-amber-500/10",
+              user.companyRole === "admin" && "border-transparent bg-primary/10 text-primary hover:bg-primary/10",
+            )}
+          >
+            <Building2 className="h-3 w-3" />
+            {user.companyRole === "owner"
+              ? t.companyRoleOwner
+              : user.companyRole === "admin"
+                ? t.companyRoleAdmin
+                : t.companyRoleMember}
+          </Badge>
+        ) : isElevated(user.role) ? (
           <Badge
             className={cn(
               "gap-1 border-transparent",

@@ -580,7 +580,7 @@ export function VoiceEditor({ tool }: { tool: ToolInstance }) {
                 onClick={() => setLangState(code)}
                 className={cn(
                   "h-[26px] rounded px-2.5 text-[12px] font-semibold uppercase",
-                  code === effectiveLang ? "bg-ws-action text-white" : "text-ws-3 hover:text-ws-1",
+                  code === effectiveLang ? "bg-ws-action text-primary-foreground" : "text-ws-3 hover:text-ws-1",
                 )}
               >
                 {code}
@@ -604,7 +604,7 @@ export function VoiceEditor({ tool }: { tool: ToolInstance }) {
               onClick={() => setSoundMode("takes")}
               className={cn(
                 "flex h-[26px] items-center gap-1.5 rounded px-2.5 text-[12px] font-semibold",
-                soundMode === "takes" ? "bg-ws-action text-white" : "text-ws-3 hover:text-ws-1",
+                soundMode === "takes" ? "bg-ws-action text-primary-foreground" : "text-ws-3 hover:text-ws-1",
               )}
             >
               <Mic className="h-[14px] w-[14px]" />
@@ -615,7 +615,7 @@ export function VoiceEditor({ tool }: { tool: ToolInstance }) {
               onClick={() => setSoundMode("original")}
               className={cn(
                 "flex h-[26px] items-center gap-1.5 rounded px-2.5 text-[12px] font-semibold",
-                soundMode === "original" ? "bg-ws-action text-white" : "text-ws-3 hover:text-ws-1",
+                soundMode === "original" ? "bg-ws-action text-primary-foreground" : "text-ws-3 hover:text-ws-1",
               )}
             >
               <Ear className="h-[14px] w-[14px]" />
@@ -643,7 +643,7 @@ export function VoiceEditor({ tool }: { tool: ToolInstance }) {
               "flex h-[34px] items-center gap-2 rounded px-3 text-[13px] font-semibold",
               api && api.genPending > 0
                 ? "border border-foreground/[0.07] text-ws-2 hover:bg-ws-hover"
-                : "bg-ws-action text-white hover:bg-ws-action-hover",
+                : "bg-ws-action text-primary-foreground hover:bg-ws-action-hover",
             )}
           >
             {api && api.genPending > 0 ? (

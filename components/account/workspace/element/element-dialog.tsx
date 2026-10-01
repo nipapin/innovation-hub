@@ -472,7 +472,7 @@ export function ElementDialog() {
                   type="button"
                   onClick={() => void run()}
                   disabled={busy || missing.length > 0 || !folder}
-                  className="shrink-0 bg-ws-action text-white hover:bg-ws-action-hover"
+                  className="shrink-0 bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t.elementRun}
                 </Button>
@@ -644,7 +644,7 @@ export function ElementDialog() {
               type="button"
               disabled={busy}
               onClick={() => void saveText()}
-              className="bg-ws-action text-white hover:bg-ws-action-hover"
+              className="bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t.saveChanges}
             </Button>

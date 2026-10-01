@@ -1,13 +1,23 @@
 "use client"
 
+import { useState } from "react"
 import type { NodeProps } from "@xyflow/react"
-import { Bot, File, Folder, Minus, Plus, X } from "lucide-react"
+import { Bot, ChevronDown, Download, File, Folder, Loader2, Minus, Plus, X } from "lucide-react"
+import { toast } from "sonner"
 
 import { useI18n } from "@/components/account/i18n"
 import { toolText } from "@/components/account/tools/registry-ui"
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   createFormRow,
   FOLDER_ROW_TYPE,
+  isFolderFormRow,
   type FormRow,
   type PipelineNode,
   type WorkData,
@@ -16,7 +26,7 @@ import {
 import { TOOLS } from "@/lib/tools/registry"
 import { cn } from "@/lib/utils"
 import { useEditor } from "./editor-context"
-import { DaysInput, Divider, FieldLabel, NodeFrame, PathInput, ProjectPicker } from "./node-parts"
+import { DaysInput, Divider, FieldLabel, NodeFrame, PathInput, ProjectPicker, RowLabelInput } from "./node-parts"
 import { PeoplePicker } from "./people-picker"
 
 /** Данные xyflow-ноды: сама нода графа. Позицию и ширину xyflow держит сам. */
@@ -192,7 +202,7 @@ function Bottom({ children }: { children: React.ReactNode }) {
  */
 export function ToolNodeView({ data }: Props) {
   const { t } = useI18n()
-  const { readOnly } = useEditor()
+  const { readOnly, toolKeys, nameStage } = useEditor()
   const node = data.node
   const set = useWork(node.id)
   if (node.kind !== "tool") return null
@@ -207,12 +217,19 @@ export function ToolNodeView({ data }: Props) {
             value={node.data.tool?.key ?? ""}
             onChange={(event) => {
               const key = event.target.value
-              set<"tool">(key ? { tool: { key, preset: {} }, name: t[toolText(key).name] } : { tool: null })
+              set<"tool">({ tool: key ? { key, preset: {} } : null })
+              if (key) nameStage(node.id, t[toolText(key).name])
             }}
             className={cn(selectClass, "flex-1")}
           >
             <option value="">{t.productionEdNoTool}</option>
-            {TOOLS.filter((tool) => tool.status === "ready").map((tool) => (
+            {/* Только доступные; уже выбранный, но погашенный — остаётся, иначе
+                список молча показал бы «без инструмента». */}
+            {TOOLS.filter(
+              (tool) =>
+                tool.status === "ready" &&
+                (toolKeys.includes(tool.key) || tool.key === node.data.tool?.key),
+            ).map((tool) => (
               <option key={tool.key} value={tool.key}>
                 {t[toolText(tool.key).name]}
               </option>
@@ -243,11 +260,60 @@ function OpToggle({ value, onChange }: { value: FormRow["op"]; onChange: (op: Fo
 }
 
 /**
+ * Типы файла строки — галками: подходит файл любого из отмеченных («видео или
+ * картинка»). Последнюю галку не снять: строка без типа ничего не примет.
+ */
+function TypesPicker({ value, options, onChange }: { value: string[]; options: string[]; onChange: (types: string[]) => void }) {
+  const { t } = useI18n()
+  const { readOnly } = useEditor()
+  // Тип из формы программы, которого нет в словаре установки, тоже показываем.
+  const all = [...options, ...value.filter((type) => !options.includes(type))]
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger
+        disabled={readOnly}
+        title={t.productionEdRowType}
+        className={cn(selectClass, "flex max-w-[45%] items-center gap-1")}
+      >
+        <span className="truncate">{value.join(" / ")}</span>
+        <ChevronDown className="h-3 w-3 shrink-0 text-ws-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+        {all.map((type) => {
+          const checked = value.includes(type)
+          return (
+            <DropdownMenuCheckboxItem
+              key={type}
+              checked={checked}
+              disabled={checked && value.length === 1}
+              onSelect={(event) => event.preventDefault()}
+              onCheckedChange={(on) => onChange(on ? [...value, type] : value.filter((v) => v !== type))}
+            >
+              {type}
+            </DropdownMenuCheckboxItem>
+          )
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/**
  * Строки формы — дерево, как `FolderRequirementsProperty` программы: у строки
  * название (для чего поле; оно же префикс имени файла), тип, `≥`/`=` и число;
  * подпапка — такие же строки внутри.
  */
-function FormRows({ rows, onChange, depth }: { rows: FormRow[]; onChange: (rows: FormRow[]) => void; depth: number }) {
+function FormRows({
+  nodeId,
+  rows,
+  onChange,
+  depth,
+}: {
+  nodeId: string
+  rows: FormRow[]
+  onChange: (rows: FormRow[]) => void
+  depth: number
+}) {
   const { t } = useI18n()
   const { readOnly, fileTypes } = useEditor()
   const setRow = (id: string, patch: Partial<FormRow>) => onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
@@ -256,35 +322,20 @@ function FormRows({ rows, onChange, depth }: { rows: FormRow[]; onChange: (rows:
   return (
     <div className={cn("space-y-1.5", depth > 0 && "border-l border-violet/30 pl-2.5")}>
       {rows.map((row) => {
-        const folder = row.type === FOLDER_ROW_TYPE
+        const folder = isFolderFormRow(row)
         return (
           <div key={row.id} className="space-y-1.5">
             <div className="flex items-center gap-1.5">
               <span className="text-ws-4">{folder ? <Folder className="h-3.5 w-3.5" /> : <File className="h-3.5 w-3.5" />}</span>
-              <input
+              <RowLabelInput
                 value={row.label}
-                disabled={readOnly}
-                onChange={(event) => setRow(row.id, { label: event.target.value })}
+                nodeId={nodeId}
+                onChange={(label) => setRow(row.id, { label })}
                 placeholder={folder ? t.productionEdRowFolderLabel : t.productionEdRowLabel}
-                className={cn(
-                  "nodrag h-7 min-w-0 flex-1 rounded-md border bg-ws-control px-2 text-[12px] text-ws-1 outline-none placeholder:text-ws-5",
-                  row.label.trim() ? "border-foreground/10" : "border-destructive/50",
-                )}
+                invalid={!row.label.trim()}
               />
               {folder ? null : (
-                <select
-                  disabled={readOnly}
-                  value={row.type}
-                  onChange={(event) => setRow(row.id, { type: event.target.value })}
-                  className={selectClass}
-                  title={t.productionEdRowType}
-                >
-                  {(types.includes(row.type) ? types : [row.type, ...types]).map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
+                <TypesPicker value={row.types} options={types} onChange={(next) => setRow(row.id, { types: next })} />
               )}
               <OpToggle value={row.op} onChange={(op) => setRow(row.id, { op })} />
               <div className="nodrag flex h-7 shrink-0 items-center rounded-md border border-foreground/10 bg-ws-control">
@@ -322,7 +373,7 @@ function FormRows({ rows, onChange, depth }: { rows: FormRow[]; onChange: (rows:
             </div>
             {folder ? (
               <div className="ml-5">
-                <FormRows rows={row.children} depth={depth + 1} onChange={(children) => setRow(row.id, { children })} />
+                <FormRows nodeId={nodeId} rows={row.children} depth={depth + 1} onChange={(children) => setRow(row.id, { children })} />
               </div>
             ) : null}
           </div>
@@ -356,6 +407,70 @@ function FormRows({ rows, onChange, depth }: { rows: FormRow[]; onChange: (rows:
  * Форма (§3.0): минимальный набор файлов, который вводится в пайплайн. Папки —
  * только для структуры: собирается форма из файлов.
  */
+/**
+ * «Из программы» — взять строки формы, которую программа оставила в проекте
+ * (`options/onSiteFolderCheckForm.json`, lib/production/program-forms.ts).
+ * Список проектов грузится при открытии: он нужен редко, а запрос не бесплатный.
+ */
+function ProgramFormPicker({ hasRows, onPick }: { hasRows: boolean; onPick: (rows: FormRow[]) => void }) {
+  const { t } = useI18n()
+  const { pipelineId, readOnly } = useEditor()
+  const [forms, setForms] = useState<{ projectId: string; projectName: string }[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  if (readOnly) return null
+  const url = `/api/production/pipelines/${pipelineId}/program-forms`
+
+  const load = async () => {
+    const res = await fetch(url, { cache: "no-store" })
+    const body = (await res.json().catch(() => ({}))) as { forms?: { projectId: string; projectName: string }[] }
+    setForms(res.ok ? (body.forms ?? []) : [])
+  }
+  const pick = async (projectId: string) => {
+    if (hasRows && !window.confirm(t.productionEdProgramFormReplace)) return
+    setBusy(true)
+    try {
+      const res = await fetch(`${url}?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" })
+      const body = (await res.json().catch(() => ({}))) as { rows?: FormRow[]; code?: string }
+      if (!res.ok || !body.rows) {
+        toast.error(body.code === "invalid" ? t.productionEdProgramFormInvalid : t.productionEdProgramFormFailed)
+        return
+      }
+      onPick(body.rows)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <DropdownMenu modal={false} onOpenChange={(open) => open && void load()}>
+      <DropdownMenuTrigger
+        disabled={busy}
+        title={t.productionEdProgramFormHint}
+        className="nodrag flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+      >
+        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+        {t.productionEdProgramForm}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+        {forms === null ? (
+          <div className="flex items-center gap-2 px-2 py-1.5 text-[12px] text-ws-4">
+            <Loader2 className="h-3 w-3 animate-spin" />
+          </div>
+        ) : forms.length === 0 ? (
+          <div className="max-w-[260px] px-2 py-1.5 text-[12px] text-ws-4">{t.productionEdProgramFormNone}</div>
+        ) : (
+          forms.map((f) => (
+            <DropdownMenuItem key={f.projectId} onSelect={() => void pick(f.projectId)}>
+              <Folder className="h-3.5 w-3.5 text-ws-4" />
+              {f.projectName}
+            </DropdownMenuItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export function FormNodeView({ data }: Props) {
   const { t } = useI18n()
   const node = data.node
@@ -365,9 +480,12 @@ export function FormNodeView({ data }: Props) {
     <NodeFrame id={node.id} kind="form" kindLabel={t.productionEdKindForm} name={node.data.name} removable onRename={(name) => set({ name })}>
       <WorkTop node={node} executors={<Executors node={node} />} />
       <Bottom>
-        <FieldLabel>{t.productionEdFormRows}</FieldLabel>
+        <div className="flex items-center justify-between gap-2">
+          <FieldLabel>{t.productionEdFormRows}</FieldLabel>
+          <ProgramFormPicker hasRows={node.data.rows.length > 0} onPick={(rows) => set<"form">({ rows })} />
+        </div>
         {node.data.rows.length === 0 ? <p className="text-[11.5px] text-ws-4">{t.productionEdFormEmpty}</p> : null}
-        <FormRows rows={node.data.rows} depth={0} onChange={(rows) => set<"form">({ rows })} />
+        <FormRows nodeId={node.id} rows={node.data.rows} depth={0} onChange={(rows) => set<"form">({ rows })} />
       </Bottom>
     </NodeFrame>
   )

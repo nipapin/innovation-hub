@@ -30,6 +30,16 @@ import { useWorkspace } from "./workspace-context"
 /** Профиль плотности: roomy — полный режим, snug — панели IN / OUT. */
 type Size = "roomy" | "snug"
 
+/**
+ * Поля строки списка в профиле snug. `dense` — ниже на 6px (строка ~54px вместо
+ * ~60px): мобильный вид, где на экран телефона должно помещаться больше файлов.
+ * Отдельным флагом, а не третьим Size: кегли и иконки snug остаются теми же,
+ * меняется только высота строки.
+ */
+function snugRowPad(dense?: boolean) {
+  return dense ? "px-[11px] py-1.5" : "px-[11px] py-[9px]"
+}
+
 function targetFor(
   basePath: string | undefined,
   nodes: DriveFile[],
@@ -358,10 +368,12 @@ function NewElementCell({
   target,
   shape,
   size = "roomy",
+  dense,
 }: {
   target: UploadTarget
   shape: "row" | "card" | "column"
   size?: Size
+  dense?: boolean
 }) {
   const { t, openElementDialog } = useWorkspace()
   const roomy = size === "roomy"
@@ -419,7 +431,7 @@ function NewElementCell({
       className={cn(
         "flex w-full items-center",
         frame,
-        roomy ? "gap-3.5 rounded-[14px] p-[13px]" : "gap-3 rounded-[10px] px-[11px] py-[9px]",
+        roomy ? "gap-3.5 rounded-[14px] p-[13px]" : cn("gap-3 rounded-[10px]", snugRowPad(dense)),
       )}
     >
       {roomy ? (
@@ -439,6 +451,7 @@ function NewElementCell({
 function FileRow({
   file,
   size,
+  dense,
   subtitle,
   onOpen,
   onEnterFolder,
@@ -447,6 +460,7 @@ function FileRow({
 }: {
   file: DriveFile
   size: Size
+  dense?: boolean
   /** Откуда файл: путь до него в режиме «без папок», проект в корне корзины. */
   subtitle?: string | null
   onOpen: (e: React.MouseEvent) => void
@@ -474,7 +488,7 @@ function FileRow({
         isCut(file.id) && "opacity-45",
         roomy
           ? "gap-3.5 rounded-[14px] p-[13px]"
-          : "gap-3 rounded-[10px] px-[11px] py-[9px]",
+          : cn("gap-3 rounded-[10px]", snugRowPad(dense)),
         isMenuTarget
           ? "border-ws-accent/55 bg-ws-accent/[0.14]"
           : isSelected
@@ -801,6 +815,8 @@ export function FileBrowser({
   flat,
   subtitleOf,
   onNavigate,
+  emptyHint,
+  dense,
   className,
 }: {
   /** Корень поддерева, по которому ходим (проект целиком или содержимое IN / OUT). */
@@ -820,6 +836,13 @@ export function FileBrowser({
   /** Своя подпись под именем вместо пути — корзина ставит туда проект. */
   subtitleOf?: (file: DriveFile) => string | null
   onNavigate: (nodes: DriveFile[]) => void
+  /**
+   * Своя подсказка для пустой папки. Нужна там, где «правой кнопкой» неверно:
+   * мобильный вид ставит сюда отсылку к своей кнопке «Загрузить».
+   */
+  emptyHint?: string
+  /** Строки списка ниже — см. `snugRowPad`. */
+  dense?: boolean
   className?: string
 }) {
   const ws = useWorkspace()
@@ -854,7 +877,7 @@ export function FileBrowser({
   }
   const areaRef = useRevealScroll(items)
   const target = targetFor(basePath, path)
-  const emptyMessage = !driveAvailable ? t.driveUnavailable : t.emptyFolder
+  const emptyMessage = !driveAvailable ? t.driveUnavailable : emptyHint ?? t.emptyFolder
 
   const drop = useDropZone(target)
   const canAddElement = useCanAddElement(target)
@@ -987,6 +1010,7 @@ export function FileBrowser({
                 key={f.id}
                 file={f}
                 size={size}
+                dense={dense}
                 subtitle={subtitleFor(f)}
                 onOpen={(e) => openItem(f, e)}
                 onEnterFolder={() => onNavigate([...path, f])}
@@ -995,7 +1019,7 @@ export function FileBrowser({
               />
             ))}
             {canAddElement ? (
-              <NewElementCell target={target} shape="row" size={size} />
+              <NewElementCell target={target} shape="row" size={size} dense={dense} />
             ) : null}
           </div>
         )}

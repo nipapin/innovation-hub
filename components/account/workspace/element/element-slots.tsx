@@ -21,7 +21,7 @@ import { toast } from "sonner"
 import { tf, useI18n, type Dictionary } from "@/components/account/i18n"
 import {
   extensionFits,
-  FOLDER_TYPE,
+  isFolderRow,
   mimeFits,
   type SiteForm,
 } from "@/lib/tools/element/site-form"
@@ -73,12 +73,17 @@ function typeLabel(type: string, t: Dictionary): string {
   return type
 }
 
+/** Несколько типов — через «/»: «Видео / Картинка». */
+export function typesLabel(types: readonly string[], t: Dictionary): string {
+  return types.map((type) => typeLabel(type, t)).join(" / ")
+}
+
 function FileSlot({
   io,
   form,
   dir,
   slot,
-  type,
+  types,
   node,
   busy,
   isText,
@@ -92,7 +97,7 @@ function FileSlot({
   form: SiteForm
   dir: string
   slot: Slot
-  type: string
+  types: string[]
   node: DriveFile | null
   busy: boolean
   isText: boolean
@@ -117,7 +122,7 @@ function FileSlot({
       обязан быть ЗАМЕТНЫМ: молчаливое «ничего не произошло» человек читает как
       поломку интерфейса, а не как «этот файл сюда не годится».
     */
-    if (!extensionFits(form, type, file.name)) {
+    if (!extensionFits(form, types, file.name)) {
       setOver("bad")
       toast.error(`${t.elementSlotBadType}: ${file.name}`)
       window.setTimeout(() => setOver(null), 2000)
@@ -174,7 +179,7 @@ function FileSlot({
         уже по настоящему имени, при броске.
       */
       const item = e.dataTransfer.items[0]
-      setOver(mimeFits(type, item?.type ?? "") ? "ok" : "bad")
+      setOver(mimeFits(types, item?.type ?? "") ? "ok" : "bad")
     },
     onDragLeave: () => setOver(null),
     onDrop: (e: React.DragEvent) => {
@@ -207,7 +212,7 @@ function FileSlot({
         >
           {over === "bad"
             ? t.elementSlotBadType
-            : (slot.file?.name ?? typeLabel(type, t))}
+            : (slot.file?.name ?? typesLabel(types, t))}
         </span>
 
         {percent !== null ? (
@@ -417,7 +422,7 @@ export function ElementGroups({
             groups: group.row.children.map((row) => ({ row, slots: [] })),
           })),
         ]
-        const isFolder = group.row.type === FOLDER_TYPE
+        const isFolder = isFolderRow(group.row)
         const removable = canRemove(group.row, slots.length)
         const ids = slots
           .map((slot) => nodeOf(slot)?.id ?? null)
@@ -538,11 +543,11 @@ export function ElementGroups({
                             form={form}
                             dir={dir}
                             slot={slot}
-                            type={group.row.type}
+                            types={group.row.types}
                             node={node}
                             busy={busy}
-                            isText={(form.fileTypes[group.row.type] ?? []).includes(
-                              "txt",
+                            isText={group.row.types.some((type) =>
+                              (form.fileTypes[type] ?? []).includes("txt"),
                             )}
                             onBusy={onBusy}
                             onChanged={onChanged}

@@ -237,7 +237,7 @@ export function SrtExportDialog({
             type="button"
             onClick={run}
             disabled={!result}
-            className="flex h-[34px] flex-none items-center gap-2 rounded bg-ws-action px-4 text-[13px] font-semibold text-white hover:bg-ws-action-hover disabled:opacity-40"
+            className="flex h-[34px] flex-none items-center gap-2 rounded bg-ws-action px-4 text-[13px] font-semibold text-primary-foreground hover:bg-ws-action-hover disabled:opacity-40"
           >
             <Download className="h-4 w-4" />
             {t.srtExportRun}

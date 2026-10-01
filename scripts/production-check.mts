@@ -218,13 +218,17 @@ const v2 = {
 }
 const up2 = upgradeGraph(v2)
 eq("схема 2: проходит схему", pipelineGraphSchema.safeParse(up2).success, true)
-eq("схема 2: папка — ссылка, строки — дерево", up2.nodes[0].kind === "form" ? [up2.nodes[0].data.project, up2.nodes[0].data.rows.map((r) => [r.label, r.type, r.op, r.count])] : null, [{ id: null, name: "$pipelineName" }, [["Титры", "text", "=", 2], ["123", "folder", ">=", 1]]])
-eq("граф схемы 3 не трогается", upgradeGraph(g) === g, true)
+eq("схема 2: папка — ссылка, строки — дерево", up2.nodes[0].kind === "form" ? [up2.nodes[0].data.project, up2.nodes[0].data.rows.map((r) => [r.label, r.types, r.op, r.count])] : null, [{ id: null, name: "$pipelineName" }, [["Титры", ["text"], "=", 2], ["123", ["folder"], ">=", 1]]])
+eq("граф схемы 4 не трогается", upgradeGraph(g) === g, true)
+const v3 = { schemaVersion: 3, nodes: [{ id: "fm", kind: "form", position: { x: 0, y: 0 }, data: { ...form.data, rows: [{ id: "r", label: "Сцена", type: "folder", op: ">=", count: 1, children: [{ id: "c", label: "Кадр", type: "image", op: "=", count: 2, children: [] }] }] } }], edges: [] }
+const up3 = upgradeGraph(v3)
+eq("схема 3: проходит схему", pipelineGraphSchema.safeParse(up3).success, true)
+eq("схема 3: тип строки — список, и во вложенных", up3.nodes[0].kind === "form" ? [up3.nodes[0].data.rows[0].types, up3.nodes[0].data.rows[0].children[0].types] : null, [["folder"], ["image"]])
 
 console.log("форма (form.ts)")
 const rows = [
-  { id: "t", label: "Титры", type: "text", op: "=" as const, count: 2, children: [] },
-  { id: "s", label: "Сцена", type: "folder", op: ">=" as const, count: 1, children: [{ id: "v", label: "Видео", type: "video", op: ">=" as const, count: 1, children: [] }] },
+  { id: "t", label: "Титры", types: ["text"], op: "=" as const, count: 2, children: [] },
+  { id: "s", label: "Сцена", types: ["folder"], op: ">=" as const, count: 1, children: [{ id: "v", label: "Видео", types: ["video", "image"], op: ">=" as const, count: 1, children: [] }] },
 ]
 const work = "R/01 Форма/versions"
 const f = (dir: string, name: string) => ({ name, folderPath: dir ? `${work}/${dir}` : work })
@@ -232,6 +236,7 @@ const partial = formStatus(rows, work, [f("", "01 Титры - a.srt"), f("01 С
 eq("не хватает второго титра", [partial.complete, partial.missing], [false, ["Титры"]])
 const full = formStatus(rows, work, [f("", "01 Титры - a.srt"), f("", "02 Титры - b.srt"), f("01 Сцена", "01 Видео - clip.mp4")])
 eq("всё на месте", full.complete, true)
+eq("вместо видео — картинка: строка «видео или картинка»", formStatus(rows, work, [f("", "01 Титры - a.srt"), f("", "02 Титры - b.srt"), f("01 Сцена", "01 Видео - frame.png")]).complete, true)
 eq("пустая подпапка слот не заполняет", formStatus(rows, work, [f("", "01 Титры - a.srt"), f("", "02 Титры - b.srt")]).complete, false)
 eq("пустая форма не собрана", formStatus([], work, []).complete, false)
 

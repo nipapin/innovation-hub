@@ -9,7 +9,7 @@
  * начнут собирать и там. Правила — docs/TOOLS_FOLDER_ASSEMBLY_PLAN.md §5, §6, §10.
  */
 
-import { FOLDER_TYPE, type ElementRow } from "./site-form"
+import { isFolderRow, type ElementRow } from "./site-form"
 import { parseSlotName, subfolderName } from "./names"
 export { subfolderName }
 
@@ -111,7 +111,7 @@ function readLevel(
   const labels = rows.map((row) => row.label)
 
   return rows.map((row) => {
-    const isFolder = row.type === FOLDER_TYPE
+    const isFolder = isFolderRow(row)
 
     /** Что в папке принадлежит этой строке требования, по номеру слота. */
     const found = new Map<number, FolderEntry>()
@@ -206,7 +206,7 @@ export function missingLabels(state: ElementState): string[] {
     for (const group of groups) {
       for (const slot of group.slots) {
         const where = prefix ? `${prefix} / ${slot.label}` : slot.label
-        if (group.row.type === FOLDER_TYPE) {
+        if (isFolderRow(group.row)) {
           walk(slot.groups, `${where} ${slot.index}`)
           continue
         }
@@ -244,7 +244,7 @@ export function slotFill(state: ElementState): { filled: number; total: number }
   const walk = (groups: readonly Group[]) => {
     for (const group of groups) {
       for (const slot of group.slots) {
-        if (group.row.type === FOLDER_TYPE) {
+        if (isFolderRow(group.row)) {
           walk(slot.groups)
           continue
         }
@@ -286,7 +286,7 @@ export function missingFolders(
   const walk = (level: readonly ElementRow[], dir: string) => {
     const state = readLevel(level, entries, dir, new Set<string>())
     for (const group of state) {
-      if (group.row.type !== FOLDER_TYPE) continue
+      if (!isFolderRow(group.row)) continue
       for (const slot of group.slots) {
         const name = slot.folderName ?? subfolderName(slot.index, slot.label)
         if (!slot.folderName) {

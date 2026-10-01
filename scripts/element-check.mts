@@ -236,12 +236,34 @@ eq("у типа нет семейства — не мешаем", mimeFits("aep"
 eq("семейство типа", expectedMimePrefix("audio"), "audio/")
 eq("у psd семейства нет", expectedMimePrefix("psd"), null)
 
-eq("чужая версия не читается", parseSiteForm({ ...formJson, version: 2 }).ok, false)
+eq("чужая версия не читается", parseSiteForm({ ...formJson, version: 3 }).ok, false)
 eq(
   "чужая версия названа причиной",
-  (parseSiteForm({ ...formJson, version: 2 }) as { error: { reason: string } }).error.reason,
+  (parseSiteForm({ ...formJson, version: 3 }) as { error: { reason: string } }).error.reason,
   "version",
 )
+{
+  // Версия 2: у строки список типов — «видео или картинка».
+  const v2 = parseSiteForm({
+    version: 2,
+    element: { rows: [{ id: "a", label: "Ведущий", tooltip: "", types: ["video", "image"], op: "=", count: 1 }] },
+    fileTypes: { video: ["mp4"], image: ["png"] },
+  })
+  eq("версия 2: типы — список", v2.ok ? v2.form.rows[0].types : null, ["video", "image"])
+  eq("версия 1: один type — список из одного", form.ok ? form.form.rows[0].types : null, ["video"])
+  if (v2.ok) {
+    eq("любой из типов подходит: картинка", extensionFits(v2.form, v2.form.rows[0].types, "a.PNG"), true)
+    eq("и видео", extensionFits(v2.form, v2.form.rows[0].types, "a.mp4"), true)
+    eq("а звук — нет", extensionFits(v2.form, v2.form.rows[0].types, "a.wav"), false)
+  }
+  eq("на подлёте: картинка в «видео или картинка»", mimeFits(["video", "image"], "image/png"), true)
+  eq("звук туда же — чужое", mimeFits(["video", "image"], "audio/wav"), false)
+  eq(
+    "папка вместе с типом — отказ",
+    parseSiteForm({ version: 2, element: { rows: [{ id: "a", label: "X", types: ["folder", "video"], op: "=", count: 1 }] } }).ok,
+    false,
+  )
+}
 const dupes = parseSiteForm({
   ...formJson,
   element: {
@@ -306,11 +328,11 @@ eq(
         id: "a",
         label: "Блок",
         tooltip: "",
-        type: "folder",
+        types: ["folder"],
         op: "=",
         count: 1,
         children: [
-          { id: "b", label: "Сцена", tooltip: "", type: "folder", op: "=", count: 1, children: [] },
+          { id: "b", label: "Сцена", tooltip: "", types: ["folder"], op: "=", count: 1, children: [] },
         ],
       },
     ],

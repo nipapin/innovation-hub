@@ -17,6 +17,7 @@ import {
   findLoginByEmail,
   findUserById,
   rememberLastProfile,
+  setPersonalHidden,
 } from "@/lib/repositories/users"
 import {
   listPeople,
@@ -235,6 +236,11 @@ export async function POST(request: NextRequest) {
     if (temporaryPassword) {
       await rememberLastProfile(loginUserId, added.profileId).catch((error) => {
         console.error("[company/people] remember first profile failed", error)
+      })
+      // Аккаунт компании: «Личное» ему не нужно, пока сам не включит в
+      // настройках профиля.
+      await setPersonalHidden(loginUserId, true).catch((error) => {
+        console.error("[company/people] hide personal failed", error)
       })
     }
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Building2, Loader2, LogIn, Plus, Search, Trash2 } from "lucide-react"
+import { Building2, Loader2, LogIn, Plus, Search, Trash2, UserRound } from "lucide-react"
 import { toast } from "sonner"
 import { tf, useI18n } from "@/components/account/i18n"
 import { Section } from "@/components/admin/billing/fields"
@@ -86,6 +86,9 @@ function deleteErrorText(
   }
 }
 
+/** Выбор закреплённой строки «Личное» вместо команды. */
+const PERSONAL = "personal"
+
 export function AdminCompanies({
   canEnterConsole,
 }: {
@@ -99,12 +102,18 @@ export function AdminCompanies({
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [enteringId, setEnteringId] = useState<string | null>(null)
+  // Набор «Личного»: `null` — ещё не загружен.
+  const [personalFeatures, setPersonalFeatures] = useState<Record<string, unknown> | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch("/api/admin/companies", { cache: "no-store" })
+      const [res, personalRes] = await Promise.all([
+        fetch("/api/admin/companies", { cache: "no-store" }),
+        fetch("/api/admin/personal-features", { cache: "no-store" }),
+      ])
       if (res.ok) setCompanies(await res.json())
+      if (personalRes.ok) setPersonalFeatures((await personalRes.json()).features)
     } finally {
       setLoading(false)
     }
@@ -185,6 +194,25 @@ export function AdminCompanies({
       />
 
       <Section title={t.adminCompaniesTitle}>
+        {/* «Личное» — закреплённой строкой над командами: у всех вне команд
+            тоже есть набор, и правится он там же, где наборы команд. */}
+        {personalFeatures ? (
+          <button
+            type="button"
+            onClick={() => setSelectedId(PERSONAL)}
+            className="mb-3 flex w-full items-center gap-3 rounded-lg border border-border/60 px-4 py-3 text-left hover:opacity-80"
+          >
+            <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-foreground">
+                {t.personalRowTitle}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {t.personalRowSub}
+              </span>
+            </span>
+          </button>
+        ) : null}
         {loading ? (
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : companies.length === 0 ? (
@@ -252,6 +280,21 @@ export function AdminCompanies({
           </ul>
         )}
       </Section>
+
+      {selectedId === PERSONAL && personalFeatures ? (
+        <CompanySetsPanel
+          key="sets-personal"
+          companyId={null}
+          initial={{
+            tools: readCompanyFeatures(personalFeatures).companyTools,
+            sections: null,
+            chatSync: true,
+            production: readCompanyFeatures(personalFeatures).production,
+            billingFree: false,
+          }}
+          onSaved={load}
+        />
+      ) : null}
 
       {selected ? (
         <>

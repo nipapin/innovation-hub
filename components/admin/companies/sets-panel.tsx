@@ -29,13 +29,18 @@ import { TOOLS } from "@/lib/tools/registry"
  * Третьей строкой — зеркало чата в YouGile (§2.6). Набором оно не является и в
  * колонку не встало: там перечисляют то, что компания видит у себя, а зеркало
  * решает, видим ли её переписку МЫ.
+ *
+ * Без `companyId` — набор «Личного» (2026-10-01-personal-features.sql): только
+ * инструменты и «Производство». Разделов консоли, кошелька и зеркала чата у
+ * людей вне команд нет, и строк для них здесь тоже нет.
  */
 export function CompanySetsPanel({
   companyId,
   initial,
   onSaved,
 }: {
-  companyId: string
+  /** `null` — набор «Личного». */
+  companyId: string | null
   initial: {
     tools: string[] | null
     sections: string[] | null
@@ -49,6 +54,7 @@ export function CompanySetsPanel({
   onSaved: () => void
 }) {
   const { t } = useI18n()
+  const personal = companyId === null
   const [busy, setBusy] = useState(false)
   const [chatSync, setChatSync] = useState(initial.chatSync)
   const [production, setProduction] = useState(initial.production)
@@ -87,11 +93,14 @@ export function CompanySetsPanel({
 
     setBusy(true)
     try {
-      const res = await fetch(`/api/admin/companies/${companyId}`, {
+      const res = await fetch(
+        personal ? "/api/admin/personal-features" : `/api/admin/companies/${companyId}`,
+        {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      })
+        },
+      )
       if (!res.ok) {
         toast.error(t.coSaveFailed)
         return
@@ -104,7 +113,10 @@ export function CompanySetsPanel({
   }
 
   return (
-    <Section title={t.coSetsTitle} description={t.coSetsSub}>
+    <Section
+      title={personal ? t.personalSetsTitle : t.coSetsTitle}
+      description={personal ? t.personalSetsSub : t.coSetsSub}
+    >
       {/* Друг под другом, а не в две колонки: наборы разной длины, и рядом они
           оставляли справа или слева пустой столбец в пол-экрана. Читаются они
           всё равно сверху вниз — как и остальные строки этой панели. */}
@@ -122,15 +134,17 @@ export function CompanySetsPanel({
             label: t[toolText(tool.key).name],
           }))}
         />
-        <SetColumn
-          label={t.coSetsSections}
-          state={sections}
-          busy={busy}
-          items={COMPANY_TOOLS.map((tool) => ({
-            key: tool.key,
-            label: t[tool.labelKey],
-          }))}
-        />
+        {personal ? null : (
+          <SetColumn
+            label={t.coSetsSections}
+            state={sections}
+            busy={busy}
+            items={COMPANY_TOOLS.map((tool) => ({
+              key: tool.key,
+              label: t[tool.labelKey],
+            }))}
+          />
+        )}
       </div>
 
       {/* «Производство» — закладка кабинета, а не раздел консоли, поэтому не в
@@ -144,9 +158,14 @@ export function CompanySetsPanel({
         />
         <div className="space-y-1">
           <p className="text-sm font-medium text-foreground">{t.coSetsProduction}</p>
-          <p className="text-[11px] text-muted-foreground">{t.coSetsProductionHint}</p>
+          <p className="text-[11px] text-muted-foreground">
+            {personal ? t.personalSetsProductionHint : t.coSetsProductionHint}
+          </p>
         </div>
       </div>
+
+      {personal ? null : (
+      <>
 
       {/* Зеркало чата — не колонка набора, а отдельная строка: наборы отвечают
           на вопрос «что компания видит у себя», а это на вопрос «уезжает ли её
@@ -185,6 +204,8 @@ export function CompanySetsPanel({
         <p>{t.coSetsKeepNote}</p>
         <p>{t.coSetsVendorNote}</p>
       </div>
+      </>
+      )}
 
       <Button onClick={() => void save()} disabled={busy}>
         {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

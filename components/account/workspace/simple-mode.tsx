@@ -18,6 +18,7 @@ import {
 
 import { tf } from "@/components/account/i18n"
 import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 import { BottomPanel } from "./bottom-panel"
 import { Breadcrumbs, FileBrowser, useLivePath } from "./file-browser"
 import { GiftCorner } from "./gift-badge"
@@ -556,6 +557,7 @@ export function AllProjectsPage() {
   const {
     t,
     visibleProjects,
+    loadingProjects,
     projectTab,
     query,
     setQuery,
@@ -605,7 +607,7 @@ export function AllProjectsPage() {
                 type="button"
                 onClick={createProject}
                 disabled={creating}
-                className="flex h-[52px] items-center gap-2 rounded-xl bg-ws-action px-[22px] text-[15px] font-medium text-white hover:bg-ws-action-hover disabled:opacity-60"
+                className="flex h-[52px] items-center gap-2 rounded-xl bg-ws-action px-[22px] text-[15px] font-medium text-primary-foreground hover:bg-ws-action-hover disabled:opacity-60"
               >
                 <Plus className="h-5 w-5" />
                 {creating ? t.creatingProject : t.newProject}
@@ -626,7 +628,22 @@ export function AllProjectsPage() {
               {tf(t.trashRetention, { days: TRASH_RETENTION_DAYS })}
             </p>
           ) : null}
-          {visibleProjects.length === 0 ? (
+          {loadingProjects ? (
+            // Пока список не пришёл, «Пока нет проектов» было бы неправдой:
+            // у человека с расшаренными проектами оно мелькало при каждом входе.
+            <div
+              aria-busy="true"
+              aria-label={t.loading}
+              className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-3"
+            >
+              {[0, 1, 2].map((i) => (
+                <Skeleton
+                  key={i}
+                  className="h-[148px] rounded-2xl border border-foreground/10 bg-ws-panel"
+                />
+              ))}
+            </div>
+          ) : visibleProjects.length === 0 ? (
             <p className="py-16 text-center text-[14px] text-ws-4">
               {sectionEmptyText(projectTab, t)}
             </p>

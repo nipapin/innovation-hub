@@ -306,7 +306,7 @@ function TakeCell({ cue, spoken }: { cue: Cue; spoken: string }) {
                 ? "cursor-default border border-foreground/[0.07] text-ws-5"
                 : take
                   ? "border border-foreground/[0.07] text-ws-2 hover:bg-ws-hover"
-                  : "bg-ws-action text-white hover:bg-ws-action-hover",
+                  : "bg-ws-action text-primary-foreground hover:bg-ws-action-hover",
             )}
           >
             <Mic className="h-[14px] w-[14px]" />

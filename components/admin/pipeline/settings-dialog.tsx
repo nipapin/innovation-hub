@@ -356,7 +356,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               type="button"
               onClick={() => void save()}
               disabled={saving || !dirty || loading}
-              className="ml-auto flex h-9 shrink-0 items-center gap-2 rounded-[10px] bg-ws-action px-4 text-[13.5px] font-medium text-white hover:bg-ws-action-hover disabled:opacity-50"
+              className="ml-auto flex h-9 shrink-0 items-center gap-2 rounded-[10px] bg-ws-action px-4 text-[13.5px] font-medium text-primary-foreground hover:bg-ws-action-hover disabled:opacity-50"
             >
               {saving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -544,7 +544,7 @@ function SweepPanel({ t, lang }: { t: AdminDict; lang: Lang }) {
           type="button"
           onClick={() => void patch({ sweepIntervalMin: parsed })}
           disabled={saving || !intervalDirty}
-          className="ml-auto flex h-8 items-center gap-1.5 rounded-[8px] bg-ws-action px-3 text-[13px] font-medium text-white hover:bg-ws-action-hover disabled:opacity-40"
+          className="ml-auto flex h-8 items-center gap-1.5 rounded-[8px] bg-ws-action px-3 text-[13px] font-medium text-primary-foreground hover:bg-ws-action-hover disabled:opacity-40"
         >
           {saving ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />

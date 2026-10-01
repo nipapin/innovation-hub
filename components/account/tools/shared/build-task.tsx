@@ -283,7 +283,7 @@ export function BuildTaskScreen({
               <button
                 type="button"
                 onClick={() => void start()}
-                className="h-[32px] rounded bg-ws-action px-3 text-[13px] font-semibold text-white hover:bg-ws-action-hover"
+                className="h-[32px] rounded bg-ws-action px-3 text-[13px] font-semibold text-primary-foreground hover:bg-ws-action-hover"
               >
                 {t.srtBuildStart}
               </button>

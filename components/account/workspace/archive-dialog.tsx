@@ -311,7 +311,7 @@ export function ArchiveDialog() {
             type="button"
             disabled={loading || !plan || plan.parts.length === 0}
             onClick={downloadAll}
-            className="gap-1.5 bg-ws-action text-white hover:bg-ws-action-hover"
+            className="gap-1.5 bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

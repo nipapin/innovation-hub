@@ -168,7 +168,7 @@ export function DescriptionDialog({
                 <Button
                   size="sm"
                   disabled={saving || !dirty}
-                  className="gap-1.5 bg-ws-action text-white hover:bg-ws-action-hover"
+                  className="gap-1.5 bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
                   onClick={() => void save()}
                 >
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}

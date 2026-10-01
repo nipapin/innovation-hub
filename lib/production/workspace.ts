@@ -1,7 +1,9 @@
 import { query, withTransaction } from "@/lib/db"
 import { insertSystem, unreadByStep } from "./chat"
-import { hasChat, listTree, type StepPaths } from "./flow"
+import { hasChat, listTree, markSoleExecutor, type StepPaths } from "./flow"
 import { formStatus, type FormState } from "./form"
+import { fileTypeDictionary } from "./uploads"
+import { canEditStepPeople, hasStepRole, listAddedPeople } from "./step-people"
 import {
   isWorkNode,
   predecessors,
@@ -16,8 +18,9 @@ import {
  * Данные раздела «Производство» — docs/PRODUCTION_PLAN.md §6.5, §9, шаг 1.8.
  *
  * Человек видит ролики, где он участник чата хотя бы одного этапа, и под
- * каждым — только свои этапы. Автор пайплайна видит все этапы своих роликов:
- * он отвечает за производство целиком.
+ * каждым — только свои этапы; автоматики в списке нет, её никто не делает
+ * руками. Автор пайплайна и запустивший видят свой ролик, даже если этапов
+ * у них нет — чтобы им управлять; чужие этапы открываются со схемы по ссылке.
  */
 
 export type StepStatus = "waiting" | "ready" | "approved" | "inherited"
@@ -31,7 +34,15 @@ export type MyRun = {
   createdAt: string
   /** Прогресс по всем этапам ролика, а не только моим — зелёная полоса (§9.1). */
   progress: { done: number; total: number }
-  steps: { id: string; name: string; kind: WorkKind; status: StepStatus; dueAt: string | null; unread: number }[]
+  /** Переименовать и завершить: автор пайплайна, запустивший и проверяющие (§4.7). */
+  canManage: boolean
+  /** Удалить: только автор пайплайна и запустивший. */
+  canDelete: boolean
+  pipelineId: string
+  /** Править пайплайн — автор и редакторы (§6.4): пункт в меню ролика. */
+  canEditPipeline: boolean
+  /** `redo` — этап до него вернули в работу, его надо пройти заново. */
+  steps: { id: string; name: string; kind: WorkKind; status: StepStatus; dueAt: string | null; unread: number; redo: boolean }[]
 }
 
 /** Имя ноды из графа версии — одним выражением, чтобы не тащить граф ради него. */
@@ -43,6 +54,15 @@ const NODE_KIND = `(SELECT CASE WHEN n->>'kind' = 'stage'
                             ELSE n->>'kind' END
                       FROM jsonb_array_elements(v.graph->'nodes') n
                      WHERE n->>'id' = rs.node_id)`
+
+/** Права на ролик `r` пайплайна `p` для `$1` — те же, что проверяет lib/production/runs.ts. */
+const RUN_CAN_DELETE = `(p.owner_user_id = $1 OR r.created_by = $1)`
+const PIPELINE_CAN_EDIT = `(p.owner_user_id = $1 OR EXISTS (
+  SELECT 1 FROM production_pipeline_people pe
+   WHERE pe.pipeline_id = p.id AND pe.user_id = $1 AND pe.role = 'editor'))`
+const RUN_CAN_MANAGE = `(${RUN_CAN_DELETE} OR EXISTS (
+  SELECT 1 FROM production_pipeline_people pp
+   WHERE pp.pipeline_id = p.id AND pp.user_id = $1 AND pp.role = 'reviewer'))`
 
 export async function listMyRuns(userId: string, archived: boolean): Promise<MyRun[]> {
   const { rows } = await query<{
@@ -57,14 +77,27 @@ export async function listMyRuns(userId: string, archived: boolean): Promise<MyR
     stepKind: WorkKind
     stepStatus: StepStatus
     stepDue: string | null
+    stepRedo: boolean
     doneSteps: number
     totalSteps: number
+    canManage: boolean
+    canDelete: boolean
+    pipelineId: string
+    canEditPipeline: boolean
+    mine: boolean
   }>(
     `SELECT r.id AS "runId", r.name AS "runName", p.name AS "pipelineName",
             r.status AS "runStatus", r.due_at AS "runDue", r.created_at AS "createdAt",
             rs.id AS "stepId", ${NODE_NAME} AS "stepName", ${NODE_KIND} AS "stepKind",
             rs.status AS "stepStatus", rs.due_at AS "stepDue",
-            c.done AS "doneSteps", c.total AS "totalSteps"
+            COALESCE((rs.paths->>'redo')::boolean, false) AS "stepRedo",
+            c.done AS "doneSteps", c.total AS "totalSteps",
+            ${RUN_CAN_MANAGE} AS "canManage", ${RUN_CAN_DELETE} AS "canDelete",
+            p.id AS "pipelineId", ${PIPELINE_CAN_EDIT} AS "canEditPipeline",
+            (${NODE_KIND} NOT IN ('auto', 'action') AND EXISTS (
+              SELECT 1 FROM production_chat_members cm
+               WHERE cm.run_step_id = rs.id AND cm.user_id = $1 AND cm.left_at IS NULL
+            )) AS mine
        FROM production_runs r
        JOIN production_pipelines p ON p.id = r.pipeline_id
        JOIN production_pipeline_versions v
@@ -81,7 +114,7 @@ export async function listMyRuns(userId: string, archived: boolean): Promise<MyR
       WHERE (r.archived_at IS NOT NULL) = $2
         AND ${NODE_KIND} NOT IN ('start', 'final')
         AND (
-          p.owner_user_id = $1
+          ${RUN_CAN_DELETE}
           OR EXISTS (
             SELECT 1 FROM production_chat_members cm
              WHERE cm.run_step_id = rs.id AND cm.user_id = $1 AND cm.left_at IS NULL
@@ -103,10 +136,15 @@ export async function listMyRuns(userId: string, archived: boolean): Promise<MyR
         dueAt: row.runDue,
         createdAt: row.createdAt,
         progress: { done: row.doneSteps, total: row.totalSteps },
+        canManage: row.canManage,
+        canDelete: row.canDelete,
+        pipelineId: row.pipelineId,
+        canEditPipeline: row.canEditPipeline,
         steps: [],
       }
       runs.set(row.runId, run)
     }
+    if (!row.mine) continue
     run.steps.push({
       id: row.stepId,
       name: row.stepName,
@@ -114,11 +152,12 @@ export async function listMyRuns(userId: string, archived: boolean): Promise<MyR
       status: row.stepStatus,
       dueAt: row.stepDue,
       unread: 0,
+      redo: row.stepRedo,
     })
   }
-  const unread = await unreadByStep(userId, rows.map((r) => r.stepId))
+  const unread = await unreadByStep(userId, rows.filter((r) => r.mine).map((r) => r.stepId))
   for (const run of runs.values()) for (const s of run.steps) s.unread = unread.get(s.id) ?? 0
-  return [...runs.values()]
+  return [...runs.values()].filter((run) => run.steps.length > 0 || run.canDelete)
 }
 
 // ─── Этап ─────────────────────────────────────────────────────────────────
@@ -143,6 +182,8 @@ export type SchemeNodeView = {
   y: number
   machine: boolean
   autoApprove: boolean
+  /** Принятый раньше, но этап до него вернули в работу. */
+  redo: boolean
 }
 
 export type StepView = {
@@ -153,6 +194,10 @@ export type StepView = {
   pipelineName: string
   name: string
   status: StepStatus
+  /** Этап до него вернули в работу — пройти заново. */
+  redo: boolean
+  /** Ветка: от какого ролика и с какого этапа (§4.6). */
+  parentRunId: string | null
   dueAt: string | null
   kind: WorkKind
   /** Ключ инструмента — кнопка «Открыть в инструменте» (§3.2б). */
@@ -165,11 +210,25 @@ export type StepView = {
    */
   machine: { watched: boolean; results: boolean } | null
   /** Строки формы и сколько в каждой уже лежит. */
-  form: ({ rows: FormRow[] } & FormState) | null
-  executors: { id: string; name: string; marked: boolean }[]
-  reviewers: { id: string; name: string }[]
-  me: { id: string; isExecutor: boolean; isReviewer: boolean; isOwner: boolean }
+  form:
+    | ({
+        rows: FormRow[]
+        /** Рабочая папка — по ней файл слота находится в `files.work`. */
+        work: string
+        /** Словарь типов конвейера: тип → расширения, как у проектов. */
+        fileTypes: Record<string, string[]>
+      } & FormState)
+    | null
+  /** `added` — добавлен «+» только в этот ролик; его можно убрать здесь же. */
+  executors: { id: string; name: string; marked: boolean; added: boolean }[]
+  reviewers: { id: string; name: string; added: boolean }[]
+  me: { id: string; isExecutor: boolean; isReviewer: boolean; isOwner: boolean; canEditPeople: boolean }
   approvedFileId: string | null
+  /**
+   * Папки этапа в его проекте — открыть их в «Проектах» (`?id=&path=`).
+   * `in` — входная папка, если вход копируется (автоматика); иначе null.
+   */
+  folders: { projectId: string; work: string | null; final: string | null; in: string | null } | null
   scheme: { nodes: SchemeNodeView[]; edges: [string, string][] }
   files: { in: StepFile[]; work: StepFile[]; final: StepFile[] }
 }
@@ -183,6 +242,8 @@ export type StepRow = {
   approvedFileId: string | null
   paths: StepPaths | null
   runName: string
+  runCreatedBy: string | null
+  parentRunId: string | null
   pipelineId: string
   pipelineName: string
   ownerUserId: string
@@ -194,7 +255,7 @@ export async function loadStep(stepId: string): Promise<StepRow | null> {
   const { rows } = await query<StepRow>(
     `SELECT rs.id, rs.run_id AS "runId", rs.node_id AS "nodeId", rs.status,
             rs.due_at AS "dueAt", rs.approved_file_id AS "approvedFileId", rs.paths,
-            r.name AS "runName", p.id AS "pipelineId", p.name AS "pipelineName",
+            r.name AS "runName", r.created_by AS "runCreatedBy", r.parent_run_id AS "parentRunId", p.id AS "pipelineId", p.name AS "pipelineName",
             p.owner_user_id AS "ownerUserId", v.graph,
             COALESCE(rs.paths->>'projectId', ps.project_id) AS "projectId"
        FROM production_run_steps rs
@@ -291,6 +352,133 @@ function layout(graph: PipelineGraph): Map<string, { x: number; y: number }> {
   return out
 }
 
+/** Схема ролика: кружок на этап со статусом, связи — из графа версии. */
+function buildScheme(
+  graph: PipelineGraph,
+  bySnode: Map<string, { status: StepStatus; paths?: StepPaths | null }>,
+): { nodes: SchemeNodeView[]; edges: [string, string][] } {
+  const positions = layout(graph)
+  return {
+    nodes: graph.nodes.filter(isWorkNode).map((n) => ({
+      id: n.id,
+      name: n.data.name,
+      kind: n.kind,
+      status: bySnode.get(n.id)?.status ?? ("waiting" as StepStatus),
+      x: positions.get(n.id)?.x ?? 0,
+      y: positions.get(n.id)?.y ?? 0,
+      machine: n.kind === "auto" || n.kind === "action",
+      autoApprove: n.kind === "action" || (n.kind === "auto" && n.data.autoApprove),
+      redo: Boolean(bySnode.get(n.id)?.paths?.redo),
+    })),
+    edges: graph.edges.map((e) => [e.source, e.target] as [string, string]),
+  }
+}
+
+// ─── Обзор ролика ─────────────────────────────────────────────────────────
+
+export type RunOverview = {
+  id: string
+  name: string
+  pipelineName: string
+  status: MyRun["status"]
+  progress: { done: number; total: number }
+  scheme: { nodes: SchemeNodeView[]; edges: [string, string][] }
+  /** Мои этапы: со схемы на них можно перейти. Остальные — только FINAL. */
+  myStepIds: Record<string, string>
+  /** FINAL принятых этапов по id ноды. */
+  finals: Record<string, StepFile[]>
+  /**
+   * Последний результат — принятые этапы, после которых принятых ещё нет: где
+   * ролик сейчас. Параллельные ветки — несколько.
+   */
+  latest: string[]
+}
+
+/**
+ * Обзор ролика — «этап без чата»: вся схема и принятое. Видит тот, кто видит
+ * ролик: участник чата любого его этапа, автор пайплайна, запустивший.
+ * Рабочие папки чужих этапов здесь не показываются.
+ */
+export async function getRunOverview(runId: string, userId: string): Promise<RunOverview | null> {
+  const { rows } = await query<{
+    id: string
+    name: string
+    pipelineName: string
+    status: MyRun["status"]
+    graph: PipelineGraph
+    visible: boolean
+  }>(
+    `SELECT r.id, r.name, p.name AS "pipelineName", r.status, v.graph,
+            (p.owner_user_id = $2 OR r.created_by = $2 OR EXISTS (
+              SELECT 1 FROM production_chat_members cm
+                JOIN production_run_steps s ON s.id = cm.run_step_id
+               WHERE s.run_id = r.id AND cm.user_id = $2 AND cm.left_at IS NULL)) AS visible
+       FROM production_runs r
+       JOIN production_pipelines p ON p.id = r.pipeline_id
+       JOIN production_pipeline_versions v
+         ON v.pipeline_id = r.pipeline_id AND v.version = r.pipeline_version
+      WHERE r.id = $1`,
+    [runId, userId],
+  )
+  const run = rows[0]
+  if (!run?.visible) return null
+  const graph = upgradeGraph(run.graph)
+
+  const steps = await query<{
+    id: string
+    nodeId: string
+    status: StepStatus
+    paths: StepPaths | null
+    projectId: string | null
+    mine: boolean
+  }>(
+    `SELECT rs.id, rs.node_id AS "nodeId", rs.status, rs.paths,
+            COALESCE(rs.paths->>'projectId', ps.project_id) AS "projectId",
+            EXISTS (SELECT 1 FROM production_chat_members cm
+                     WHERE cm.run_step_id = rs.id AND cm.user_id = $2 AND cm.left_at IS NULL) AS mine
+       FROM production_run_steps rs
+       JOIN production_runs r ON r.id = rs.run_id
+       LEFT JOIN production_pipeline_steps ps
+         ON ps.pipeline_id = r.pipeline_id AND ps.node_id = rs.node_id
+      WHERE rs.run_id = $1`,
+    [runId, userId],
+  )
+  const bySnode = new Map(steps.rows.map((s) => [s.nodeId, s]))
+  const scheme = buildScheme(graph, bySnode)
+  const work = graph.nodes.filter(isWorkNode)
+  const isDone = (id: string) => ["approved", "inherited"].includes(bySnode.get(id)?.status ?? "")
+  const done = work.filter((n) => isDone(n.id))
+
+  const finals: Record<string, StepFile[]> = {}
+  await Promise.all(
+    done.map(async (n) => {
+      const st = bySnode.get(n.id)
+      finals[n.id] = await listFolderFiles(st?.projectId ?? null, st?.paths?.final)
+    }),
+  )
+  const latest = done
+    .filter((n) => !graph.edges.some((e) => e.source === n.id && isDone(e.target)))
+    .map((n) => n.id)
+
+  const myStepIds: Record<string, string> = {}
+  for (const st of steps.rows) {
+    const node = work.find((n) => n.id === st.nodeId)
+    if (st.mine && node && node.kind !== "auto" && node.kind !== "action") myStepIds[st.nodeId] = st.id
+  }
+
+  return {
+    id: run.id,
+    name: run.name,
+    pipelineName: run.pipelineName,
+    status: run.status,
+    progress: { done: done.length, total: work.length },
+    scheme,
+    myStepIds,
+    finals,
+    latest,
+  }
+}
+
 export async function getStepView(stepId: string, userId: string): Promise<StepView | null> {
   const step = await loadStep(stepId)
   if (!step || !(await canSeeStep(step, userId))) return null
@@ -298,7 +486,7 @@ export async function getStepView(stepId: string, userId: string): Promise<StepV
   const node = step.graph.nodes.find((n) => n.id === step.nodeId)
   if (!isWorkNode(node)) return null
 
-  const [allSteps, people, marks] = await Promise.all([
+  const [allSteps, people, marks, added] = await Promise.all([
     query<{ id: string; nodeId: string; status: StepStatus; paths: StepPaths | null; projectId: string | null }>(
       `SELECT rs.id, rs.node_id AS "nodeId", rs.status, rs.paths,
               COALESCE(rs.paths->>'projectId', ps.project_id) AS "projectId"
@@ -319,30 +507,27 @@ export async function getStepView(stepId: string, userId: string): Promise<StepV
         WHERE run_step_id = $1 ORDER BY marked_at`,
       [step.id],
     ),
+    listAddedPeople(step.id),
   ])
 
-  const executorIds = people.rows.filter((p) => p.role === "executor").map((p) => p.userId)
-  const reviewerIds = people.rows.filter((p) => p.role === "reviewer").map((p) => p.userId)
+  const fromPipeline = (role: string) => people.rows.filter((p) => p.role === role).map((p) => p.userId)
+  const addedIds = (role: string) => added.filter((p) => p.role === role).map((p) => p.userId)
+  const pipelineExecutors = fromPipeline("executor")
+  const pipelineReviewers = fromPipeline("reviewer")
+  const executorIds = [...new Set([...pipelineExecutors, ...addedIds("executor")])]
+  const reviewerIds = [...new Set([...pipelineReviewers, ...addedIds("reviewer")])]
   const marked = marks.rows.map((m) => m.userId)
+  // Этапы, открытые до автоназначения: единственный исполнитель назначается при первом взгляде.
+  if (step.status === "ready" && executorIds.length === 1 && marked.length === 0) {
+    await withTransaction((client) => markSoleExecutor(client, step.pipelineId, step.id, step.nodeId))
+    marked.push(executorIds[0])
+  }
   // Отметившийся, которого потом убрали из исполнителей, остаётся видимым: он
   // этап делал, и в отчётах он исполнитель.
   const names = await namesOf([...new Set([...executorIds, ...reviewerIds, ...marked])])
 
   const bySnode = new Map(allSteps.rows.map((s) => [s.nodeId, s]))
-  const positions = layout(step.graph)
-  const scheme = {
-    nodes: step.graph.nodes.filter(isWorkNode).map((n) => ({
-      id: n.id,
-      name: n.data.name,
-      kind: n.kind,
-      status: bySnode.get(n.id)?.status ?? ("waiting" as StepStatus),
-      x: positions.get(n.id)?.x ?? 0,
-      y: positions.get(n.id)?.y ?? 0,
-      machine: n.kind === "auto" || n.kind === "action",
-      autoApprove: n.kind === "action" || (n.kind === "auto" && n.data.autoApprove),
-    })),
-    edges: step.graph.edges.map((e) => [e.source, e.target] as [string, string]),
-  }
+  const scheme = buildScheme(step.graph, bySnode)
 
   // Исходники — FINAL непосредственно предыдущих этапов этого ролика (§4.4).
   const inputs = await Promise.all(
@@ -373,13 +558,14 @@ export async function getStepView(stepId: string, userId: string): Promise<StepV
   if (node.kind === "form") {
     const tree = await listTree(step.projectId ?? undefined, step.paths?.work)
     const checked = formStatus(node.data.rows, step.paths?.work ?? "", tree)
-    form = { rows: node.data.rows, ...checked }
+    form = { rows: node.data.rows, work: step.paths?.work ?? "", fileTypes: await fileTypeDictionary(), ...checked }
   }
 
   const executors = [...new Set([...marked, ...executorIds])].map((id) => ({
     id,
     name: names.get(id) ?? "?",
     marked: marked.includes(id),
+    added: !pipelineExecutors.includes(id) && executorIds.includes(id),
   }))
 
   return {
@@ -390,6 +576,8 @@ export async function getStepView(stepId: string, userId: string): Promise<StepV
     pipelineName: step.pipelineName,
     name: node.data.name,
     status: step.status,
+    redo: Boolean(step.paths?.redo),
+    parentRunId: step.parentRunId,
     dueAt: step.dueAt,
     kind: node.kind,
     toolKey: node.kind === "tool" ? (node.data.tool?.key ?? null) : null,
@@ -398,14 +586,23 @@ export async function getStepView(stepId: string, userId: string): Promise<StepV
     machine,
     form,
     executors,
-    reviewers: reviewerIds.map((id) => ({ id, name: names.get(id) ?? "?" })),
+    reviewers: reviewerIds.map((id) => ({ id, name: names.get(id) ?? "?", added: !pipelineReviewers.includes(id) })),
     me: {
       id: userId,
       isExecutor: executorIds.includes(userId),
       isReviewer: reviewerIds.includes(userId),
       isOwner: step.ownerUserId === userId,
+      canEditPeople: step.status === "ready" || step.status === "waiting" ? await canEditStepPeople(step, userId) : false,
     },
     approvedFileId: step.approvedFileId,
+    folders: step.projectId
+      ? {
+          projectId: step.projectId,
+          work: step.paths?.work ?? null,
+          final: step.paths?.final ?? null,
+          in: Object.values(step.paths?.inputs ?? {})[0] ?? null,
+        }
+      : null,
     scheme,
     files: { in: copied ?? inputs.flat(), work: machineResults ?? work, final },
   }
@@ -421,12 +618,7 @@ export async function toggleExecutorMark(stepId: string, userId: string): Promis
   const step = await loadStep(stepId)
   if (!step || !(await canSeeStep(step, userId))) return { ok: false, reason: "not-found" }
   if (step.status !== "ready") return { ok: false, reason: "closed" }
-  const { rowCount: isExecutor } = await query(
-    `SELECT 1 FROM production_pipeline_people
-      WHERE pipeline_id = $1 AND node_id = $2 AND user_id = $3 AND role = 'executor'`,
-    [step.pipelineId, step.nodeId, userId],
-  )
-  if (!isExecutor) return { ok: false, reason: "not-executor" }
+  if (!(await hasStepRole(step, userId, "executor"))) return { ok: false, reason: "not-executor" }
 
   const removed = await query(
     `DELETE FROM production_run_step_executors WHERE run_step_id = $1 AND user_id = $2`,

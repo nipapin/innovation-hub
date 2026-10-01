@@ -199,7 +199,7 @@ export function PreviewTab() {
           <button
             type="button"
             onClick={() => openPreview()}
-            className="flex items-center justify-center gap-2 rounded-[9px] bg-ws-action px-3 py-[7px] text-[12.5px] text-white hover:bg-ws-action-hover"
+            className="flex items-center justify-center gap-2 rounded-[9px] bg-ws-action px-3 py-[7px] text-[12.5px] text-primary-foreground hover:bg-ws-action-hover"
           >
             <Maximize2 className="h-4 w-4 shrink-0" />
             {t.previewFull}

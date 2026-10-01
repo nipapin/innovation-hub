@@ -260,7 +260,7 @@ export function companyAddedHtml(input: {
       <h1 style="margin:0 0 20px;font-size:24px;line-height:30px;font-weight:700;letter-spacing:-0.4px;">${escapeHtml(input.brand.name)}</h1>
       <p style="margin:0;font-size:16px;line-height:24px;color:#334155;">Hi ${escapeHtml(input.inviteeName)},</p>
       <p style="margin:12px 0 0;font-size:16px;line-height:24px;color:#334155;"><strong style="color:#0f172a;">${escapeHtml(input.inviterName)}</strong> added you to ${escapeHtml(input.brand.name)}.</p>
-      <p style="margin:12px 0 0;font-size:14px;line-height:22px;color:#64748b;">Sign in as usual — your password stays the same. The company now appears in the workspace switcher at the top of your sidebar, next to your personal workspace.</p>
+      <p style="margin:12px 0 0;font-size:14px;line-height:22px;color:#64748b;">Sign in as usual — your password stays the same. The team now appears in the workspace switcher at the top of your sidebar, next to your personal workspace.</p>
       ${ctaButton(input.openUrl, `Open ${escapeHtml(input.brand.name)}`)}
     </td>
   </tr>`

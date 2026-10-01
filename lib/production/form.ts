@@ -19,7 +19,7 @@ export function toElementRows(rows: readonly FormRow[]): ElementRow[] {
     id: row.id,
     label: row.label,
     tooltip: "",
-    type: row.type,
+    types: row.types,
     op: row.op,
     count: row.count,
     children: toElementRows(row.children),

@@ -9,7 +9,10 @@ import { query } from "@/lib/db"
  *   - исходники: участник чата этапа ролика читает FINAL непосредственно
  *     предыдущих этапов этого же ролика (передача ссылкой, а не копией);
  *   - свой этап: участник чата читает рабочую и финальную папки своего этапа
- *     ролика — так файлы видит и гость, позванный в чат (§6.1).
+ *     ролика — так файлы видит и гость, позванный в чат (§6.1);
+ *   - обзор ролика: кто видит ролик (участник чата любого его этапа, автор
+ *     пайплайна, запустивший), читает FINAL любого этапа — принятое. Рабочие
+ *     папки чужих этапов по-прежнему закрыты.
  *
  * Это не права на папку: ответ «да» только на конкретный файл по его месту.
  * Предшественники берутся из графа той версии, по которой идёт ролик.
@@ -46,6 +49,32 @@ export async function canReadProductionFile(
                WHERE e->>'source' = t.node_id AND e->>'target' = s.node_id
             )
             AND ($3 = t.paths->>'final' OR starts_with($3, (t.paths->>'final') || '/'))
+          )
+        )
+      LIMIT 1`,
+    [userId, file.projectId, file.folderPath],
+  )
+  if (rowCount) return true
+  return canReadRunFinal(userId, file)
+}
+
+async function canReadRunFinal(userId: string, file: { projectId: string; folderPath: string }): Promise<boolean> {
+  const { rowCount } = await query(
+    `SELECT 1
+       FROM production_run_steps t
+       JOIN production_runs r ON r.id = t.run_id
+       JOIN production_pipelines p ON p.id = r.pipeline_id
+       LEFT JOIN production_pipeline_steps ps
+         ON ps.pipeline_id = r.pipeline_id AND ps.node_id = t.node_id
+      WHERE COALESCE(t.paths->>'projectId', ps.project_id) = $2
+        AND t.paths->>'final' IS NOT NULL
+        AND ($3 = t.paths->>'final' OR starts_with($3, (t.paths->>'final') || '/'))
+        AND (
+          p.owner_user_id = $1 OR r.created_by = $1
+          OR EXISTS (
+            SELECT 1 FROM production_chat_members cm
+              JOIN production_run_steps s ON s.id = cm.run_step_id
+             WHERE s.run_id = r.id AND cm.user_id = $1 AND cm.left_at IS NULL
           )
         )
       LIMIT 1`,

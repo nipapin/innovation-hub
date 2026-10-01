@@ -3,10 +3,30 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useState } from "react"
-import { ArrowLeft, Loader2, Plus, Search, Workflow } from "lucide-react"
+import {
+  Archive,
+  ArchiveRestore,
+  ArrowLeft,
+  CirclePause,
+  CirclePlay,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Workflow,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { useI18n } from "@/components/account/i18n"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
 type PipelineCard = {
@@ -14,6 +34,9 @@ type PipelineCard = {
   name: string
   status: "draft" | "active" | "archived"
   currentVersion: number | null
+  /** Счётчик блокировки: PATCH без него не примут (§3.5). */
+  revision: number
+  pausedAt: string | null
   activeRuns: number
   updatedAt: string
 }
@@ -49,6 +72,58 @@ export function PipelinesList() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [draft, setDraft] = useState("")
+
+  /**
+   * Управление с карточки — тем же PATCH, что сохраняет редактор. Конфликт
+   * ревизии значит, что пайплайн правят прямо сейчас: перечитываем и просим
+   * повторить, а не перетираем чужое.
+   */
+  const patch = async (item: PipelineCard, body: Record<string, unknown>): Promise<boolean> => {
+    const res = await fetch(`/api/production/pipelines/${encodeURIComponent(item.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision: item.revision, ...body }),
+    })
+    if (!res.ok) {
+      toast.error(res.status === 409 ? t.productionEdChangedElsewhere : t.productionEdActionFailed)
+    }
+    await load()
+    return res.ok
+  }
+
+  const rename = async (item: PipelineCard) => {
+    const name = draft.trim()
+    setRenaming(null)
+    if (!name || name === item.name) return
+    await patch(item, { name })
+  }
+
+  const confirmThen = (question: string, name: string) => window.confirm(question.replace("{name}", name))
+
+  const togglePause = async (item: PipelineCard) => {
+    const pausing = !item.pausedAt
+    if (pausing && !confirmThen(t.productionEdPauseConfirm, item.name)) return
+    await patch(item, { paused: pausing })
+  }
+
+  const toggleArchive = async (item: PipelineCard) => {
+    const archiving = item.status !== "archived"
+    if (archiving && !confirmThen(t.productionEdArchiveConfirm, item.name)) return
+    await patch(item, { archived: archiving })
+  }
+
+  const remove = async (item: PipelineCard) => {
+    if (!confirmThen(t.productionEdDeleteConfirm, item.name)) return
+    const res = await fetch(`/api/production/pipelines/${encodeURIComponent(item.id)}`, { method: "DELETE" })
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { code?: string }
+      toast.error(body.code === "active-runs" ? t.productionEdDeleteBlocked : t.productionEdActionFailed)
+    }
+    await load()
+  }
 
   const create = async () => {
     // Название задаётся в редакторе: здесь — только по умолчанию.
@@ -120,7 +195,7 @@ export function PipelinesList() {
               type="button"
               disabled={creating}
               onClick={() => void create()}
-              className="flex h-9 items-center gap-1.5 rounded-[9px] bg-ws-action px-3 text-[13px] font-medium text-white hover:bg-ws-action-hover disabled:opacity-50"
+              className="flex h-9 items-center gap-1.5 rounded-[9px] bg-ws-action px-3 text-[13px] font-medium text-primary-foreground hover:bg-ws-action-hover disabled:opacity-50"
             >
               {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               {t.productionEdNewPipeline}
@@ -141,31 +216,112 @@ export function PipelinesList() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {shown(items, archive, query).map((item) => (
-              <Link
+              // Меню — рядом со ссылкой, а не внутри: кнопка в ссылке открывала бы редактор.
+              <div
                 key={item.id}
-                href={`/account/production/pipelines/${item.id}`}
                 className={cn(
-                  "rounded-xl border border-foreground/10 bg-ws-panel p-4 transition-colors hover:border-foreground/20",
+                  "group/card relative rounded-xl border border-foreground/10 bg-ws-panel transition-colors hover:border-foreground/20",
                   item.status === "archived" && "opacity-60",
                 )}
               >
-                <div className="flex items-center gap-2">
-                  <Workflow className="h-4 w-4 text-ws-4" />
-                  <span className="min-w-0 flex-1 truncate text-[14.5px] font-semibold text-ws-1">{item.name}</span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-ws-4">
-                  <span>
-                    {item.status === "draft"
-                      ? t.productionEdStatusDraft
-                      : item.status === "active"
-                        ? t.productionEdStatusActive.replace("{v}", String(item.currentVersion ?? 1))
-                        : t.productionEdStatusArchived}
-                  </span>
-                  {item.activeRuns > 0 ? (
-                    <span>{t.productionEdRunsInWork.replace("{n}", String(item.activeRuns))}</span>
-                  ) : null}
-                </div>
-              </Link>
+                {renaming === item.id ? (
+                  <form
+                    className="flex items-center gap-2 p-4 pb-0"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      void rename(item)
+                    }}
+                  >
+                    <Workflow className="h-4 w-4 shrink-0 text-ws-4" />
+                    <input
+                      autoFocus
+                      value={draft}
+                      maxLength={120}
+                      onChange={(event) => setDraft(event.target.value)}
+                      onBlur={() => void rename(item)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setRenaming(null)
+                      }}
+                      className="h-7 min-w-0 flex-1 rounded-md border border-foreground/15 bg-ws-control px-2 text-[14px] font-semibold text-ws-1 outline-none focus:border-ws-select"
+                    />
+                  </form>
+                ) : null}
+                <Link
+                  href={`/account/production/pipelines/${item.id}`}
+                  className={cn("block p-4 pr-11", renaming === item.id && "pt-2")}
+                >
+                  {renaming === item.id ? null : (
+                    <div className="flex items-center gap-2">
+                      <Workflow className="h-4 w-4 text-ws-4" />
+                      <span className="min-w-0 flex-1 truncate text-[14.5px] font-semibold text-ws-1">{item.name}</span>
+                    </div>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-ws-4">
+                    <span>
+                      {item.status === "draft"
+                        ? t.productionEdStatusDraft
+                        : item.status === "active"
+                          ? t.productionEdStatusActive.replace("{v}", String(item.currentVersion ?? 1))
+                          : t.productionEdStatusArchived}
+                    </span>
+                    {item.status === "active" && item.pausedAt ? (
+                      <span className="text-warning">{t.productionEdStatusPaused}</span>
+                    ) : null}
+                    {item.activeRuns > 0 ? (
+                      <span>{t.productionEdRunsInWork.replace("{n}", String(item.activeRuns))}</span>
+                    ) : null}
+                  </div>
+                </Link>
+
+                {renaming === item.id ? null : (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={t.productionEdPipelineActions}
+                        className="absolute right-2.5 top-3 flex h-7 w-7 items-center justify-center rounded-md text-ws-4 opacity-0 transition-opacity hover:bg-ws-hover hover:text-ws-1 focus-visible:opacity-100 group-hover/card:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-[210px]">
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          setDraft(item.name)
+                          setRenaming(item.id)
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        {t.productionEdRename}
+                      </DropdownMenuItem>
+                      {/* Пауза — только у активного: черновик и так не запускается,
+                          архивный — тем более. */}
+                      {item.status === "active" ? (
+                        <DropdownMenuItem onSelect={() => void togglePause(item)}>
+                          {item.pausedAt ? <CirclePlay className="h-4 w-4" /> : <CirclePause className="h-4 w-4" />}
+                          {item.pausedAt ? t.productionEdResume : t.productionEdPause}
+                        </DropdownMenuItem>
+                      ) : null}
+                      <DropdownMenuItem onSelect={() => void toggleArchive(item)}>
+                        {item.status === "archived" ? (
+                          <ArchiveRestore className="h-4 w-4" />
+                        ) : (
+                          <Archive className="h-4 w-4" />
+                        )}
+                        {item.status === "archived" ? t.productionEdRestore : t.productionEdArchive}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => void remove(item)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {t.productionEdDelete}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
             ))}
           </div>
         )}

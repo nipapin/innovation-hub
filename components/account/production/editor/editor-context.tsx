@@ -10,6 +10,7 @@ import type { PersonOption } from "@/lib/production/people-types"
  * каждом шаге перетаскивания, и функции в `data` рвали бы мемоизацию.
  */
 export type EditorApi = {
+  pipelineId: string
   readOnly: boolean
   /** Черновик: только в нём папкой этапа можно указать `$pipelineName`. */
   isDraft: boolean
@@ -18,6 +19,16 @@ export type EditorApi = {
   projects: { id: string; name: string }[]
   /** Типы файлов из словаря установки — для строк формы. */
   fileTypes: string[]
+  /** Инструменты, доступные этому человеку, — для выбора в ноде «Инструмент». */
+  toolKeys: string[]
+  /** Назвать этап, а занятое имя дополнить числом: «Форма 1», «Форма 2»… */
+  nameStage: (id: string, name: string) => void
+  /**
+   * Названия строк, которые уже есть в пайплайне: строки форм и имена, которые
+   * ждёт обработка в автоматике (форма программы в её проекте). Подсказки к
+   * названию строки формы — с нодами, где имя встречается.
+   */
+  rowNames: { label: string; nodeId: string; nodeName: string }[]
   /** Правка данных ноды — функцией от прежних, чтобы не потерять параллельную. */
   updateNode: (id: string, fn: (node: PipelineNode) => PipelineNode) => void
   removeNode: (id: string) => void

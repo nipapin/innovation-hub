@@ -978,7 +978,7 @@ function LangTab({
       onClick={onClick}
       className={cn(
         "h-[26px] rounded px-2.5 text-[12px] font-semibold",
-        active ? "bg-ws-action text-white" : "text-ws-3 hover:text-ws-1",
+        active ? "bg-ws-action text-primary-foreground" : "text-ws-3 hover:text-ws-1",
       )}
     >
       {label}

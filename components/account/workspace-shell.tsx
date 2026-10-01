@@ -1,4 +1,5 @@
 "use client"
+import type { WorkspaceNavKey } from "@/lib/workspace-nav"
 import { isElevated } from "@/lib/admin-roles"
 import { useDisabledAdminTools } from "@/components/admin/shell/features-context"
 
@@ -8,8 +9,6 @@ import { useEffect, useState } from "react"
 import {
   Archive,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   FolderOpen,
   KeyRound,
   Trash2,
@@ -23,6 +22,7 @@ import {
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { personalMonogram } from "@/lib/branding"
 import type { CompanyRole, UserRole } from "@/lib/domain-types"
 import type { CompanyCapability } from "@/lib/company-capabilities"
 import {
@@ -201,6 +201,12 @@ export type WorkspaceUser = {
    */
   personalProfile?: boolean
   /**
+   * Пункты рабочего места, которые человек убрал из меню в этом профиле
+   * (настройки профиля). Доступ не меняется: открытый раздел, чей пункт убран,
+   * всё равно подсвечивается — пункт показывается, пока ты в нём.
+   */
+  hiddenNav?: WorkspaceNavKey[]
+  /**
    * Виден ли раздел «Производство» — ответ lib/production/availability.ts
    * (выключатель установки и выключатель компании). Оболочка рисует по нему
    * пункт меню и раздаёт его контекстом переключателю в верхней панели.
@@ -279,7 +285,7 @@ function NavItem({
         <>
           <span className="flex-1 whitespace-nowrap">{label}</span>
           {unread > 0 ? (
-            <span className="shrink-0 rounded-full bg-ws-action px-1.5 py-[1px] text-[11px] font-semibold tabular-nums text-white">
+            <span className="shrink-0 rounded-full bg-ws-action px-1.5 py-[1px] text-[11px] font-semibold tabular-nums text-primary-foreground">
               {unread > 99 ? "99+" : unread}
             </span>
           ) : typeof count === "number" && count > 0 ? (
@@ -328,6 +334,9 @@ function SidebarContent({
   // Все разделы — одна страница проектов, отличается только ?tab=…
   const tab = searchParams.get("tab") ?? "projects"
   const isTab = (name: ProjectTab) => inProjects && tab === name
+  // Убранный пункт всё же виден, пока ты в его разделе: иначе непонятно, где ты.
+  const shown = (key: WorkspaceNavKey, active: boolean) =>
+    active || !user.hiddenNav?.includes(key)
   const isProfile = pathname.startsWith("/account/profile")
   /**
    * Админка и кабинет делят одну колонку по очереди: какой набор разделов
@@ -346,6 +355,19 @@ function SidebarContent({
       }
     : loginAdminEntry(user.loginAdmin, disabledAdminTools)
   const inAdmin = Boolean(adminEntry?.active)
+  /**
+   * Шапка «Личного» — сам человек, а не название площадки: «FF Works» над
+   * личными проектами читалось как «вы в компании FF Works». Имя сверху,
+   * «Личное · сменить» — строкой ниже (ProfileSwitcher), монограмма — из имени.
+   * У компании всё как было: её название, монограмма и логотип из оформления.
+   */
+  const head = user.personalProfile
+    ? {
+        name: user.fullName.trim() || t.profilePersonal,
+        monogram: personalMonogram(user.fullName, user.email),
+        logoUrl: null,
+      }
+    : { name: branding.name, monogram: branding.monogram, logoUrl: branding.logoUrl }
   const signOut = async () => {
     await fetch("/api/auth/signout", { method: "POST" })
     router.push("/login")
@@ -369,46 +391,23 @@ function SidebarContent({
         >
           {/* Монограмма, а не литерал «FF»: у компании она своя. Логотип, если
               задан, вытесняет буквы целиком. */}
-          {branding.logoUrl ? (
+          {head.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={branding.logoUrl}
-              alt={branding.name}
+              src={head.logoUrl}
+              alt={head.name}
               className="h-full w-full object-contain"
             />
           ) : (
-            branding.monogram
+            head.monogram
           )}
         </button>
-        {collapsed ? (
-          onToggle ? (
-            <button
-              type="button"
-              onClick={onToggle}
-              title={t.sidebarExpand}
-              aria-label={t.sidebarExpand}
-              className="flex h-[22px] w-[34px] shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          ) : null
-        ) : (
-          <>
-            {/* Название рабочего места и есть переключатель между ними: у
-                человека в нескольких компаниях он открывает выбор. */}
-            <ProfileSwitcher label={branding.name} admin={adminEntry} />
-            {onToggle && (
-              <button
-                type="button"
-                onClick={onToggle}
-                title={t.sidebarCollapse}
-                aria-label={t.sidebarCollapse}
-                className="flex h-[30px] w-[30px] items-center justify-center rounded-md text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-            )}
-          </>
+        {/* Сворачивает и разворачивает панель монограмма: отдельные стрелки
+            налезали на «сменить» в узкой колонке. */}
+        {!collapsed && (
+          /* Название рабочего места и есть переключатель между ними: у
+             человека в нескольких компаниях он открывает выбор. */
+          <ProfileSwitcher label={head.name} admin={adminEntry} />
         )}
       </div>
 
@@ -473,6 +472,7 @@ function SidebarContent({
               {t.workspaceSection}
             </div>
           )}
+          {shown("dashboard", isDash) ? (
           <div onClick={onNavigate}>
             <NavItem
               href="/account"
@@ -482,10 +482,13 @@ function SidebarContent({
               label={t.dashboard}
             />
           </div>
+          ) : null}
           {PROJECT_SECTIONS.map((section) => {
             const Icon = section.icon
+            const sectionShown = shown(section.tab, isTab(section.tab))
             return (
               <div key={section.tab} onClick={onNavigate}>
+                {sectionShown ? (
                 <NavItem
                   href={
                     section.tab === "projects"
@@ -496,14 +499,17 @@ function SidebarContent({
                   collapsed={collapsed}
                   icon={<Icon className="h-5 w-5" />}
                   label={t[section.labelKey]}
-                  count={counts[section.tab]}
+                  count={counts?.[section.tab]}
                 />
+                ) : null}
                 {/* «Производство» — сразу под «Проектами»: это второе рабочее
                     место, а не раздел проектов (docs/PRODUCTION_PLAN.md §9.1).
                     На широком экране в него же ведёт переключатель в верхней
                     панели; пункт меню нужен ещё и потому, что на телефоне
                     верхней панели с переключателем нет. */}
-                {section.tab === "projects" && user.production ? (
+                {section.tab === "projects" &&
+                user.production &&
+                shown("production", pathname.startsWith("/account/production")) ? (
                   <NavItem
                     href="/account/production"
                     active={pathname.startsWith("/account/production")}
@@ -523,7 +529,7 @@ function SidebarContent({
 
               Пункт один, инструментов внутри два: их различают в колонке
               раздела (KeysShell). */}
-          {user.personalProfile ? (
+          {user.personalProfile && shown("keys", isKeysPath(pathname)) ? (
             <div onClick={onNavigate}>
               <NavItem
                 href="/account/vendor-keys"
@@ -678,6 +684,7 @@ function WorkspaceShellInner({
   companyNav,
   companyGuest,
   personalProfile,
+  hiddenNav,
   production,
   loginAdmin,
   children,
@@ -693,6 +700,7 @@ function WorkspaceShellInner({
     companyNav,
     companyGuest,
     personalProfile,
+    hiddenNav,
     production,
     loginAdmin,
   }
@@ -737,7 +745,9 @@ function WorkspaceShellInner({
             ? t.profileTitle
             : pathname.startsWith("/admin")
               ? t.adminPanel
-              : branding.name
+              : personalProfile
+                ? fullName.trim() || t.profilePersonal
+                : branding.name
 
   return (
     <div

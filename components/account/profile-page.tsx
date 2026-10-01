@@ -1,7 +1,7 @@
 "use client"
 import { isElevated } from "@/lib/admin-roles"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -18,6 +18,9 @@ import {
 import type { UserRole } from "@/lib/domain-types"
 import { tf, useI18n } from "@/components/account/i18n"
 import { UserAvatar } from "@/components/account/user-avatar"
+import { AvatarCropDialog } from "@/components/account/avatar-crop-dialog"
+import { WorkspaceMenuSettings } from "@/components/account/workspace-menu-settings"
+import type { WorkspaceNavKey } from "@/lib/workspace-nav"
 import { SITE_NAME } from "@/lib/site"
 import { ProcessingIndicator } from "@/components/account/processing-indicator"
 
@@ -35,6 +38,13 @@ export type ProfileUser = {
    * из профиля компании кнопка вела бы удалять не то место, где человек стоит.
    */
   isPersonal: boolean
+  /** «Личное» скрыто из переключателя — настройка входа. */
+  personalHidden: boolean
+  /** Первая действующая компания; `null` — компаний нет, скрывать «Личное» нельзя. */
+  firstCompanyProfileId: string | null
+  hiddenNav: WorkspaceNavKey[]
+  /** Виден ли раздел «Продакшен» — иначе и пункта для него нет. */
+  production: boolean
   createdAt: string
 }
 
@@ -54,7 +64,7 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
   const { t, lang } = useI18n()
   const router = useRouter()
   const [current, setCurrent] = useState(user)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [cropOpen, setCropOpen] = useState(false)
   const [avatarBusy, setAvatarBusy] = useState(false)
 
   const profileForm = useForm<UpdateProfileInput>({
@@ -108,24 +118,17 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
 
   /**
    * Фото сохраняется сразу, без кнопки «Сохранить» формы: это отдельное
-   * действие, и ждать его вместе с именем и почтой незачем. Файл идёт прямо в
-   * хранилище по подписанной ссылке, сервер потом только запоминает ключ.
+   * действие. В хранилище по подписанной ссылке едет уже вырезанный квадрат из
+   * миниредактора — исходник остаётся в браузере, сервер только запоминает ключ.
    */
-  const onPickAvatar = async (file: File) => {
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      toast.error(t.avatarType)
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error(t.avatarType)
-      return
-    }
+  const onSaveAvatar = async (blob: Blob): Promise<boolean> => {
+    const ext = blob.type === "image/webp" ? "webp" : blob.type === "image/jpeg" ? "jpg" : "png"
     setAvatarBusy(true)
     try {
       const presign = await fetch("/api/account/avatar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: file.name, contentType: file.type }),
+        body: JSON.stringify({ fileName: `avatar.${ext}`, contentType: blob.type }),
       })
       if (!presign.ok) throw new Error("presign")
       const { uploadUrl, key } = (await presign.json()) as {
@@ -134,8 +137,8 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
       }
       const put = await fetch(uploadUrl, {
         method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type },
+        body: blob,
+        headers: { "Content-Type": blob.type },
       })
       if (!put.ok) throw new Error("upload")
       const save = await fetch("/api/account/avatar", {
@@ -148,8 +151,10 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
       setCurrent((c) => ({ ...c, avatarUrl: data.avatarUrl }))
       toast.success(t.avatarSaved)
       router.refresh()
+      return true
     } catch {
       toast.error(t.avatarFailed)
+      return false
     } finally {
       setAvatarBusy(false)
     }
@@ -235,7 +240,7 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
               <div className="flex flex-col items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => fileRef.current?.click()}
+                  onClick={() => setCropOpen(true)}
                   disabled={avatarBusy}
                   title={t.avatarChange}
                   aria-label={t.avatarChange}
@@ -265,16 +270,10 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
                     {t.avatarRemove}
                   </button>
                 ) : null}
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    event.target.value = ""
-                    if (file) void onPickAvatar(file)
-                  }}
+                <AvatarCropDialog
+                  open={cropOpen}
+                  onClose={() => setCropOpen(false)}
+                  onSave={onSaveAvatar}
                 />
               </div>
               <div className="pb-1">
@@ -450,8 +449,17 @@ export function ProfilePageClient({ user }: { user: ProfileUser }) {
             </div>
           </form>
 
-          {/* Danger */}
-          {user.isPersonal ? (
+          <WorkspaceMenuSettings
+            isPersonal={user.isPersonal}
+            personalHidden={user.personalHidden}
+            firstCompanyProfileId={user.firstCompanyProfileId}
+            hiddenNav={user.hiddenNav}
+            production={user.production}
+          />
+
+          {/* Danger. «Личное» скрыто — удалять можно и отсюда: переключиться
+              в него человеку некуда. */}
+          {user.isPersonal || user.personalHidden ? (
           <form
             method="post"
             onSubmit={deleteForm.handleSubmit(onDelete)}

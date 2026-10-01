@@ -347,6 +347,10 @@ function systemText(message: ChatMessage, t: Dictionary): string {
       return t.productionSysAutoApproved
     case "rerun":
       return t.productionSysRerun.replace("{who}", who)
+    case "reopened":
+      return t.productionSysReopened.replace("{who}", who)
+    case "redo_needed":
+      return t.productionSysRedo.replace("{name}", e.name ?? "")
     default:
       return ""
   }

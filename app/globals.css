@@ -18,6 +18,10 @@
     --popover-foreground: 214 20% 90%;
     --primary: 214 88% 66%;
     --primary-foreground: 224 44% 11%;
+    /* Кнопка при наведении: светлота сдвинута ОТ цвета текста, так контраст
+       подписи только растёт. У компании считается тем же правилом — hoverOf()
+       в lib/color-contrast.ts. */
+    --primary-hover: 214 88% 72%;
     --secondary: 225 17% 16%;
     --secondary-foreground: 214 23% 84%;
     --muted: 225 18% 14%;
@@ -44,12 +48,9 @@
     --chart-5: 344 88% 63%;
     --sidebar-background: 226 28% 9%;
     --sidebar-foreground: 214 20% 88%;
-    --sidebar-primary: 214 88% 66%;
-    --sidebar-primary-foreground: 224 44% 11%;
     --sidebar-accent: 225 22% 15%;
     --sidebar-accent-foreground: 214 20% 88%;
     --sidebar-border: 224 18% 20%;
-    --sidebar-ring: 214 88% 66%;
     --radius: 0.75rem;
 
     /* ===== Workspace zone (/account, /admin) — см. docs/UI_TOKENS.md ===== */
@@ -65,11 +66,8 @@
     --ws-text-3: 220 10% 64%;
     --ws-text-4: 221 9% 42%;
     --ws-text-5: 224 13% 33%;
-    /* акценты */
-    --ws-accent: 211 68% 62%;
-    --ws-action: 217 89% 53%;
-    --ws-action-hover: 217 81% 46%;
-    --ws-select: 212 74% 52%;
+    /* акценты: брендовые выводятся из --primary — блок «Производные от
+       акцента» ниже; здесь только смысловые */
     --ws-out: 153 60% 53%;
     /* курсор воспроизведения на таймлинии: единственный сигнальный цвет зоны,
        которому нет пары в шкале выше — красный «ошибка» здесь читался бы как
@@ -89,6 +87,29 @@
     --bg-glow-2: 276 90% 72%;
     --bg-glow-2-alpha: 0.14;
     --bg-bottom: 224 31% 7%;
+  }
+
+  /**
+   * Производные от акцента — docs/DESIGN_REVIEW.md п. 3.1.
+   *
+   * Кнопки, ссылки, выделение и активный пункт меню рабочей зоны берут цвет
+   * компании, а не свои синие числа: иначе в зелёной компании дашборд был
+   * зелёным, а страница проектов — синей. Своих значений у них нет, поэтому
+   * светлая тема и акцент компании приезжают сами — через --primary.
+   *
+   * `.company-brand` здесь потому, что var() вычисляется там, где объявлено:
+   * под `:root` производные застыли бы с акцентом сайта, а внутри консоли
+   * просматриваемой компании (accentCss со scope) нужен её цвет.
+   */
+  :root,
+  .company-brand {
+    --ws-accent: var(--primary);
+    --ws-action: var(--primary);
+    --ws-action-hover: var(--primary-hover);
+    --ws-select: var(--primary);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-ring: var(--ring);
   }
 
   /**
@@ -115,6 +136,7 @@
     --popover-foreground: 224 40% 14%;
     --primary: 214 85% 48%;
     --primary-foreground: 0 0% 100%;
+    --primary-hover: 214 85% 42%;
     --secondary: 220 20% 95%;
     --secondary-foreground: 224 35% 20%;
     --muted: 220 20% 96%;
@@ -143,8 +165,6 @@
     --chart-5: 344 78% 48%;
     --sidebar-background: 220 28% 97%;
     --sidebar-foreground: 224 30% 20%;
-    --sidebar-primary: 214 85% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 220 22% 92%;
     --sidebar-accent-foreground: 224 35% 18%;
     --sidebar-border: 220 16% 88%;
@@ -160,10 +180,6 @@
     --ws-text-3: 220 12% 40%;
     --ws-text-4: 220 10% 55%;
     --ws-text-5: 220 12% 68%;
-    --ws-accent: 211 72% 45%;
-    --ws-action: 217 89% 48%;
-    --ws-action-hover: 217 85% 40%;
-    --ws-select: 212 78% 45%;
     --ws-out: 153 62% 32%;
     --ws-playhead: 18 100% 45%;
 

@@ -331,7 +331,7 @@ export const ChatsColumn = memo(function ChatsColumn({
                             aria-label={tf(t.chatsUnreadAria, {
                               count: chat.unreadCount,
                             })}
-                            className="shrink-0 rounded-full bg-ws-action px-1.5 py-px text-[10px] font-semibold tabular-nums text-white"
+                            className="shrink-0 rounded-full bg-ws-action px-1.5 py-px text-[10px] font-semibold tabular-nums text-primary-foreground"
                           >
                             {chat.unreadCount > 99 ? "99+" : chat.unreadCount}
                           </span>

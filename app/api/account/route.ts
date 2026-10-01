@@ -9,6 +9,7 @@ import {
   countSubprofiles,
   deleteUser,
   findLoginById,
+  readWorkspacePrefs,
 } from "@/lib/repositories/users"
 import { isElevated, isSuperAdmin } from "@/lib/admin-roles"
 
@@ -33,8 +34,14 @@ export async function DELETE(request: Request) {
   // Удаляют вход, и только из «Личного» (docs/MULTI_COMPANY_PROFILES_PLAN.md
   // §5.3): из профиля компании кнопка вела бы удалять не то место, где человек
   // сейчас стоит. Вход — по сессии, а не по почте: почта у профилей одна.
+  // Исключение — «Личное» скрыто: тогда переключиться в него человеку некуда, и
+  // удаляют из профиля компании (ниже всё равно остановит проверка компаний).
   const session = await getSessionLogin()
-  if (session && session.profileId !== session.loginUserId) {
+  if (
+    session &&
+    session.profileId !== session.loginUserId &&
+    !(await readWorkspacePrefs(session.loginUserId)).personalHidden
+  ) {
     return NextResponse.json(
       {
         message: "Switch to your personal profile to delete the account.",

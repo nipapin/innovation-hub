@@ -5,11 +5,12 @@
  * серверный layout, и клиентские шапки. Одно определение наборов, а не по копии
  * на слой.
  *
- * Компания переопределяет ТОЛЬКО акцент — 3 токена из 56. Остальные наследуются
+ * Компания задаёт ТОЛЬКО акцент — один цвет на тему. Из него выводятся текст на
+ * кнопке и цвет при наведении (`readableOn`, `hoverOf`), остальное наследуется
  * от темы. Полная палитра на компанию была бы копией темы в базе: новый токен,
  * заведённый на сайте, в чужую палитру не приехал бы, и разошлись бы они молча.
  */
-import { isHslToken } from "@/lib/color-contrast"
+import { hoverOf, isHslToken, readableOn } from "@/lib/color-contrast"
 
 /**
  * Готовые наборы — быстрый путь, а не единственный (§6.2).
@@ -23,10 +24,9 @@ import { isHslToken } from "@/lib/color-contrast"
  * оказывается нечитаемым, и наоборот. Тема выбирается человеком, акцент задаёт
  * компания; это независимые оси, и они перемножаются.
  *
- * Текст на акценте (`--primary-foreground`) в набор не входит намеренно: в
- * светлой теме он белый, в тёмной почти чёрный — и это свойство ТЕМЫ, одинаковое
- * для всех наборов. Задавать его на компанию значило бы дать ей возможность
- * сделать кнопки нечитаемыми, ровно то, ради чего здесь набор, а не пипетка.
+ * Текст на акценте (`--primary-foreground`) в набор не входит: он не хранится, а
+ * подбирается под цвет кнопки (`readableOn` в lib/color-contrast.ts). Задавать его
+ * руками значило бы дать возможность сделать кнопки нечитаемыми.
  */
 export const ACCENT_PRESETS = {
   blue: { light: "214 85% 48%", dark: "214 88% 66%" },
@@ -146,6 +146,25 @@ export function monogramFrom(title: string): string {
 }
 
 /**
+ * Монограмма «Личного» — из имени человека, а не из названия площадки: в шапке
+ * личного рабочего места стоит он сам, а не наша компания.
+ *
+ * Два слова и больше — по первой букве двух первых («Alex IV» → «AI»). Одно
+ * слово — две первые буквы («Alex» → «AL»): одна буква рядом с двухбуквенными
+ * монограммами компаний смотрелась бы обрезанной. Имени нет — начало почты.
+ */
+export function personalMonogram(fullName: string, email: string): string {
+  const words = fullName.trim().split(/\s+/).filter(Boolean)
+  const firstLetter = (word: string) => word.match(/\p{L}/u)?.[0] ?? word[0] ?? ""
+  if (words.length >= 2) {
+    return (firstLetter(words[0]) + firstLetter(words[1])).toLocaleUpperCase()
+  }
+  const word = words[0] ?? email.split("@")[0] ?? ""
+  const letters = word.match(/\p{L}/gu)?.join("") ?? ""
+  return (letters || word).slice(0, 2).toLocaleUpperCase() || "??"
+}
+
+/**
  * CSS переопределения акцента.
  *
  * `scope` пустой — глобально, для компании ВОШЕДШЕГО: правила садятся на
@@ -161,7 +180,13 @@ export function accentCss(accent: AccentValue, scope?: string): string {
   const { light, dark } = accentPair(accent)
   const sel = scope ? `${scope}` : ":root"
   const lightSel = scope ? `[data-theme="light"] ${scope}` : `[data-theme="light"]`
-  const vars = (value: string) =>
-    `--primary:${value};--accent:${value};--ring:${value};`
+  const vars = (value: string) => {
+    const ink = readableOn(value)
+    return (
+      `--primary:${value};--accent:${value};--ring:${value};` +
+      `--primary-foreground:${ink};--accent-foreground:${ink};` +
+      `--primary-hover:${hoverOf(value)};`
+    )
+  }
   return `${sel}{${vars(dark)}}${lightSel}{${vars(light)}}`
 }

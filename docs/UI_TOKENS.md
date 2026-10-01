@@ -90,10 +90,10 @@
 | `--ws-text-3` | `220 10% 64%` | `text-ws-3` | Подписи, неактивные вкладки |
 | `--ws-text-4` | `221 9% 42%` | `text-ws-4` | Мета файлов, плейсхолдеры, счётчики |
 | `--ws-text-5` | `224 13% 33%` | `text-ws-5` | Служебные подписи, разделители-глифы, пустые состояния |
-| `--ws-accent` | `211 68% 62%` | `text-ws-accent` | Заголовки секций, акцент панели IN |
-| `--ws-action` | `217 89% 53%` | `bg-ws-action` | Главная кнопка действия |
-| `--ws-action-hover` | `217 81% 46%` | `hover:bg-ws-action-hover` | Её ховер |
-| `--ws-select` | `212 74% 52%` | `bg-ws-select/…` | Выделение: подсветки, активные сегменты, маркер |
+| `--ws-accent` | `var(--primary)` | `text-ws-accent` | Заголовки секций, акцент панели IN |
+| `--ws-action` | `var(--primary)` | `bg-ws-action text-primary-foreground` | Главная кнопка действия. Текст — только `text-primary-foreground`, не `text-white`: цвет кнопки задаёт компания |
+| `--ws-action-hover` | `var(--primary-hover)` | `hover:bg-ws-action-hover` | Её ховер |
+| `--ws-select` | `var(--primary)` | `bg-ws-select/…` | Выделение: подсветки, активные сегменты, маркер |
 | `--ws-out` | `153 60% 53%` | `text-ws-out` | Статус «активен», акцент панели OUT |
 
 Правило то же: оттенки набираются прозрачностью (`bg-ws-select/[0.16]`,

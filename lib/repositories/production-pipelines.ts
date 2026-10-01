@@ -37,6 +37,7 @@ const FIELDS = `
   p.updated_at AS "updatedAt",
   p.activated_at AS "activatedAt",
   p.archived_at AS "archivedAt",
+  p.paused_at AS "pausedAt",
   (SELECT COUNT(*)::int FROM production_runs r
     WHERE r.pipeline_id = p.id AND r.status = 'active') AS "activeRuns"
 `
@@ -56,6 +57,8 @@ export type PipelineRecord = {
   updatedAt: string
   activatedAt: string | null
   archivedAt: string | null
+  /** Запуски на паузе: новых роликов нет, идущие доживают. */
+  pausedAt: string | null
   /** Сколько роликов по нему сейчас в производстве — счётчик на карточке (§9.2). */
   activeRuns: number
 }
@@ -125,6 +128,7 @@ export async function savePipeline(input: {
   graph?: PipelineGraph
   settings?: PipelineSettings
   archived?: boolean
+  paused?: boolean
 }): Promise<SaveResult> {
   const { rowCount } = await query(
     `UPDATE production_pipelines p
@@ -142,6 +146,11 @@ export async function savePipeline(input: {
               WHEN $7::boolean IS FALSE THEN NULL
               ELSE archived_at
             END,
+            paused_at = CASE
+              WHEN $8::boolean IS TRUE THEN COALESCE(paused_at, NOW())
+              WHEN $8::boolean IS FALSE THEN NULL
+              ELSE paused_at
+            END,
             revision = revision + 1,
             updated_at = NOW()
       WHERE p.id = $1 AND ${CAN_EDIT} AND p.deleted_at IS NULL AND p.revision = $3`,
@@ -153,6 +162,7 @@ export async function savePipeline(input: {
       input.graph ? JSON.stringify(input.graph) : null,
       input.settings ? JSON.stringify(input.settings) : null,
       input.archived ?? null,
+      input.paused ?? null,
     ],
   )
   const current = await findPipeline(input.id, input.userId)

@@ -185,11 +185,11 @@ export function RunPanel({
             // запустить конвейер становилось нечем, и почему, было не видно.
             disabled={busy}
             className={cn(
-              "flex h-[52px] flex-1 items-center justify-center gap-3 rounded-[11px] text-[16px] font-semibold text-white",
+              "flex h-[52px] flex-1 items-center justify-center gap-3 rounded-[11px] text-[16px] font-semibold",
               "disabled:opacity-60",
               running
-                ? "bg-destructive hover:brightness-110"
-                : "bg-ws-action hover:bg-ws-action-hover",
+                ? "bg-destructive text-destructive-foreground hover:brightness-110"
+                : "bg-ws-action text-primary-foreground hover:bg-ws-action-hover",
             )}
           >
             {busy ? (

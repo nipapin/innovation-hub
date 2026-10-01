@@ -220,7 +220,7 @@ export function CatalogDialog() {
                         setOpenKey(null)
                         openTool(openedInstance.id)
                       }}
-                      className="flex h-[42px] items-center rounded-[10px] bg-ws-action px-[18px] text-[14px] font-medium text-white hover:bg-ws-action-hover"
+                      className="flex h-[42px] items-center rounded-[10px] bg-ws-action px-[18px] text-[14px] font-medium text-primary-foreground hover:bg-ws-action-hover"
                     >
                       {t.toolOpen}
                     </button>
@@ -230,7 +230,7 @@ export function CatalogDialog() {
                     type="button"
                     disabled={opened.status !== "ready" || addingKey === opened.key}
                     onClick={() => void addTool(opened.key)}
-                    className="flex h-[42px] items-center gap-2 rounded-[10px] bg-ws-action px-[18px] text-[14px] font-medium text-white hover:bg-ws-action-hover disabled:opacity-50"
+                    className="flex h-[42px] items-center gap-2 rounded-[10px] bg-ws-action px-[18px] text-[14px] font-medium text-primary-foreground hover:bg-ws-action-hover disabled:opacity-50"
                   >
                     <Plus className="h-[17px] w-[17px]" />
                     {addingKey === opened.key ? t.toolAdding : t.toolAdd}

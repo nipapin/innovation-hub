@@ -220,7 +220,7 @@ export function MoveDialog() {
               type="button"
               onClick={submit}
               disabled={!!blockedReason || busy}
-              className="bg-ws-action text-white hover:bg-ws-action-hover"
+              className="bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t.moveTitle}
             </Button>

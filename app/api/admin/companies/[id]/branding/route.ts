@@ -6,12 +6,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3"
 import { ACCENT_KEYS, isOwnCompanyObject, readBranding } from "@/lib/branding"
 import { getS3Client } from "@/lib/s3-client"
 import { getS3Bucket } from "@/lib/s3-config"
-import {
-  accentContrast,
-  isHslToken,
-  nearestReadable,
-  MIN_CONTRAST,
-} from "@/lib/color-contrast"
+import { accentContrast, isHslToken, MIN_CONTRAST } from "@/lib/color-contrast"
 import {
   findCompanyById,
   setCompanyBranding,
@@ -95,8 +90,11 @@ export async function PATCH(
 
   /**
    * Свой цвет проверяется на читаемость ЗДЕСЬ, а не только в форме: проверка,
-   * живущая в интерфейсе, обходится одним запросом мимо него. Наборы проверены
-   * заранее и повторной проверки не требуют.
+   * живущая в интерфейсе, обходится одним запросом мимо него.
+   *
+   * Подпись на кнопке подбирается под цвет (`readableOn`), и порог проходит
+   * любой цвет — поэтому отказ здесь значит поломку подбора, а не плохой выбор
+   * компании. Проверка оставлена страховкой.
    *
    * Отказ называет тему и отношение: «не подходит» без числа человек не знает,
    * насколько промахнулся и в какую сторону крутить.
@@ -104,7 +102,7 @@ export async function PATCH(
   if (parsed.data.accent && typeof parsed.data.accent !== "string") {
     const pair = parsed.data.accent
     const failed = (["light", "dark"] as const)
-      .map((theme) => ({ theme, ratio: accentContrast(pair[theme], theme) }))
+      .map((theme) => ({ theme, ratio: accentContrast(pair[theme]) }))
       .filter(({ ratio }) => ratio < MIN_CONTRAST)
 
     if (failed.length > 0) {
@@ -116,7 +114,6 @@ export async function PATCH(
             theme,
             ratio: Math.round(ratio * 100) / 100,
             required: MIN_CONTRAST,
-            suggestion: nearestReadable(pair[theme], theme),
           })),
         },
         { status: 422 },

@@ -18,13 +18,14 @@ export type LaunchablePipeline = { id: string; name: string; version: number; de
 
 /**
  * Что человек может запустить: активные пайплайны, где он автор, запускающий
- * или редактор из ноды «Старт» (§6.4). С описанием — подсказка в окне запуска.
+ * или редактор из ноды «Старт» (§6.4), не на паузе. С описанием — подсказка в окне запуска.
  */
 export async function listLaunchablePipelines(userId: string): Promise<LaunchablePipeline[]> {
   const { rows } = await query<{ id: string; name: string; version: number; graph: unknown }>(
     `SELECT p.id, p.name, p.current_version AS version, p.graph
        FROM production_pipelines p
       WHERE p.status = 'active' AND p.deleted_at IS NULL AND p.current_version IS NOT NULL
+        AND p.paused_at IS NULL
         AND (
           p.owner_user_id = $1
           OR EXISTS (
@@ -197,4 +198,94 @@ export async function shareStageProjects(
       })
     }
   })
+}
+
+// ─── Управление роликом ─────────────────────────────────────────────────────
+
+export type RunActionResult = { ok: true } | { ok: false; reason: "not-found" | "forbidden" | "closed" }
+
+type RunAccess = { pipelineId: string; status: string; canManage: boolean; canDelete: boolean }
+
+/**
+ * Кто что может с роликом. Переименовать и завершить — автор пайплайна,
+ * запустивший и проверяющие любого этапа (§4.7). Удалить — только первые двое:
+ * удаление стирает журнал и чаты у всех участников. Не участник — «нет такого».
+ */
+async function runAccess(runId: string, userId: string): Promise<RunAccess | null> {
+  const { rows } = await query<RunAccess & { visible: boolean }>(
+    `SELECT r.pipeline_id AS "pipelineId", r.status,
+            (p.owner_user_id = $2 OR r.created_by = $2) AS "canDelete",
+            (p.owner_user_id = $2 OR r.created_by = $2 OR EXISTS (
+              SELECT 1 FROM production_pipeline_people pp
+               WHERE pp.pipeline_id = p.id AND pp.user_id = $2 AND pp.role = 'reviewer')) AS "canManage",
+            (p.owner_user_id = $2 OR r.created_by = $2 OR EXISTS (
+              SELECT 1 FROM production_chat_members cm
+                JOIN production_run_steps rs ON rs.id = cm.run_step_id
+               WHERE rs.run_id = r.id AND cm.user_id = $2 AND cm.left_at IS NULL)) AS visible
+       FROM production_runs r
+       JOIN production_pipelines p ON p.id = r.pipeline_id
+      WHERE r.id = $1`,
+    [runId, userId],
+  )
+  const row = rows[0]
+  return row?.visible ? row : null
+}
+
+/**
+ * Новое имя — только подпись. Папки ролика (`folder_name`) уже заведены во всех
+ * этапах, и пути в них не меняются: иначе ролик потерял бы свои файлы.
+ */
+export async function renameRun(runId: string, userId: string, name: string): Promise<RunActionResult> {
+  const access = await runAccess(runId, userId)
+  if (!access) return { ok: false, reason: "not-found" }
+  if (!access.canManage) return { ok: false, reason: "forbidden" }
+  await withTransaction(async (client) => {
+    await client.query(`UPDATE production_runs SET name = $2 WHERE id = $1`, [runId, name.trim()])
+    await client.query(
+      `INSERT INTO production_events (pipeline_id, run_id, actor_user_id, kind, payload)
+       VALUES ($1, $2, $3, 'run_renamed', $4::jsonb)`,
+      [access.pipelineId, runId, userId, JSON.stringify({ name: name.trim() })],
+    )
+  })
+  return { ok: true }
+}
+
+/**
+ * «Завершить» — отмена на полпути (§4.7): ролик уходит в архив как есть, со
+ * статусом «отменён». Папки, версии, чаты и журнал остаются. Автоматика по
+ * отменённому ролику дальше не идёт — она берёт только активные.
+ */
+export async function cancelRun(runId: string, userId: string): Promise<RunActionResult> {
+  const access = await runAccess(runId, userId)
+  if (!access) return { ok: false, reason: "not-found" }
+  if (!access.canManage) return { ok: false, reason: "forbidden" }
+  const done = await withTransaction(async (client) => {
+    const { rowCount } = await client.query(
+      `UPDATE production_runs
+          SET status = 'cancelled', cancelled_by = $2, finished_at = NOW(),
+              archived_at = COALESCE(archived_at, NOW())
+        WHERE id = $1 AND status = 'active'`,
+      [runId, userId],
+    )
+    if (!rowCount) return false
+    await client.query(
+      `INSERT INTO production_events (pipeline_id, run_id, actor_user_id, kind)
+       VALUES ($1, $2, $3, 'run_cancelled')`,
+      [access.pipelineId, runId, userId],
+    )
+    return true
+  })
+  return done ? { ok: true } : { ok: false, reason: "closed" }
+}
+
+/**
+ * Удаление строк ролика: этапы, чаты и журнал уходят каскадом. Файлы в папках
+ * этапов не трогаем — это проекты хранилища, и чистят их там.
+ */
+export async function deleteRun(runId: string, userId: string): Promise<RunActionResult> {
+  const access = await runAccess(runId, userId)
+  if (!access) return { ok: false, reason: "not-found" }
+  if (!access.canDelete) return { ok: false, reason: "forbidden" }
+  await query(`DELETE FROM production_runs WHERE id = $1`, [runId])
+  return { ok: true }
 }

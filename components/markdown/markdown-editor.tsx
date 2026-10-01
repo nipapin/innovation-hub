@@ -561,7 +561,7 @@ export function MarkdownEditor({
             </Button>
             <Button
               disabled={!linkUrl.trim()}
-              className="bg-ws-action text-white hover:bg-ws-action-hover"
+              className="bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
               onClick={() => {
                 api.link(linkText.trim(), linkUrl.trim())
                 setLinkOpen(false)
@@ -620,7 +620,7 @@ export function MarkdownEditor({
               {t.cancel}
             </Button>
             <Button
-              className="bg-ws-action text-white hover:bg-ws-action-hover"
+              className="bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
               onClick={() => {
                 api.table(cols, rows, header)
                 setTableOpen(false)
@@ -655,7 +655,7 @@ export function MarkdownEditor({
               {t.cancel}
             </Button>
             <Button
-              className="bg-ws-action text-white hover:bg-ws-action-hover"
+              className="bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
               onClick={() => {
                 api.codeBlock(codeLang.trim())
                 setCodeOpen(false)

@@ -407,7 +407,7 @@ export function ElementTextEditor({
                   setCustomColor("")
                   setColorOpen(false)
                 }}
-                className="h-7 bg-ws-action text-white hover:bg-ws-action-hover"
+                className="h-7 bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
               >
                 {t.elementChoose}
               </Button>
@@ -526,7 +526,7 @@ export function ElementTextEditor({
                     .run()
                   setNoteOpen(false)
                 }}
-                className="h-7 bg-ws-action text-white hover:bg-ws-action-hover"
+                className="h-7 bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
               >
                 {t.elementChoose}
               </Button>

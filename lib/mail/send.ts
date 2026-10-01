@@ -333,7 +333,7 @@ export async function sendCompanyAddedEmail(input: {
     `Hi ${input.inviteeName},`,
     ``,
     `${input.inviterName} added you to ${input.brand.name}.`,
-    `Sign in as usual — your password stays the same. The company now appears in the workspace switcher at the top of your sidebar.`,
+    `Sign in as usual — your password stays the same. The team now appears in the workspace switcher at the top of your sidebar.`,
     ``,
     `Open ${input.brand.name}: ${openUrl}`,
   ].join("\n")

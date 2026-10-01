@@ -150,6 +150,8 @@ export function MobileWorkspace() {
               view={view === "columns" ? "list" : view}
               size="snug"
               onNavigate={setPath}
+              emptyHint={can.upload ? t.emptyFolderTouch : undefined}
+              dense
             />
           </div>
 
@@ -160,7 +162,7 @@ export function MobileWorkspace() {
                   type="button"
                   onClick={() => triggerUpload(target)}
                   disabled={uploading}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-ws-action py-2.5 text-[14px] text-white disabled:opacity-60"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-ws-action py-2.5 text-[14px] text-primary-foreground disabled:opacity-60"
                 >
                   <Upload className="h-4 w-4" />
                   {uploading ? t.uploading : t.upload}

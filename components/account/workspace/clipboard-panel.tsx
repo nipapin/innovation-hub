@@ -93,7 +93,7 @@ export function ClipboardPanel() {
         <button
           type="button"
           onClick={() => pasteClipboard(currentTarget.folderPath)}
-          className="h-8 w-full rounded-lg bg-ws-action text-[13px] font-medium text-white hover:bg-ws-action-hover"
+          className="h-8 w-full rounded-lg bg-ws-action text-[13px] font-medium text-primary-foreground hover:bg-ws-action-hover"
         >
           {t.clipboardPaste}
         </button>

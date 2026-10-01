@@ -354,6 +354,21 @@ export const ACTION_META: Record<
     icon: Gift,
     tone: "access",
   },
+  "personal.sets_changed": {
+    labelKey: "auditPersonalSetsChanged",
+    icon: Building2,
+    tone: "access",
+  },
+  "personal.production_enabled": {
+    labelKey: "auditPersonalProductionEnabled",
+    icon: Building2,
+    tone: "access",
+  },
+  "personal.production_disabled": {
+    labelKey: "auditPersonalProductionDisabled",
+    icon: Building2,
+    tone: "access",
+  },
 }
 
 export const TONE_CLASS = {

@@ -5,17 +5,24 @@
  * оба слоя. Экран показывает отношение живьём, сервер тем же кодом отказывает —
  * проверка, живущая только в интерфейсе, не проверка.
  *
- * Зачем вообще: акцент — это фон КНОПКИ, а текст на ней задаёт тема
- * (`--primary-foreground`): белый на светлой, почти чёрный на тёмной. Компания,
- * поставившая светло-жёлтый, получит белый текст на жёлтом — то есть кнопку без
- * подписи. Поэтому цвет свободный, а читаемость нет.
+ * Зачем вообще: акцент — это фон КНОПКИ. Текст на нём не задаётся ни темой, ни
+ * компанией, а подбирается под сам фон (`readableOn`): на тёмном — светлый, на
+ * светлом — тёмный. Так кнопка читается при любом цвете, какой бы ни выбрала
+ * компания, и проверять её цвет на читаемость подписи больше не нужно.
  */
 
-/** Текст на акценте. Значения из app/globals.css, не из головы. */
-const FOREGROUND = {
-  light: { r: 255, g: 255, b: 255 },
-  dark: hslToRgb(224, 44, 11),
-} as const
+/**
+ * Чернила темы — те же, что `--primary-foreground` в app/globals.css: белый и
+ * почти чёрный. Чистый чёрный — запасной: с почти-чёрным на фоне средней
+ * светлоты не дотягивает ни один из двух (худший случай ~4.24), а лучший из
+ * белого и чистого чёрного даёт не меньше ~4.59 на любом фоне.
+ */
+const INK_LIGHT = "0 0% 100%"
+const INK_DARK = "224 44% 11%"
+const INK_BLACK = "0 0% 0%"
+
+/** На сколько процентов светлоты кнопка меняется при наведении. */
+const HOVER_STEP = 6
 
 /**
  * Порог AA для обычного текста. Не 3:1 («крупный текст и элементы
@@ -138,31 +145,44 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
   return (hi + 0.05) / (lo + 0.05)
 }
 
-/** Читаемость акцента в конкретной теме: отношение к тексту, который на нём лежит. */
-export function accentContrast(token: string, theme: "light" | "dark"): number {
+function parseToken(token: string): Hsl {
   const [h, s, l] = token.split(/\s+/).map((part) => Number.parseFloat(part))
-  return contrastRatio(hslToRgb(h || 0, s || 0, l || 0), FOREGROUND[theme])
+  return { h: h || 0, s: s || 0, l: l || 0 }
+}
+
+function tokenToRgb(token: string): Rgb {
+  const { h, s, l } = parseToken(token)
+  return hslToRgb(h, s, l)
 }
 
 /**
- * Ближайший читаемый оттенок ТОГО ЖЕ цвета.
- *
- * Двигаем только светлоту, оставляя тон и насыщенность: компания выбирала свой
- * цвет, а не любой проходящий. В светлой теме текст белый, поэтому идём вниз; в
- * тёмной он почти чёрный — идём вверх.
- *
- * Возвращает `null`, если читаемым цвет не становится и на пределе: так бывает у
- * очень насыщенного жёлтого, где даже чёрный на белом фоне кнопки не спасает.
+ * Цвет текста, читаемый на фоне `token`: тёмный фон — светлые буквы, светлый —
+ * тёмные. Сначала пробуем чернила темы — так у готовых наборов подпись остаётся
+ * привычной; если ни одно не даёт порога, берём лучшее из белого и чистого
+ * чёрного, которое проходит всегда.
  */
-export function nearestReadable(
-  token: string,
-  theme: "light" | "dark",
-): string | null {
-  const [h, s, l] = token.split(/\s+/).map((part) => Number.parseFloat(part))
-  const step = theme === "light" ? -1 : 1
-  for (let next = l; next >= 0 && next <= 100; next += step) {
-    const candidate = hslToToken({ h: h || 0, s: s || 0, l: next })
-    if (accentContrast(candidate, theme) >= MIN_CONTRAST) return candidate
+export function readableOn(token: string): string {
+  const bg = tokenToRgb(token)
+  const onLight = contrastRatio(bg, tokenToRgb(INK_LIGHT))
+  const onDark = contrastRatio(bg, tokenToRgb(INK_DARK))
+  if (Math.max(onLight, onDark) >= MIN_CONTRAST) {
+    return onLight >= onDark ? INK_LIGHT : INK_DARK
   }
-  return null
+  return onLight >= contrastRatio(bg, tokenToRgb(INK_BLACK)) ? INK_LIGHT : INK_BLACK
+}
+
+/**
+ * Фон кнопки при наведении. Сдвигаем светлоту ОТ цвета текста: под светлыми
+ * буквами кнопка темнеет, под тёмными — светлеет. Так при наведении контраст
+ * подписи только растёт, и проверять второй цвет отдельно не нужно.
+ */
+export function hoverOf(token: string): string {
+  const { h, s, l } = parseToken(token)
+  const step = readableOn(token) === INK_LIGHT ? -HOVER_STEP : HOVER_STEP
+  return hslToToken({ h, s, l: Math.min(100, Math.max(0, l + step)) })
+}
+
+/** Читаемость акцента: отношение к тексту, который на нём окажется. */
+export function accentContrast(token: string): number {
+  return contrastRatio(tokenToRgb(token), tokenToRgb(readableOn(token)))
 }

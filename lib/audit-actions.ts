@@ -141,6 +141,11 @@ export const AUDIT_ACTIONS = [
   // деньги, и в журнале его ищут отдельно — «с какого числа мы платим за них».
   "company.billing_free_enabled",
   "company.billing_free_disabled",
+  // Набор «Личного» — то же, что у команды, для всех вне команд
+  // (2026-10-01-personal-features.sql). Свои действия: цели-команды у них нет.
+  "personal.sets_changed",
+  "personal.production_enabled",
+  "personal.production_disabled",
 ] as const
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]

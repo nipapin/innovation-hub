@@ -214,7 +214,7 @@ export function ChatTab() {
                   className={cn(
                     "max-w-[72%] px-3.5 py-2.5 text-[13.5px] leading-snug",
                     mine
-                      ? "rounded-[12px_12px_4px_12px] bg-ws-action text-white"
+                      ? "rounded-[12px_12px_4px_12px] bg-ws-action text-primary-foreground"
                       : system
                         ? "rounded-[12px] bg-foreground/[0.04] text-ws-3"
                         : "rounded-[12px_12px_12px_4px] bg-ws-hover text-ws-1",
@@ -253,7 +253,7 @@ export function ChatTab() {
             type="button"
             onClick={send}
             aria-label={t.tabChat}
-            className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[9px] bg-ws-action text-white hover:bg-ws-action-hover"
+            className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[9px] bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
           >
             <Send className="h-5 w-5" />
           </button>

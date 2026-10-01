@@ -73,7 +73,27 @@ export async function structureChanged(pipeline: PipelineRecord): Promise<boolea
   if (pipeline.currentVersion == null) return false
   const current = await findVersionGraph(pipeline.id, pipeline.currentVersion)
   if (!current) return true
-  return structureSignature(normalizeGraph(pipeline.graph)) !== structureSignature(current)
+  const graph = retargetProjects(pipeline.graph, pipeline.name)
+  return structureSignature(normalizeGraph(graph)) !== structureSignature(current)
+}
+
+/**
+ * Этапы, чья папка выбрана маской, а маска теперь даёт другое имя (пайплайн
+ * переименовали), — снова «папка по маске, ещё не заведена». Новая версия
+ * найдёт или создаст папку с новым именем у владельца. Идущие ролики остаются в
+ * прежней: проект этапа запомнен у них в `production_run_steps.paths`.
+ */
+export function retargetProjects(graph: PipelineGraph, pipelineName: string): PipelineGraph {
+  let changed = false
+  const nodes = graph.nodes.map((n) => {
+    if (!isWorkNode(n) || !n.data.project.id || !n.data.project.mask) return n
+    const { mask } = n.data.project
+    const name = resolvePath([mask], { pipelineName }, "project")
+    if (!name.ok || name.path.toLowerCase() === n.data.project.name.toLowerCase()) return n
+    changed = true
+    return { ...n, data: { ...n.data, project: { id: null, name: mask, mask } } } as WorkNode
+  })
+  return changed ? { ...graph, nodes } : graph
 }
 
 /**
@@ -155,7 +175,7 @@ async function resolveStageProjects(
 ): Promise<{ ok: true; graph: PipelineGraph } | { ok: false; reason: "storage" | "project" }> {
   const cache = new Map<string, string>()
   const nodes: PipelineGraph["nodes"] = []
-  for (const n of pipeline.graph.nodes) {
+  for (const n of retargetProjects(pipeline.graph, pipeline.name).nodes) {
     if (!isWorkNode(n)) {
       nodes.push(n)
       continue
@@ -185,7 +205,10 @@ async function resolveStageProjects(
       if (!id) return { ok: false, reason: "storage" }
       cache.set(key, id)
     }
-    nodes.push({ ...n, data: { ...n.data, project: { id, name: name.path } } } as WorkNode)
+    // Маску запоминаем: без неё после переименования пайплайна этап остался бы
+    // в старой папке, и переводить пришлось бы каждый руками.
+    const mask = project.name.includes("$") ? project.name : undefined
+    nodes.push({ ...n, data: { ...n.data, project: { id, name: name.path, ...(mask ? { mask } : {}) } } } as WorkNode)
   }
   return { ok: true, graph: { ...pipeline.graph, nodes } }
 }

@@ -303,6 +303,22 @@ export async function getOwnerFileStats(ownerId: string): Promise<{
 
 export type ChartBucket = { label: string; value: number }
 
+/**
+ * Полночь по UTC, `daysAgo` дней назад.
+ *
+ * Корзины графика сопоставляются с `date_trunc` базы по строке даты, а база
+ * режет время по UTC. Ключи раньше строились от МЕСТНОЙ полуночи: в Москве
+ * (UTC+3) она — 21:00 предыдущего дня по UTC, ключ съезжал на сутки назад, и
+ * ни один день и ни одна неделя не совпадали — график «Дни» и «Недели» был
+ * нулевым при любых загрузках. Поэтому все ключи — от полуночи UTC.
+ */
+function utcMidnight(daysAgo = 0): Date {
+  const d = new Date()
+  d.setUTCHours(0, 0, 0, 0)
+  d.setUTCDate(d.getUTCDate() - daysAgo)
+  return d
+}
+
 /** Aggregates non-folder file creations for chart ranges. */
 export async function getUploadChart(
   ownerId: string,
@@ -337,11 +353,9 @@ export async function getUploadChart(
     const enLabels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
     const buckets: ChartBucket[] = []
     for (let i = 6; i >= 0; i--) {
-      const d = new Date()
-      d.setHours(0, 0, 0, 0)
-      d.setDate(d.getDate() - i)
+      const d = utcMidnight(i)
       const key = d.toISOString().slice(0, 10)
-      const dow = (d.getDay() + 6) % 7 // Mon=0
+      const dow = (d.getUTCDay() + 6) % 7 // Mon=0
       buckets.push({
         label: labels[dow] ?? enLabels[dow] ?? key,
         value: map.get(key) ?? 0,
@@ -372,11 +386,10 @@ export async function getUploadChart(
     )
     const buckets: ChartBucket[] = []
     for (let i = 7; i >= 0; i--) {
-      const d = new Date()
-      d.setHours(0, 0, 0, 0)
+      const d = utcMidnight()
       // Align to Monday
-      const day = (d.getDay() + 6) % 7
-      d.setDate(d.getDate() - day - i * 7)
+      const day = (d.getUTCDay() + 6) % 7
+      d.setUTCDate(d.getUTCDate() - day - i * 7)
       const key = d.toISOString().slice(0, 10)
       buckets.push({
         label: `W${8 - i}`,
@@ -422,13 +435,12 @@ export async function getUploadChart(
   ]
   const buckets: ChartBucket[] = []
   for (let i = 6; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(1)
-    d.setHours(0, 0, 0, 0)
-    d.setMonth(d.getMonth() - i)
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    const d = utcMidnight()
+    d.setUTCDate(1)
+    d.setUTCMonth(d.getUTCMonth() - i)
+    const key = d.toISOString().slice(0, 7)
     buckets.push({
-      label: monthNames[d.getMonth()] ?? key,
+      label: monthNames[d.getUTCMonth()] ?? key,
       value: map.get(key) ?? 0,
     })
   }

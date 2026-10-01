@@ -31,7 +31,13 @@
  * сохранён другой версией программы, и молча собранная по догадкам форма
  * положила бы файлы под именами, которых граф не ждёт.
  */
-export const SITE_FORM_VERSION = 1
+export const SITE_FORM_VERSION = 2
+
+/**
+ * Версии, которые читаем. 1 — строка с одним типом (`type`), 2 — со списком
+ * (`types`: «видео или картинка»). Первую читаем как список из одного.
+ */
+export const SITE_FORM_VERSIONS: readonly number[] = [1, 2]
 
 /**
  * `data.pluginId` ноды, которая эту форму и порождает.
@@ -56,8 +62,11 @@ export type ElementRow = {
   label: string
   /** Подсказка в Markdown; пустая строка — подсказки нет. */
   tooltip: string
-  /** Имя типа файла из словаря либо `folder`. */
-  type: string
+  /**
+   * Типы файлов из словаря — подходит файл любого из них; у подпапки —
+   * ровно `["folder"]`. Не пустой.
+   */
+  types: string[]
   op: RequirementOp
   /** Всегда ≥ 1. */
   count: number
@@ -123,10 +132,14 @@ function parseRow(raw: unknown, path: string): ElementRow | { error: SiteFormErr
 
   const id = asString(raw.id).trim()
   const label = asString(raw.label).trim()
-  const type = asString(raw.type).trim()
+  const types = parseTypes(raw)
   if (!id) return { error: { reason: "shape", detail: `${path}: нет id` } }
   if (!label) return { error: { reason: "shape", detail: `${path}: нет label` } }
-  if (!type) return { error: { reason: "shape", detail: `${path}: нет type` } }
+  if (types.length === 0) return { error: { reason: "shape", detail: `${path}: нет types` } }
+  // Подпапка — только сама по себе: «папка или видео» слоту не описать.
+  if (types.includes(FOLDER_TYPE) && types.length > 1) {
+    return { error: { reason: "shape", detail: `${path}: folder вместе с другими типами` } }
+  }
 
   const op: RequirementOp = raw.op === "=" ? "=" : ">="
   // Ноль слотов — это не требование, а его отсутствие: такую строку в форме не
@@ -135,13 +148,28 @@ function parseRow(raw: unknown, path: string): ElementRow | { error: SiteFormErr
   const count = Number.isFinite(rawCount) && rawCount >= 1 ? Math.floor(rawCount) : 1
 
   const children: ElementRow[] = []
-  if (type === FOLDER_TYPE && Array.isArray(raw.children)) {
+  if (isFolderRow({ types }) && Array.isArray(raw.children)) {
     const nested = parseRows(raw.children, `${path}/${label}`)
     if ("error" in nested) return nested
     children.push(...nested.rows)
   }
 
-  return { id, label, tooltip: asString(raw.tooltip), type, op, count, children }
+  return { id, label, tooltip: asString(raw.tooltip), types, op, count, children }
+}
+
+/** `types` версии 2 либо `type` версии 1; повторы и пустые убираем. */
+function parseTypes(raw: Record<string, unknown>): string[] {
+  const list = Array.isArray(raw.types) ? raw.types : [raw.type]
+  const out: string[] = []
+  for (const item of list) {
+    const type = asString(item).trim()
+    if (type && !out.includes(type)) out.push(type)
+  }
+  return out
+}
+
+export function isFolderRow(row: { types: readonly string[] }): boolean {
+  return row.types.includes(FOLDER_TYPE)
 }
 
 /**
@@ -188,7 +216,7 @@ export function parseSiteForm(raw: unknown): SiteFormResult {
   if (!Number.isFinite(version)) {
     return { ok: false, error: { reason: "shape", detail: "нет version" } }
   }
-  if (version !== SITE_FORM_VERSION) {
+  if (!SITE_FORM_VERSIONS.includes(version)) {
     return { ok: false, error: { reason: "version", version } }
   }
 
@@ -223,17 +251,23 @@ export function parseSiteFormBody(body: string): SiteFormResult {
   return parseSiteForm(raw)
 }
 
-/** Подходит ли файл слоту по расширению. Тип неизвестен — не ограничиваем. */
+/**
+ * Подходит ли файл слоту по расширению: достаточно одного из типов строки.
+ * Какой-то тип неизвестен словарю — не ограничиваем: его расширений мы не знаем.
+ */
 export function extensionFits(
-  form: SiteForm,
-  type: string,
+  form: Pick<SiteForm, "fileTypes">,
+  types: string | readonly string[],
   fileName: string,
 ): boolean {
-  const allowed = form.fileTypes[type]
-  if (!allowed || allowed.length === 0) return true
+  const list = typeof types === "string" ? [types] : types
   const dot = fileName.lastIndexOf(".")
-  if (dot < 0) return false
-  return allowed.includes(fileName.slice(dot + 1).toLowerCase())
+  const ext = dot < 0 ? null : fileName.slice(dot + 1).toLowerCase()
+  return list.some((type) => {
+    const allowed = form.fileTypes[type]
+    if (!allowed || allowed.length === 0) return true
+    return ext !== null && allowed.includes(ext)
+  })
 }
 
 /** Семейства MIME, которые браузер называет одинаково и надёжно. */
@@ -267,11 +301,14 @@ export function expectedMimePrefix(type: string): string | null {
  * и красная зона на правильном файле пугала бы зря. Ошибку в таком случае
  * поймает проверка расширения при броске.
  */
-export function mimeFits(type: string, mime: string): boolean {
-  const expected = expectedMimePrefix(type)
-  if (!expected || !mime) return true
-  if (!KNOWN_MIME_FAMILIES.some((family) => mime.startsWith(family))) return true
-  return mime.startsWith(expected)
+export function mimeFits(types: string | readonly string[], mime: string): boolean {
+  if (!mime || !KNOWN_MIME_FAMILIES.some((family) => mime.startsWith(family))) return true
+  const list = typeof types === "string" ? [types] : types
+  // Хоть один тип без семейства — судить по MIME нечем.
+  return list.some((type) => {
+    const expected = expectedMimePrefix(type)
+    return !expected || mime.startsWith(expected)
+  })
 }
 
 /** Имя папки при создании: шаблон, а если он пуст — подпись ноды (план §7.1). */

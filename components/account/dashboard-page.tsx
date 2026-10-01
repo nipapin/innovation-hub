@@ -18,11 +18,13 @@ import {
 import { cn } from "@/lib/utils"
 import {
   greetingForHour,
+  tf,
   useI18n,
 } from "@/components/account/i18n"
 import { TrialCard } from "@/components/account/trial-card"
 import { WorkspacesCard } from "@/components/account/profile-switcher"
 import { ProcessingIndicator } from "@/components/account/processing-indicator"
+import { useProjectCounts } from "@/components/account/use-project-counts"
 
 type Stats = {
   balanceCents: number
@@ -43,6 +45,9 @@ type Props = {
 
 export function DashboardPageClient({ fullName, createdAt }: Props) {
   const { t, lang } = useI18n()
+  // Число проектов — то же, что в меню, а не `stats.projectCount`: тот считает
+  // только свои и расходился с меню на расшаренных.
+  const projectCounts = useProjectCounts()
   const router = useRouter()
   /**
    * `?trial=1` — намерение, принесённое кнопкой из шапки или из регистрации.
@@ -139,7 +144,7 @@ export function DashboardPageClient({ fullName, createdAt }: Props) {
                 <button
                   type="button"
                   onClick={createProject}
-                  className="flex items-center gap-2 rounded-[11px] bg-primary px-4 py-2.5 text-[14px] font-medium text-white hover:bg-primary"
+                  className="flex items-center gap-2 rounded-[11px] bg-primary px-4 py-2.5 text-[14px] font-medium text-primary-foreground hover:bg-primary-hover"
                 >
                   <Plus className="h-[18px] w-[18px]" />
                   {t.newProject}
@@ -175,8 +180,12 @@ export function DashboardPageClient({ fullName, createdAt }: Props) {
             <TrialCard autoOpen={trialIntent} />
             <StatCard
               label={t.cardProjects}
-              value={String(stats?.projectCount ?? "—")}
-              sub={t.cardProjectsSub}
+              value={projectCounts ? String(projectCounts.projects) : "—"}
+              sub={
+                projectCounts && projectCounts.shared > 0
+                  ? tf(t.cardProjectsSubShared, { n: projectCounts.shared })
+                  : t.cardProjectsSub
+              }
               icon={<Folder className="h-5 w-5 text-muted-foreground/65" />}
             />
             <StatCard
@@ -235,6 +244,20 @@ export function DashboardPageClient({ fullName, createdAt }: Props) {
             {loading ? (
               <div className="flex h-[220px] items-center justify-center text-muted-foreground/65">
                 <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : stats && stats.periodClips === 0 ? (
+              // Восемь нулевых столбиков читаются как сломанный график, а не как
+              // «ничего не было». Говорим словами и ведём туда, где загружают.
+              <div className="mt-6 flex h-[200px] flex-col items-center justify-center gap-3 rounded-[14px] border border-dashed border-foreground/10 text-center md:h-[220px]">
+                <BarChart3 className="h-6 w-6 text-muted-foreground/65" />
+                <p className="text-[14px] text-muted-foreground">{t.statsEmpty}</p>
+                <Link
+                  href="/account/projects"
+                  className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:underline"
+                >
+                  {t.statsEmptyCta}
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
               </div>
             ) : (
               <>

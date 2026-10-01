@@ -892,7 +892,7 @@ export function ShareDialog() {
               type="button"
               onClick={() => void send()}
               disabled={sending}
-              className="bg-ws-action text-white hover:bg-ws-action-hover"
+              className="bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
             >
               {sending ? (
                 <>
@@ -907,7 +907,7 @@ export function ShareDialog() {
             <Button
               type="button"
               onClick={closeShareDialog}
-              className="bg-ws-action text-white hover:bg-ws-action-hover"
+              className="bg-ws-action text-primary-foreground hover:bg-ws-action-hover"
             >
               {t.shareDone}
             </Button>

@@ -177,7 +177,7 @@ function TimelineToolbar({ minimap }: { minimap: React.ReactNode }) {
               onClick={() => srt.setTool(item.id)}
               className={cn(
                 "relative flex h-6 w-[30px] items-center justify-center rounded",
-                active ? "bg-ws-action text-white" : "text-ws-3 hover:text-ws-1",
+                active ? "bg-ws-action text-primary-foreground" : "text-ws-3 hover:text-ws-1",
               )}
             >
               <Icon className="h-[17px] w-[17px]" />

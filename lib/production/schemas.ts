@@ -46,13 +46,15 @@ export const updatePipelineSchema = z
     graph: pipelineGraphSchema.optional(),
     settings: pipelineSettingsSchema.optional(),
     archived: z.boolean().optional(),
+    paused: z.boolean().optional(),
   })
   .refine(
     (body) =>
       body.name !== undefined ||
       body.graph !== undefined ||
       body.settings !== undefined ||
-      body.archived !== undefined,
+      body.archived !== undefined ||
+      body.paused !== undefined,
     { message: "Nothing to update." },
   )
 
