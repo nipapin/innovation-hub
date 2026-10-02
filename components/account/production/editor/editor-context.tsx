@@ -34,6 +34,8 @@ export type EditorApi = {
   removeNode: (id: string) => void
   /** Ноды с ошибками проверки — для красной рамки. */
   nodeHasError: (id: string) => boolean
+  /** Есть ли у ноды исходящие связи: последнему этапу автоприёмка запрещена. */
+  hasNext: (id: string) => boolean
 }
 
 const EditorContext = createContext<EditorApi | null>(null)

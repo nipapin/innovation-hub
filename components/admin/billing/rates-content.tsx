@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react"
 import { Info, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { AdminPageHeader } from "@/components/admin/shell/admin-page-header"
+import { useFloatingSave } from "@/components/admin/shell/floating-save"
 import { tf, useI18n, type DictKey } from "@/components/account/i18n"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -78,6 +78,8 @@ export function AdminBillingRates() {
    * между пустым и нулём.
    */
   const [rateDrafts, setRateDrafts] = useState<Record<string, string>>({})
+  /** Форма, какой она была при загрузке или последнем сохранении. */
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null)
   /** Курс, по которому сейчас пересчитывается себестоимость. Читается, не правится. */
   const [rate, setRate] = useState<{
     rateDay: string
@@ -94,16 +96,16 @@ export function AdminBillingRates() {
         revision: number
         rate: { rateDay: string; rate: number; source: string } | null
       }
+      const drafts = Object.fromEntries(
+        SUPPORTED_PAY_PAIRS.map((pair) => [
+          pair,
+          centsToRubles(data.settings.rates[pair]),
+        ]),
+      )
       setSettings(data.settings)
       setRevision(data.revision)
-      setRateDrafts(
-        Object.fromEntries(
-          SUPPORTED_PAY_PAIRS.map((pair) => [
-            pair,
-            centsToRubles(data.settings.rates[pair]),
-          ]),
-        ),
-      )
+      setRateDrafts(drafts)
+      setSavedSnapshot(JSON.stringify({ settings: data.settings, rateDrafts: drafts }))
       setRate(data.rate ?? null)
     } catch {
       toast.error(t.billingLoadError)
@@ -160,6 +162,7 @@ export function AdminBillingRates() {
 
       const data = (await res.json()) as { revision: number }
       setRevision(data.revision)
+      setSavedSnapshot(JSON.stringify({ settings, rateDrafts }))
       toast.success(t.billingSaved)
     } catch {
       toast.error(t.billingSaveError)
@@ -167,6 +170,18 @@ export function AdminBillingRates() {
       setSaving(false)
     }
   }
+
+  const dirty =
+    settings !== null &&
+    savedSnapshot !== null &&
+    JSON.stringify({ settings, rateDrafts }) !== savedSnapshot
+
+  useFloatingSave({
+    label: t.adminBillingRates,
+    dirty,
+    busy: saving,
+    onSave: () => void save(),
+  })
 
   if (!settings) {
     return (
@@ -186,18 +201,6 @@ export function AdminBillingRates() {
         title={t.adminBillingRates}
         description={t.adminBillingRatesDesc}
         help="billing.rates"
-        actions={
-          <Button onClick={save} disabled={saving}>
-            {saving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t.billingSaving}
-              </>
-            ) : (
-              t.billingSave
-            )}
-          </Button>
-        }
       />
 
       <Section

@@ -29,10 +29,19 @@ export function AvatarCropDialog({
   open,
   onClose,
   onSave,
+  title,
+  shape = "circle",
 }: {
   open: boolean
   onClose: () => void
   onSave: (blob: Blob) => Promise<boolean>
+  /** Заголовок окна; по умолчанию — про аватар. */
+  title?: string
+  /**
+   * Маска окна — как картинка будет показана: кружок аватара или скруглённый
+   * квадрат значка (логотип команды). На сам файл не влияет — он квадратный.
+   */
+  shape?: "circle" | "rounded"
 }) {
   const { t } = useI18n()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -135,7 +144,7 @@ export function AvatarCropDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && !saving && onClose()}>
       <DialogContent aria-describedby={undefined} className="w-[min(380px,94vw)] gap-4">
-        <DialogTitle className="text-[16px] font-semibold">{t.avatarChange}</DialogTitle>
+        <DialogTitle className="text-[16px] font-semibold">{title ?? t.avatarChange}</DialogTitle>
 
         <div
           className={cn(
@@ -188,7 +197,10 @@ export function AvatarCropDialog({
               />
               {/* Затемнение вне круга — так фото будет выглядеть в аватарке. */}
               <div
-                className="pointer-events-none absolute inset-0 rounded-full ring-2 ring-white/80"
+                className={cn(
+                  "pointer-events-none absolute inset-0 ring-2 ring-white/80",
+                  shape === "circle" ? "rounded-full" : "rounded-[22%]",
+                )}
                 style={{ boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)" }}
               />
             </div>

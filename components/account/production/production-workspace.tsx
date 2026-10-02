@@ -252,9 +252,6 @@ export function ProductionWorkspace() {
       <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-foreground/[0.07] px-3 md:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <WorkplaceModeSwitch />
-          <span className="rounded-md border border-foreground/10 px-2 py-0.5 text-[11px] font-medium text-ws-4">
-            {t.productionInDevelopment}
-          </span>
         </div>
         <div className="flex items-center gap-2">
         {/* Вход в пайплайны и в шапке: колонка роликов, где он тоже есть, на
@@ -1103,8 +1100,16 @@ function StageHeader({
   const canMark = view.me.isExecutor && view.status === "ready"
   const latest = view.files.work[0]
   const allowed = canApprove(view)
-  // Что можно принять: вариант у инструмента, выполненная форма, результат автоматики.
-  const ready = view.kind === "tool" ? Boolean(latest) : view.kind === "form" ? Boolean(view.form?.complete) : Boolean(latest)
+  // Что можно принять: вариант у инструмента, выполненная форма, результат
+  // автоматики — только по отчёту машины, а не по файлам в общей папке OUT.
+  const ready =
+    view.kind === "tool"
+      ? Boolean(latest)
+      : view.kind === "form"
+        ? Boolean(view.form?.complete)
+        : view.kind === "auto"
+          ? Boolean(view.machine?.results)
+          : Boolean(latest)
   const title = approved
     ? undefined
     : !allowed

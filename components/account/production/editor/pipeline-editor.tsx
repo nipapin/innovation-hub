@@ -11,6 +11,7 @@ import {
   ReactFlowProvider,
   applyNodeChanges,
   useReactFlow,
+  type FinalConnectionState,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -35,7 +36,10 @@ import {
   isWorkNode,
   type PipelineNode,
   isWorkKind,
+  OUT_HANDLE,
   shortId,
+  splitOutputsOf,
+  withLiveHandles,
   type FormRow,
   type GraphIssue,
   type PipelineGraph,
@@ -44,7 +48,7 @@ import {
 import type { PersonOption } from "@/lib/production/people-types"
 import { cn } from "@/lib/utils"
 import { EditorProvider, type EditorApi } from "./editor-context"
-import { DEFAULT_WIDTH } from "./node-parts"
+import { DEFAULT_WIDTH, EDITABLE_HOVER, SPLIT_WIDTH } from "./node-parts"
 import { RemovableEdge } from "./removable-edge"
 import {
   ActionNodeView,
@@ -59,9 +63,9 @@ import {
  * Редактор пайплайна — docs/PRODUCTION_PLAN.md §3, шаг 1.5.
  *
  * Граф — единственное состояние; ноды и связи xyflow выводятся из него на
- * каждом рендере. Черновик сохраняется сам, через секунду после последней
- * правки, с `revision` (§3.5): разошлась — 409, и редактор предлагает
- * подтянуть чужую версию, а не перетирает её.
+ * каждом рендере. Сохраняется по кнопке или Ctrl/Cmd+S, с `revision` (§3.5):
+ * разошлась — 409, и редактор предлагает подтянуть чужую версию, а не
+ * перетирает её.
  */
 
 type PipelineDto = {
@@ -99,7 +103,7 @@ const ADD_KINDS: { kind: WorkKind; label: DictKey; hint: DictKey }[] = [
   { kind: "action", label: "productionEdKindAction", hint: "productionEdKindActionHint" },
 ]
 
-const SAVE_DELAY_MS = 1000
+const LABELS_DELAY_MS = 500
 
 export function PipelineEditor({ pipelineId }: { pipelineId: string }) {
   return (
@@ -112,16 +116,29 @@ export function PipelineEditor({ pipelineId }: { pipelineId: string }) {
 function EditorInner({ pipelineId }: { pipelineId: string }) {
   const { t } = useI18n()
   const router = useRouter()
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, fitView } = useReactFlow()
   const canvas = useRef<HTMLDivElement>(null)
-  /** Меню по правому клику: где открыть на экране и куда поставить ноду. */
-  const [menu, setMenu] = useState<{ x: number; y: number; flow: { x: number; y: number } } | null>(null)
+  /**
+   * Меню добавления ноды: где открыть на экране и куда поставить ноду.
+   * `from` — нода и её выход, из которого бросили коннектор в пустоту: новая
+   * нода сразу соединится с ней своим входом.
+   */
+  const [menu, setMenu] = useState<{ x: number; y: number; flow: { x: number; y: number }; from?: { node: string; handle?: string } } | null>(null)
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [graph, setGraph] = useState<PipelineGraph | null>(null)
   const [name, setName] = useState("")
   const [people, setPeople] = useState<PersonOption[]>([])
   const [extras, setExtras] = useState<Extras>({ projects: [], fileTypes: [], toolKeys: [] })
-  const [dirty, setDirty] = useState(false)
+  /**
+   * Несохранённое: `layout` — только раскладка (положение, ширина нод), на
+   * работу пайплайна не влияет; `settings` — всё остальное.
+   */
+  const [dirtyLevel, setDirtyLevel] = useState<"none" | "layout" | "settings">("none")
+  const dirty = dirtyLevel !== "none"
+  const markDirty = useCallback(
+    (level: "layout" | "settings") => setDirtyLevel((d) => (d === "settings" ? d : level)),
+    [],
+  )
   const [saving, setSaving] = useState(false)
   const [committing, setCommitting] = useState(false)
   const [conflict, setConflict] = useState(false)
@@ -144,7 +161,7 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
     setExtras({ projects: body.projects ?? [], fileTypes: body.fileTypes ?? [], toolKeys: body.toolKeys ?? [] })
     setGraph(body.pipeline.graph)
     setName(body.pipeline.name)
-    setDirty(false)
+    setDirtyLevel("none")
     setConflict(false)
     if (peopleRes.ok) setPeople(((await peopleRes.json()) as { people: PersonOption[] }).people)
   }, [pipelineId, t])
@@ -157,8 +174,8 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
 
   // ─── Сохранение ────────────────────────────────────────────────────────
 
-  const save = useCallback(async () => {
-    if (!graph || conflict) return
+  const save = useCallback(async (): Promise<Loaded | null> => {
+    if (!graph || conflict) return null
     setSaving(true)
     try {
       const res = await fetch(`/api/production/pipelines/${pipelineId}`, {
@@ -168,34 +185,41 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
       })
       if (res.status === 409) {
         setConflict(true)
-        return
+        return null
       }
       if (!res.ok) {
         toast.error(t.productionEdSaveFailed)
-        return
+        return null
       }
       const body = (await res.json()) as Loaded
       revision.current = body.pipeline.revision
       setLoaded(body)
-      setDirty(false)
+      setDirtyLevel("none")
+      return body
     } finally {
       setSaving(false)
     }
   }, [graph, name, pipelineId, conflict, t])
 
+  // Ушли со страницы с несохранённым — браузер переспросит.
   useEffect(() => {
-    if (!dirty || readOnly) return
-    const timer = window.setTimeout(() => void save(), SAVE_DELAY_MS)
-    return () => window.clearTimeout(timer)
-  }, [dirty, readOnly, save])
+    if (!dirty) return
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener("beforeunload", warn)
+    return () => window.removeEventListener("beforeunload", warn)
+  }, [dirty])
 
-  const change = useCallback((fn: (g: PipelineGraph) => PipelineGraph) => {
-    setGraph((g) => (g ? fn(g) : g))
-    setDirty(true)
-  }, [])
+  const change = useCallback(
+    (fn: (g: PipelineGraph) => PipelineGraph, level: "layout" | "settings" = "settings") => {
+      setGraph((g) => (g ? fn(g) : g))
+      markDirty(level)
+    },
+    [markDirty],
+  )
 
-  // Проекты автоматики сменились — перечитать их имена. С задержкой больше
-  // автосохранения: сервер читает проекты из сохранённого графа.
+  // Проекты автоматики сменились или граф сохранён — перечитать их имена:
+  // сервер читает проекты из сохранённого графа.
+  const savedRevision = loaded?.pipeline.revision
   const autoProjects = (graph?.nodes ?? [])
     .map((n) => (n.kind === "auto" ? `${n.id}:${n.data.project.id ?? ""}` : ""))
     .filter(Boolean)
@@ -210,9 +234,9 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
         .then(async (res) => (res.ok ? ((await res.json()) as { labels: { nodeId: string; label: string }[] }).labels : []))
         .then(setAutoLabels)
         .catch(() => {})
-    }, SAVE_DELAY_MS + 500)
+    }, LABELS_DELAY_MS)
     return () => window.clearTimeout(timer)
-  }, [autoProjects, pipelineId])
+  }, [autoProjects, pipelineId, savedRevision])
 
   const rowNames = useMemo(() => {
     const names = new Map((graph?.nodes ?? []).map((n) => [n.id, n.data.name]))
@@ -228,6 +252,7 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
   // ─── Правки нод ────────────────────────────────────────────────────────
 
   const api: EditorApi = useMemo(() => {
+    const sources = new Set((graph?.edges ?? []).map((e) => e.source))
     const errorNodes = new Set(
       (loaded?.issues ?? []).filter((i) => i.level === "error" && i.nodeId).map((i) => i.nodeId!),
     )
@@ -241,7 +266,7 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
       toolKeys: extras.toolKeys,
       rowNames,
       updateNode: (id, fn) =>
-        change((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === id ? fn(n) : n)) })),
+        change((g) => withLiveHandles({ ...g, nodes: g.nodes.map((n) => (n.id === id ? fn(n) : n)) })),
       nameStage: (id, name) =>
         change((g) => {
           const unique = uniqueStageName(g.nodes, name, id)
@@ -259,8 +284,9 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
           edges: g.edges.filter((e) => e.source !== id && e.target !== id),
         })),
       nodeHasError: (id) => errorNodes.has(id),
+      hasNext: (id) => sources.has(id),
     }
-  }, [change, extras, loaded?.issues, loaded?.pipeline.status, people, pipelineId, readOnly, rowNames])
+  }, [change, extras, graph?.edges, loaded?.issues, loaded?.pipeline.status, people, pipelineId, readOnly, rowNames])
 
   // ─── Граф → xyflow ─────────────────────────────────────────────────────
 
@@ -279,7 +305,8 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
         id: node.id,
         type: node.kind,
         position: node.position,
-        style: { width: node.width ?? DEFAULT_WIDTH[node.kind] },
+        // У «Разделить» подписи полей выхода стоят слева: ноде нужно шире.
+        style: { width: node.width ?? (splitOutputsOf(node).length > 0 ? SPLIT_WIDTH : DEFAULT_WIDTH[node.kind]) },
         data: { node },
         deletable: isWorkKind(node.kind) && !readOnly,
       }))
@@ -292,6 +319,7 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
         id: edge.id,
         source: edge.source,
         target: edge.target,
+        sourceHandle: edge.sourceHandle ?? OUT_HANDLE,
         type: "removable",
         deletable: !readOnly,
       })),
@@ -312,14 +340,17 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
         if (c.type === "remove") removed.add(c.id)
       }
       if (moved.size === 0 && removed.size === 0 && resized.size === 0) return
-      change((g) => ({
+      change(
+        (g) => ({
         ...g,
         nodes: g.nodes
           .filter((n) => !removed.has(n.id))
           .map((n) => (moved.has(n.id) ? { ...n, position: moved.get(n.id)! } : n))
           .map((n) => (resized.has(n.id) ? { ...n, width: resized.get(n.id)! } : n)),
         edges: g.edges.filter((e) => !removed.has(e.source) && !removed.has(e.target)),
-      }))
+        }),
+        removed.size > 0 ? "settings" : "layout",
+      )
     },
     [change],
   )
@@ -343,7 +374,18 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
     (c: Connection) => {
       change((g) =>
         canConnect(g, { source: c.source, target: c.target })
-          ? { ...g, edges: [...g.edges, { id: shortId("e"), source: c.source, target: c.target }] }
+          ? {
+              ...g,
+              edges: [
+                ...g.edges,
+                {
+                  id: shortId("e"),
+                  source: c.source,
+                  target: c.target,
+                  ...(c.sourceHandle && c.sourceHandle !== OUT_HANDLE ? { sourceHandle: c.sourceHandle } : {}),
+                },
+              ],
+            }
           : g,
       )
     },
@@ -355,7 +397,7 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
    * холста, из правого клика — в точку клика. Верхний левый угол ноды сдвинут
    * на половину её ширины, чтобы по центру оказалась сама нода.
    */
-  const addStage = (kind: WorkKind, label: string, at?: { x: number; y: number }) => {
+  const addStage = (kind: WorkKind, label: string, at?: { x: number; y: number }, from?: { node: string; handle?: string }) => {
     let position = at
     if (!position) {
       const box = canvas.current?.getBoundingClientRect()
@@ -364,8 +406,31 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
         : { x: 0, y: 0 }
       position = { x: center.x - DEFAULT_WIDTH[kind] / 2, y: center.y - 160 }
     }
-    change((g) => ({ ...g, nodes: [...g.nodes, createWorkNode(kind, uniqueStageName(g.nodes, label), position)] }))
+    change((g) => {
+      const node = createWorkNode(kind, uniqueStageName(g.nodes, label), position)
+      const next = { ...g, nodes: [...g.nodes, node] }
+      if (!from || !canConnect(next, { source: from.node, target: node.id })) return next
+      const handle = from.handle && from.handle !== OUT_HANDLE ? { sourceHandle: from.handle } : {}
+      return { ...next, edges: [...next.edges, { id: shortId("e"), source: from.node, target: node.id, ...handle }] }
+    })
   }
+
+  /** Коннектор из выхода брошен не на ноду — предлагаем создать ноду в этой точке. */
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      if (readOnly || state.isValid || state.toNode || !state.fromNode || state.fromHandle?.type !== "source") return
+      const point = "changedTouches" in event ? event.changedTouches[0] : event
+      const box = canvas.current?.getBoundingClientRect()
+      const flow = screenToFlowPosition({ x: point.clientX, y: point.clientY })
+      setMenu({
+        x: point.clientX - (box?.left ?? 0),
+        y: point.clientY - (box?.top ?? 0),
+        flow: { x: flow.x, y: flow.y - 40 },
+        from: { node: state.fromNode.id, handle: state.fromHandle.id ?? undefined },
+      })
+    },
+    [readOnly, screenToFlowPosition],
+  )
 
   // ─── Архив и удаление ──────────────────────────────────────────────────
 
@@ -388,7 +453,6 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
 
   /** Пауза запусков: новых роликов нет, идущие доживают. Одна кнопка на оба направления. */
   const setPaused = async (paused: boolean) => {
-    if (paused && !window.confirm(t.productionEdPauseConfirm.replace("{name}", name))) return
     if (dirty) await save()
     const res = await fetch(`/api/production/pipelines/${pipelineId}`, {
       method: "PATCH",
@@ -412,8 +476,8 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
   // ─── Активация и версия ────────────────────────────────────────────────
 
   const commit = async (kind: "activate" | "versions") => {
-    const confirmText = kind === "activate" ? t.productionEdActivateConfirm : t.productionEdVersionConfirm
-    if (!window.confirm(confirmText)) return
+    // Подтверждение — только у активации; сохранение изменений не спрашивает.
+    if (kind === "activate" && !window.confirm(t.productionEdActivateConfirm)) return
     if (dirty) await save()
     setCommitting(true)
     try {
@@ -445,6 +509,35 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
     }
   }
 
+  /**
+   * «Сохранить»: черновик в базу, а у активного пайплайна с изменённой схемой —
+   * и новая версия, по которой пойдут новые ролики.
+   */
+  const saveAll = async () => {
+    if (readOnly || saving || committing) return
+    const fresh = dirty ? await save() : loaded
+    if (!fresh) return
+    if (fresh.pipeline.status === "active" && fresh.structureChanged) {
+      if (fresh.issues.some((i) => i.level === "error")) {
+        toast.error(t.productionEdHasErrors)
+        return
+      }
+      await commit("versions")
+    }
+  }
+  const saveAllRef = useRef(saveAll)
+  saveAllRef.current = saveAll
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "s") {
+        event.preventDefault()
+        void saveAllRef.current()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
   if (!loaded || !graph) {
     return (
       <div className="flex h-full items-center justify-center text-ws-4">
@@ -474,10 +567,10 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
             disabled={readOnly}
             onChange={(event) => {
               setName(event.target.value)
-              setDirty(true)
+              markDirty("settings")
             }}
             aria-label={t.productionEdPipelineName}
-            className="min-w-0 max-w-[320px] flex-1 bg-transparent text-[17px] font-semibold text-ws-1 outline-none"
+            className={cn("min-w-0 max-w-[320px] flex-1 bg-transparent text-[17px] font-semibold text-ws-1 outline-none", EDITABLE_HOVER)}
           />
           <StatusBadge status={p.status} version={p.currentVersion} />
           {p.status === "active" && p.pausedAt ? (
@@ -552,16 +645,17 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
                 {t.productionEdActivate}
               </button>
             ) : null}
-            {p.status === "active" && loaded.structureChanged ? (
-              <button
-                type="button"
-                disabled={committing || errors.length > 0}
-                onClick={() => void commit("versions")}
-                className="h-8 rounded-[9px] bg-ws-action px-3 text-[13px] font-medium text-primary-foreground hover:bg-ws-action-hover disabled:opacity-45"
-              >
-                {t.productionEdSaveVersion}
-              </button>
-            ) : null}
+            {readOnly ? null : (
+              <SaveButton
+                level={
+                  dirtyLevel === "settings" || (p.status === "active" && loaded.structureChanged)
+                    ? "settings"
+                    : dirtyLevel
+                }
+                busy={saving || committing}
+                onClick={() => void saveAll()}
+              />
+            )}
           </div>
         </header>
 
@@ -597,6 +691,7 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onConnectEnd={onConnectEnd}
             isValidConnection={isValidConnection}
             nodesDraggable={!readOnly}
             nodesConnectable={!readOnly}
@@ -620,7 +715,7 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
                   key={item.kind}
                   type="button"
                   onClick={() => {
-                    addStage(item.kind, t[item.label], menu.flow)
+                    addStage(item.kind, t[item.label], menu.flow, menu.from)
                     setMenu(null)
                   }}
                   className="flex w-full flex-col items-start gap-0.5 rounded px-2 py-1.5 text-left hover:bg-ws-hover"
@@ -633,11 +728,46 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
           ) : null}
 
           {errors.length + warnings.length > 0 ? (
-            <IssuesPanel errors={errors} warnings={warnings} graph={graph} />
+            <IssuesPanel
+              errors={errors}
+              warnings={warnings}
+              graph={graph}
+              onPick={(id) => {
+                // К ноде с проблемой: выделить и подвести в кадр.
+                setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })))
+                void fitView({ nodes: [{ id }], duration: 300, maxZoom: 1 })
+              }}
+            />
           ) : null}
         </div>
       </div>
     </EditorProvider>
+  )
+}
+
+/**
+ * Цвет — насколько важно сохранить: только раскладка — бледно, настройки —
+ * полным цветом, нечего сохранять — неактивна.
+ */
+function SaveButton({ level, busy, onClick }: { level: "none" | "layout" | "settings"; busy: boolean; onClick: () => void }) {
+  const { t } = useI18n()
+  const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘S" : "Ctrl+S"
+  return (
+    <button
+      type="button"
+      disabled={busy || level === "none"}
+      onClick={onClick}
+      title={`${t.productionEdSaveVersion} (${shortcut})`}
+      className={cn(
+        "h-8 rounded-[9px] px-3 text-[13px] font-medium transition-colors",
+        level === "settings" && "bg-warning text-background hover:bg-warning/90",
+        level === "layout" && "border border-warning/30 bg-warning/15 text-warning hover:bg-warning/25",
+        level === "none" && "border border-foreground/10 bg-ws-control text-ws-4",
+        busy && "opacity-60",
+      )}
+    >
+      {t.productionEdSaveVersion}
+    </button>
   )
 }
 
@@ -670,9 +800,10 @@ const ISSUE_TEXT: Record<GraphIssue["code"], DictKey> = {
   cycle: "productionIssueCycle",
   "duplicate-stage-name": "productionIssueDuplicateName",
   "bad-path": "productionIssueBadPath",
-  "path-shared": "productionIssuePathShared",
   "form-empty": "productionIssueFormEmpty",
   "form-row-label": "productionIssueFormRowLabel",
+      "split-folder": "productionIssueSplitFolder",
+      "auto-last": "productionIssueAutoLast",
   "no-reviewers": "productionIssueNoReviewers",
   "no-executors": "productionIssueNoExecutors",
 }
@@ -682,15 +813,20 @@ function IssuesPanel({
   errors,
   warnings,
   graph,
+  onPick,
 }: {
   errors: GraphIssue[]
   warnings: GraphIssue[]
   graph: PipelineGraph
+  onPick: (nodeId: string) => void
 }) {
   const { t } = useI18n()
+  // Без имени нода всё равно должна узнаваться — тогда по виду.
   const nameOf = (id?: string) => {
     const node = graph.nodes.find((n) => n.id === id)
-    return node ? node.data.name : ""
+    if (!node) return ""
+    const kind = ADD_KINDS.find((k) => k.kind === node.kind)
+    return node.data.name.trim() || (kind ? t[kind.label] : "")
   }
   return (
     <div className="absolute right-3 top-3 z-10 max-h-[45%] w-72 overflow-y-auto rounded-xl border border-foreground/10 bg-ws-panel p-3 shadow-ws-panel">
@@ -699,12 +835,19 @@ function IssuesPanel({
       </p>
       <ul className="space-y-1.5">
         {[...errors, ...warnings].map((issue, index) => (
-          <li
-            key={index}
-            className={cn("text-[12px] leading-snug", issue.level === "error" ? "text-destructive" : "text-warning")}
-          >
-            {nameOf(issue.nodeId) ? <span className="font-medium">{nameOf(issue.nodeId)}: </span> : null}
-            {t[ISSUE_TEXT[issue.code]]}
+          <li key={index}>
+            <button
+              type="button"
+              disabled={!issue.nodeId}
+              onClick={() => issue.nodeId && onPick(issue.nodeId)}
+              className={cn(
+                "-mx-1 w-[calc(100%+0.5rem)] rounded px-1 py-0.5 text-left text-[12px] leading-snug enabled:hover:bg-ws-hover",
+                issue.level === "error" ? "text-destructive" : "text-warning",
+              )}
+            >
+              {nameOf(issue.nodeId) ? <span className="font-medium">{nameOf(issue.nodeId)}: </span> : null}
+              {t[ISSUE_TEXT[issue.code]]}
+            </button>
           </li>
         ))}
       </ul>

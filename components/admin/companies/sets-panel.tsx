@@ -1,13 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2 } from "lucide-react"
+import { ChevronDown, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { useI18n } from "@/components/account/i18n"
 import { toolText } from "@/components/account/tools/registry-ui"
 import { Section } from "@/components/admin/billing/fields"
+import { useFloatingSave } from "@/components/admin/shell/floating-save"
 import { COMPANY_TOOLS } from "@/components/company/nav-config"
-import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { TOOLS } from "@/lib/tools/registry"
@@ -68,6 +68,13 @@ export function CompanySetsPanel({
     COMPANY_TOOLS.map((tool) => tool.key),
   )
 
+  const dirty =
+    tools.changed ||
+    sections.changed ||
+    chatSync !== initial.chatSync ||
+    production !== initial.production ||
+    billingFree !== initial.billingFree
+
   const save = async () => {
     /**
      * Уходит ТОЛЬКО тронутый набор.
@@ -112,10 +119,18 @@ export function CompanySetsPanel({
     }
   }
 
+  useFloatingSave({
+    label: personal ? t.personalSetsTitle : t.coSetsTitle,
+    dirty,
+    busy,
+    onSave: () => void save(),
+  })
+
   return (
     <Section
       title={personal ? t.personalSetsTitle : t.coSetsTitle}
       description={personal ? t.personalSetsSub : t.coSetsSub}
+      collapsible
     >
       {/* Друг под другом, а не в две колонки: наборы разной длины, и рядом они
           оставляли справа или слева пустой столбец в пол-экрана. Читаются они
@@ -206,11 +221,6 @@ export function CompanySetsPanel({
       </div>
       </>
       )}
-
-      <Button onClick={() => void save()} disabled={busy}>
-        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-        {t.saveChanges}
-      </Button>
     </Section>
   )
 }
@@ -275,13 +285,35 @@ function SetColumn({
   items: { key: string; label: string }[]
 }) {
   const { t } = useI18n()
+  const [open, setOpen] = useState(true)
 
   return (
     /* Рамка одна на весь набор, а не только вокруг «всё, что есть»: заголовок,
        переключатель и отметки — это одно решение, и обведённой частью от него
        читались бы как отдельная строка, а список под ней — как ничей. */
     <div className="space-y-3 rounded-lg border border-border/60 p-3">
-      <Label>{label}</Label>
+      {/* Заголовок набора и сворачивает его: список разделов длинный, а
+          правят обычно один набор из двух. */}
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+        className="-ml-1 flex w-full items-center gap-2 rounded px-1 text-left hover:text-foreground/80"
+      >
+        {open ? (
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        )}
+        <Label className="cursor-pointer">{label}</Label>
+        {open ? null : (
+          <span className="ml-auto text-[11px] text-muted-foreground">
+            {state.unlimited ? t.coSetsAll : `${state.picked.length}/${items.length}`}
+          </span>
+        )}
+      </button>
+      {open ? (
+      <>
       <div className="flex items-start gap-3">
         <Switch
           checked={state.unlimited}
@@ -316,6 +348,8 @@ function SetColumn({
           ) : null}
         </div>
       )}
+      </>
+      ) : null}
     </div>
   )
 }

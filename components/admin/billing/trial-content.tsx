@@ -13,6 +13,7 @@ import {
 import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog"
 import { GrantLists, type GrantListRow } from "@/components/admin/billing/grant-list"
 import { AdminPageHeader } from "@/components/admin/shell/admin-page-header"
+import { useFloatingSave } from "@/components/admin/shell/floating-save"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -229,6 +230,21 @@ export function AdminBillingTrial() {
     templates.map((row) => row.projectId).join(",") !==
     savedTemplates.map((row) => row.projectId).join(",")
 
+  // Две кнопки, а не одна: у суммы и у состава набора разная цена ошибки, и
+  // состав по-прежнему уходит через подтверждение.
+  useFloatingSave({
+    label: t.billingTrialTitle,
+    dirty: dirtySettings,
+    busy: savingSettings,
+    onSave: () => void saveSettings(),
+  })
+  useFloatingSave({
+    label: t.billingTemplatesTitle,
+    dirty: dirtySet,
+    busy: savingSet,
+    onSave: () => setConfirmSet(true),
+  })
+
   const addTemplate = (pick: PickRow) => {
     setTemplates((prev) =>
       prev.some((row) => row.projectId === pick.projectId)
@@ -325,22 +341,6 @@ export function AdminBillingTrial() {
         title={t.billingTrialTitle}
         description={t.billingTrialDesc}
         help="billing.trial.settings"
-        actions={
-          <Button
-            size="sm"
-            onClick={saveSettings}
-            disabled={savingSettings || !dirtySettings}
-          >
-            {savingSettings ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t.billingSaving}
-              </>
-            ) : (
-              t.billingSave
-            )}
-          </Button>
-        }
       >
         <div className="flex items-center gap-3">
           <Switch
@@ -386,22 +386,6 @@ export function AdminBillingTrial() {
         title={t.billingTemplatesTitle}
         description={t.billingTemplatesDesc}
         help="billing.trial.templates"
-        actions={
-          <Button
-            size="sm"
-            onClick={() => setConfirmSet(true)}
-            disabled={savingSet || !dirtySet}
-          >
-            {savingSet ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t.billingTemplatesSaving}
-              </>
-            ) : (
-              t.billingTemplatesSave
-            )}
-          </Button>
-        }
       >
         {templates.length === 0 ? (
           <p className="text-sm text-muted-foreground/80">

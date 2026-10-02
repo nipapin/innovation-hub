@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation"
 import { AdminDataProvider } from "@/components/admin/data/admin-data-context"
 import { AdminToolsColumn } from "@/components/admin/shell/admin-tools-column"
 import { AdminTopbar } from "@/components/admin/shell/admin-topbar"
+import { FloatingSaveHost } from "@/components/admin/shell/floating-save"
 import { useAdminDensity } from "@/components/admin/shell/use-admin-density"
 import { ADMIN_AREAS, findTool } from "@/components/admin/shell/nav-config"
 import type { UserRole } from "@/lib/domain-types"
@@ -88,6 +89,7 @@ export function AdminShell({
           </div>
         </div>
       )}
+      <FloatingSaveHost />
     </AdminDataProvider>
   )
 }

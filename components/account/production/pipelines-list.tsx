@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react"
 import {
   Archive,
   ArchiveRestore,
+  Copy,
   ArrowLeft,
   CirclePause,
   CirclePlay,
@@ -104,9 +105,7 @@ export function PipelinesList() {
   const confirmThen = (question: string, name: string) => window.confirm(question.replace("{name}", name))
 
   const togglePause = async (item: PipelineCard) => {
-    const pausing = !item.pausedAt
-    if (pausing && !confirmThen(t.productionEdPauseConfirm, item.name)) return
-    await patch(item, { paused: pausing })
+    await patch(item, { paused: !item.pausedAt })
   }
 
   const toggleArchive = async (item: PipelineCard) => {
@@ -122,6 +121,12 @@ export function PipelinesList() {
       const body = (await res.json().catch(() => ({}))) as { code?: string }
       toast.error(body.code === "active-runs" ? t.productionEdDeleteBlocked : t.productionEdActionFailed)
     }
+    await load()
+  }
+
+  const duplicate = async (item: PipelineCard) => {
+    const res = await fetch(`/api/production/pipelines/${encodeURIComponent(item.id)}/duplicate`, { method: "POST" })
+    if (!res.ok) toast.error(t.productionEdCreateFailed)
     await load()
   }
 
@@ -294,6 +299,12 @@ export function PipelinesList() {
                         <Pencil className="h-4 w-4" />
                         {t.productionEdRename}
                       </DropdownMenuItem>
+                      {canCreate ? (
+                        <DropdownMenuItem onSelect={() => void duplicate(item)}>
+                          <Copy className="h-4 w-4" />
+                          {t.productionEdDuplicate}
+                        </DropdownMenuItem>
+                      ) : null}
                       {/* Пауза — только у активного: черновик и так не запускается,
                           архивный — тем более. */}
                       {item.status === "active" ? (

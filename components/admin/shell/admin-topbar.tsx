@@ -12,6 +12,7 @@ import {
   isAreaActive,
 } from "./nav-config"
 import { AdminMobileSidebar } from "./admin-mobile-sidebar"
+import { useCurrentAdminCrumb } from "./floating-save"
 import type { AdminDensity } from "./use-admin-density"
 import { cn } from "@/lib/utils"
 
@@ -42,6 +43,7 @@ export function AdminTopbar({
   const pathname = usePathname() ?? ""
   const { t } = useI18n()
   const adminT = useAdminI18n()
+  const detail = useCurrentAdminCrumb()
 
   const tool = findTool(pathname)
   const area = tool
@@ -110,8 +112,23 @@ export function AdminTopbar({
           {toolLabel && !atAreaHome ? (
             <>
               <span className="hidden text-[16px] text-ws-5 sm:inline">/</span>
-              <span className="truncate text-[15px] font-semibold text-ws-1 md:text-[16px]">
+              <span
+                className={cn(
+                  "truncate text-[15px] md:text-[16px]",
+                  detail ? "hidden font-medium text-ws-3 sm:inline" : "font-semibold text-ws-1",
+                )}
+              >
                 {toolLabel}
+              </span>
+            </>
+          ) : null}
+          {/* Что открыто внутри инструмента («Команда «X»»): страница длинная,
+              и выбранное иначе уезжает из виду вместе со списком. */}
+          {detail ? (
+            <>
+              <span className="hidden text-[16px] text-ws-5 sm:inline">/</span>
+              <span className="truncate text-[15px] font-semibold text-ws-1 md:text-[16px]">
+                {detail}
               </span>
             </>
           ) : null}

@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.33.2",
   "scripts": {
-    "dev": "next dev --turbo",
+    "dev": "node scripts/dev-cache-trim.mjs && next dev --turbo",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

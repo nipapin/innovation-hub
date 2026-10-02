@@ -13,38 +13,67 @@ import { useEditor } from "./editor-context"
 /**
  * Части нод редактора — docs/PRODUCTION_PLAN.md §3.0, эскизы и правки 2026-10-01.
  *
- * Вход слева и выход справа — по одному, связей в каждом сколько угодно (§3.3).
+ * Вход слева и выход справа — по одному, связей в каждом сколько угодно (§3.3);
+ * у «Разделить» выходы ещё и у каждого блока.
  * Цвет шапки — по типу, как в программе: «Старт» зелёный, «Инструмент» голубой,
- * «Форма» фиолетовая, «Автоматика» жёлтая, «Действие» серое.
+ * «Форма» фиолетовая, «Автоматика» и «Действие» жёлтые.
  */
+/**
+ * Черновик текстового поля ноды. Значение из графа приходит в xyflow через
+ * эффект — на рендер позже нажатия, и контролируемое поле, получив «чужое»
+ * значение, ставит курсор в конец. Поле держит своё значение и принимает
+ * внешнее, только если оно отличается от отправленного (переименование
+ * в уникальное имя, отмена правок).
+ */
+export function useDraft(value: string, onChange: (value: string) => void) {
+  const [draft, setDraft] = useState(value)
+  const sent = useRef(value)
+  useEffect(() => {
+    if (value === sent.current) return
+    sent.current = value
+    setDraft(value)
+  }, [value])
+  const change = (next: string) => {
+    sent.current = next
+    setDraft(next)
+    onChange(next)
+  }
+  return [draft, change] as const
+}
+
+/** Подсказка «это можно править»: лёгкое подчёркивание при наведении. */
+export const EDITABLE_HOVER =
+  "decoration-foreground/35 underline-offset-4 enabled:hover:underline focus:no-underline"
+
 export function InHandle() {
   return (
     <Handle
       id={IN_HANDLE}
       type="target"
       position={Position.Left}
-      className="!h-3.5 !w-3.5 !border-2 !border-background !bg-ws-accent"
+      className="!h-[18px] !w-[18px] !border-2 !border-background !bg-ws-accent"
     />
   )
 }
 
-export function OutHandle() {
+/** Выход ноды; `id` — выход «Разделить», рисуется у своего блока. */
+export function OutHandle({ id = OUT_HANDLE }: { id?: string }) {
   return (
     <Handle
-      id={OUT_HANDLE}
+      id={id}
       type="source"
       position={Position.Right}
-      className="!h-3.5 !w-3.5 !border-2 !border-background !bg-success"
+      className="!h-[18px] !w-[18px] !border-2 !border-background !bg-success"
     />
   )
 }
 
 const HEADER: Record<NodeKind, string> = {
-  start: "bg-success/20 border-success/30",
-  tool: "bg-info/20 border-info/30",
-  form: "bg-violet/20 border-violet/30",
-  auto: "bg-warning/20 border-warning/30",
-  action: "bg-foreground/10 border-foreground/15",
+  start: "bg-success/30 border-success/40",
+  tool: "bg-info/30 border-info/40",
+  form: "bg-violet/30 border-violet/40",
+  auto: "bg-warning/30 border-warning/40",
+  action: "bg-warning/40 border-warning/50",
 }
 
 /** Ширина по умолчанию — пока ноду не растянули. */
@@ -53,8 +82,11 @@ export const DEFAULT_WIDTH: Record<NodeKind, number> = {
   tool: 420,
   form: 460,
   auto: 420,
-  action: 360,
+  action: 420,
 }
+
+/** Ширина «Разделить» по умолчанию: подписи полей выхода слева от полей. */
+export const SPLIT_WIDTH = 480
 
 /**
  * Рамка ноды: цветная шапка с названием (правится; по умолчанию — тип ноды),
@@ -84,11 +116,12 @@ export function NodeFrame({
 }) {
   const { t } = useI18n()
   const { readOnly, removeNode, nodeHasError } = useEditor()
+  const [nameDraft, setNameDraft] = useDraft(name, onRename)
 
   return (
     <div
       className={cn(
-        "relative h-full w-full rounded-xl border bg-ws-panel shadow-ws-panel",
+        "relative h-full w-full rounded-xl border bg-ws-node shadow-ws-panel",
         nodeHasError(id) ? "border-destructive/60" : "border-foreground/15",
       )}
     >
@@ -110,11 +143,11 @@ export function NodeFrame({
       {output ? <OutHandle /> : null}
       <div className={cn("flex items-center gap-2 rounded-t-xl border-b px-3 py-2", HEADER[kind])}>
         <input
-          value={name}
+          value={nameDraft}
           disabled={readOnly}
-          onChange={(event) => onRename(event.target.value)}
+          onChange={(event) => setNameDraft(event.target.value)}
           aria-label={t.productionEdStageName}
-          className="nodrag min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-ws-1 outline-none"
+          className={cn("nodrag min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-ws-1 outline-none", EDITABLE_HOVER)}
         />
         <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[1.2px] text-ws-3">{kindLabel}</span>
         {removable && !readOnly ? (
@@ -181,7 +214,7 @@ function activeWord(text: string): string {
   return parts[parts.length - 1] ?? ""
 }
 
-type Option = {
+export type Option = {
   value: string
   hint?: string
   /** Подсказка — ноды, где имя встречается: другим цветом. */
@@ -290,12 +323,21 @@ export function PathInput({
   scope = "path",
   historyKey,
   placeholder,
+  levelOptions,
+  firstScope,
 }: {
   value: string[]
   onChange: (next: string[]) => void
   scope?: MaskScope
   historyKey: string
   placeholder?: string
+  /**
+   * Свои подсказки для следующего сегмента — по уже набранным: например,
+   * папки этого уровня. Идут первыми; `null` — уровень без своих подсказок.
+   */
+  levelOptions?: Option[] | null
+  /** Первый сегмент — корневая папка: свои маски (`$pipelineName`). */
+  firstScope?: MaskScope
 }) {
   const { t } = useI18n()
   const { readOnly } = useEditor()
@@ -304,10 +346,13 @@ export function PathInput({
   const key = `path:${historyKey}`
   useEffect(() => setHistory(readHistory(key)), [key])
 
-  const masks = maskOptions(scope, t as unknown as Record<string, string>)
+  const scopeAt = (index: number) => (index === 0 && firstScope ? firstScope : scope)
+  const masks = maskOptions(scopeAt(value.length), t as unknown as Record<string, string>)
+  const own = levelOptions ?? []
   const options: Option[] = [
-    ...history.filter((h) => !masks.some((m) => m.value === h)).map((value) => ({ value, history: true })),
-    ...masks,
+    ...own,
+    ...history.filter((h) => !masks.some((m) => m.value === h) && !own.some((o) => o.value === h)).map((value) => ({ value, history: true })),
+    ...masks.filter((m) => !own.some((o) => o.value === m.value)),
   ]
   const suggest = useSuggest(options, text)
 
@@ -332,7 +377,7 @@ export function PathInput({
         )}
       >
         {value.map((segment, index) => {
-          const bad = unknownMasks(segment, scope).length > 0
+          const bad = unknownMasks(segment, scopeAt(index)).length > 0
           return (
             <span
               key={`${segment}-${index}`}
@@ -555,9 +600,9 @@ export function DaysInput({
  * встречается. Подставлять не обязательно: можно вписать своё.
  */
 export function RowLabelInput({
-  value,
+  value: outer,
   nodeId,
-  onChange,
+  onChange: emit,
   placeholder,
   invalid,
 }: {
@@ -568,6 +613,7 @@ export function RowLabelInput({
   invalid: boolean
 }) {
   const { readOnly, rowNames } = useEditor()
+  const [value, onChange] = useDraft(outer, emit)
   const byLabel = new Map<string, string[]>()
   for (const item of rowNames) {
     if (item.nodeId === nodeId) continue
@@ -617,6 +663,168 @@ export function RowLabelInput({
         )}
       />
       {suggest.open ? <SuggestList options={suggest.shown} active={suggest.active} onPick={pick} /> : null}
+    </div>
+  )
+}
+
+/**
+ * Тексты фишками: Enter добавляет весь набранный текст одной фишкой — фраза
+ * с пробелом («текст новости») остаётся одним условием. Backspace в пустом
+ * поле снимает последнюю. Подсказки — по всему набранному тексту.
+ */
+export function ChipsInput({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string[]
+  onChange: (next: string[]) => void
+  options: Option[]
+  placeholder: string
+}) {
+  const { t } = useI18n()
+  const { readOnly } = useEditor()
+  const [text, setText] = useState("")
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(-1)
+  const typed = text.trim().toLowerCase()
+  const shown = options.filter(
+    (o) => !value.includes(o.value) && (!typed || o.value.toLowerCase().includes(typed)),
+  )
+
+  const commit = (raw: string) => {
+    const chip = raw.trim()
+    setText("")
+    setActive(-1)
+    if (!chip || value.some((v) => v.toLowerCase() === chip.toLowerCase())) return
+    onChange([...value, chip])
+  }
+
+  return (
+    <div className="nodrag relative min-w-0">
+      <div
+        onClick={(event) => (event.currentTarget.querySelector("input") as HTMLInputElement | null)?.focus()}
+        className={cn(
+          "flex min-h-7 flex-wrap items-center gap-1 rounded-md border border-foreground/10 bg-ws-control px-1.5 py-0.5",
+          readOnly && "opacity-60",
+        )}
+      >
+        {value.map((chip, index) => (
+          <span key={`${chip}-${index}`} className="flex items-center gap-0.5 rounded bg-ws-select/35 px-1.5 py-0.5 text-[11.5px] text-ws-1">
+            {chip}
+            {readOnly ? null : (
+              <button
+                type="button"
+                aria-label={t.productionEdRemoveSegment}
+                onClick={() => onChange(value.filter((_, i) => i !== index))}
+                className="text-ws-4 hover:text-ws-1"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </span>
+        ))}
+        {readOnly ? null : (
+          <input
+            value={text}
+            onFocus={() => setOpen(true)}
+            onBlur={() => {
+              setOpen(false)
+              commit(text)
+            }}
+            onChange={(event) => {
+              setText(event.target.value)
+              setActive(-1)
+              setOpen(true)
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault()
+                setOpen(true)
+                if (shown.length === 0) return
+                const n = shown.length + 1
+                const delta = event.key === "ArrowDown" ? 1 : -1
+                setActive((((active + 1 + delta) % n) + n) % n - 1)
+              } else if (event.key === "Enter") {
+                event.preventDefault()
+                commit(open && active >= 0 && shown[active] ? shown[active].value : text)
+              } else if (event.key === "Escape") {
+                setOpen(false)
+              } else if (event.key === "Backspace" && !text && value.length > 0) {
+                onChange(value.slice(0, -1))
+              }
+            }}
+            placeholder={value.length === 0 ? placeholder : ""}
+            className="h-5 min-w-[40px] flex-1 bg-transparent text-[12px] text-ws-1 outline-none placeholder:text-ws-5"
+          />
+        )}
+      </div>
+      {open ? <SuggestList options={shown} active={active} onPick={(option) => commit(option.value)} /> : null}
+    </div>
+  )
+}
+
+/** Одно имя с подсказками: выбранная подсказка заменяет значение целиком. */
+export function SuggestInput({
+  value: outer,
+  onChange: emit,
+  options,
+  placeholder,
+  invalid,
+}: {
+  value: string
+  onChange: (next: string) => void
+  options: Option[]
+  placeholder: string
+  invalid: boolean
+}) {
+  const { readOnly } = useEditor()
+  const [value, onChange] = useDraft(outer, emit)
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(-1)
+  const typed = value.trim().toLowerCase()
+  const shown = options.filter((o) => o.value !== value.trim() && (!typed || o.value.toLowerCase().includes(typed)))
+  const pick = (option: Option) => {
+    onChange(option.value)
+    setOpen(false)
+    setActive(-1)
+  }
+
+  return (
+    <div className="nodrag relative min-w-0 flex-1">
+      <input
+        value={value}
+        disabled={readOnly}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onChange={(event) => {
+          onChange(event.target.value)
+          setActive(-1)
+          setOpen(true)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault()
+            setOpen(true)
+            if (shown.length === 0) return
+            const n = shown.length + 1
+            const delta = event.key === "ArrowDown" ? 1 : -1
+            setActive((((active + 1 + delta) % n) + n) % n - 1)
+          } else if ((event.key === "Tab" || event.key === "Enter") && open && active >= 0 && shown[active]) {
+            event.preventDefault()
+            pick(shown[active])
+          } else if (event.key === "Escape") {
+            setOpen(false)
+          }
+        }}
+        placeholder={placeholder}
+        className={cn(
+          "h-7 w-full rounded-md border bg-ws-control px-2 text-[12px] text-ws-1 outline-none placeholder:text-ws-5",
+          invalid ? "border-destructive/50" : "border-foreground/10",
+        )}
+      />
+      {open ? <SuggestList options={shown} active={active} onPick={pick} /> : null}
     </div>
   )
 }

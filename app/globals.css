@@ -57,6 +57,7 @@
     /* поверхности: от самой глубокой к приподнятой */
     --ws-well: 220 37% 6%;
     --ws-panel: 226 26% 9.5%;
+    --ws-node: 226 24% 12%;
     --ws-control: 220 32% 9%;
     --ws-raised: 222 30% 12%;
     --ws-hover: 221 31% 13%;
@@ -172,6 +173,7 @@
     /* Рабочая зона: поверхности светлеют, шкала текста разворачивается. */
     --ws-well: 220 24% 95%;
     --ws-panel: 0 0% 100%;
+    --ws-node: 220 20% 97.5%;
     --ws-control: 220 22% 97%;
     --ws-raised: 0 0% 100%;
     --ws-hover: 220 24% 94%;
@@ -625,4 +627,16 @@
 }
 .production-flow .react-flow__node {
   border-radius: 0.75rem;
+}
+
+/* Кнопки зума/центрирования React Flow — в цветах темы, а не всегда белые */
+.react-flow__controls {
+  --xy-controls-button-background-color: hsl(var(--card));
+  --xy-controls-button-background-color-hover: hsl(var(--secondary));
+  --xy-controls-button-color: hsl(var(--muted-foreground));
+  --xy-controls-button-color-hover: hsl(var(--foreground));
+  --xy-controls-button-border-color: hsl(var(--border));
+  --xy-controls-box-shadow: 0 0 0 1px hsl(var(--border));
+  border-radius: 0.5rem;
+  overflow: hidden;
 }

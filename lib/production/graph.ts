@@ -15,7 +15,8 @@
  *   «Инструмент», «Форма», «Автоматика», «Действие». Ноды «Финал» нет: ролик
  *   сдан, когда приняты все последние этапы (без исходящих связей);
  * - этап без входящих связей — первый: открывается сразу при запуске ролика;
- * - у ноды один вход и один выход, связей в каждом — сколько угодно;
+ * - у ноды один вход и один выход, связей в каждом — сколько угодно; у
+ *   действия «Разделить» выходов несколько — по одному на подпапку;
  * - папка-проект этапа — ссылка на конкретный проект владельца; в черновике
  *   может быть только имя (в том числе `$pipelineName`), проект заводится при
  *   активации;
@@ -26,7 +27,7 @@
  */
 import { z } from "zod"
 
-import { checkTemplate, isPerRun, type MaskScope, type ResolveError } from "./masks"
+import { checkTemplate, type MaskScope, type ResolveError } from "./masks"
 
 export const GRAPH_SCHEMA_VERSION = 4
 
@@ -39,7 +40,7 @@ export function isWorkKind(kind: string): kind is WorkKind {
   return (WORK_KINDS as readonly string[]).includes(kind)
 }
 
-/** Хендлеры: один вход, один выход (§3.3). */
+/** Хендлеры: один вход, один выход (§3.3); у «Разделить» ещё выходы по `SplitOutput.id`. */
 export const IN_HANDLE = "in"
 export const OUT_HANDLE = "out"
 
@@ -150,10 +151,45 @@ const autoDataSchema = z.object({
   autoApprove: z.boolean(),
 })
 
-/** Действие (§3.2д): без людей и без чата. Пока одно — скопировать вход в финальную папку. */
+/** Имя подпапки выхода: один сегмент пути, без масок. */
+const outputFolderSchema = z.string().trim().max(120)
+
+/**
+ * Выход «Разделить»: файл уходит сюда, если подошёл по всем заполненным
+ * условиям — тип (любой из списка), имя без расширения содержит хотя бы один
+ * из текстов и не содержит ни одного из запрещённых. Регистр не важен.
+ * Файл, подошедший под несколько выходов, копируется в каждый.
+ */
+export type SplitOutput = {
+  id: string
+  folder: string
+  types: string[]
+  contains: string[]
+  excludes: string[]
+}
+
+const splitOutputSchema = z.object({
+  id: z.string().min(1).max(40),
+  folder: outputFolderSchema,
+  types: z.array(z.string().min(1).max(60)).max(20),
+  contains: z.array(z.string().min(1).max(200)).max(50),
+  excludes: z.array(z.string().min(1).max(200)).max(50),
+})
+
+/**
+ * Действие (§3.2д): без людей и без чата.
+ *
+ * - `copy` — финалы предыдущих этапов в свою финальную папку;
+ * - `split` — то же, но разложенное по подпапкам выходов (`outputs`), а не
+ *   подошедшее никуда — в `restFolder`. У каждого выхода свой хендлер; основной
+ *   выход ноды — «остальное». Следующий этап берёт подпапку своего выхода, а
+ *   если она пустая — всю финальную папку действия.
+ */
 const actionDataSchema = z.object({
   ...workBase,
-  action: z.enum(["copy"]),
+  action: z.enum(["copy", "split"]),
+  outputs: z.array(splitOutputSchema).max(20).optional(),
+  restFolder: outputFolderSchema.optional(),
 })
 
 /** Ширина ноды, растянутой мышью; нет — ширина по умолчанию своего типа. */
@@ -180,6 +216,8 @@ const edgeSchema = z.object({
   id: z.string().min(1).max(80),
   source: z.string().min(1),
   target: z.string().min(1),
+  /** Выход «Разделить» (`SplitOutput.id`); нет — основной выход ноды. */
+  sourceHandle: z.string().min(1).max(40).optional(),
 })
 
 export const pipelineGraphSchema = z.object({
@@ -216,6 +254,7 @@ export const DEFAULT_WORK_PATH = ["$runTime-$runName", "$stageNum $stageName", "
 export const DEFAULT_FINAL_PATH = ["$runTime-$runName", "$stageNum $stageName", "final"]
 export const DEFAULT_AUTO_IN = ["IN"]
 export const DEFAULT_AUTO_OUT = ["OUT"]
+export const DEFAULT_REST_FOLDER = "rest"
 function base(name: string) {
   return {
     name,
@@ -271,6 +310,39 @@ export function uniqueStageName(nodes: PipelineNode[], name: string, exceptId?: 
 
 export function createFormRow(type: string): FormRow {
   return { id: shortId("row"), label: "", types: [type], op: ">=", count: 1, children: [] }
+}
+
+export function createSplitOutput(): SplitOutput {
+  return { id: shortId("out"), folder: "", types: [], contains: [], excludes: [] }
+}
+
+/** Выходы «Разделить»; у копирования их нет. */
+export function splitOutputsOf(node: PipelineNode | undefined): SplitOutput[] {
+  return node?.kind === "action" && node.data.action === "split" ? (node.data.outputs ?? []) : []
+}
+
+export function restFolderOf(node: ActionNode): string {
+  return node.data.restFolder?.trim() || DEFAULT_REST_FOLDER
+}
+
+/**
+ * Подпапка финала источника, которую получает цель по этой связи; `null` — весь
+ * финал. У «Разделить» основной выход — «остальное».
+ */
+export function edgeSubfolder(graph: PipelineGraph, edge: Pick<PipelineEdge, "source" | "sourceHandle">): string | null {
+  const source = graph.nodes.find((n) => n.id === edge.source)
+  if (source?.kind !== "action" || source.data.action !== "split") return null
+  if (!edge.sourceHandle) return restFolderOf(source)
+  return splitOutputsOf(source).find((o) => o.id === edge.sourceHandle)?.folder.trim() || null
+}
+
+/** Подходит ли файл выходу. `fits` — проверка типа по расширению (словарь типов — на сервере). */
+export function fileFitsOutput(output: SplitOutput, fileName: string, fits: (types: string[], fileName: string) => boolean): boolean {
+  if (output.types.length > 0 && !fits(output.types, fileName)) return false
+  const dot = fileName.lastIndexOf(".")
+  const stem = (dot > 0 ? fileName.slice(0, dot) : fileName).toLowerCase()
+  if (output.contains.length > 0 && !output.contains.some((t) => stem.includes(t.toLowerCase()))) return false
+  return !output.excludes.some((t) => stem.includes(t.toLowerCase()))
 }
 
 export function isFolderFormRow(row: Pick<FormRow, "types">): boolean {
@@ -433,13 +505,25 @@ export function normalizeGraph(graph: PipelineGraph): PipelineGraph {
       return n
     }),
     // Одна и та же связь дважды ничего не значит — оставляем одну.
-    edges: graph.edges.filter((e) => {
+    edges: withLiveHandles(graph).edges.filter((e) => {
       const key = `${e.source}>${e.target}`
       if (seen.has(key)) return false
       seen.add(key)
       return true
     }),
   }
+}
+
+/**
+ * Снять связи из выходов, которых больше нет: выход «Разделить» удалили или
+ * действие переключили на копирование.
+ */
+export function withLiveHandles(graph: PipelineGraph): PipelineGraph {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]))
+  const edges = graph.edges.filter(
+    (e) => !e.sourceHandle || splitOutputsOf(byId.get(e.source)).some((o) => o.id === e.sourceHandle),
+  )
+  return edges.length === graph.edges.length ? graph : { ...graph, edges }
 }
 
 // ─── Проверка ─────────────────────────────────────────────────────────────
@@ -461,11 +545,12 @@ export type GraphIssue = {
     | "cycle"
     | "duplicate-stage-name"
     | "bad-path"
-    | "path-shared"
     | "no-reviewers"
     | "no-executors"
     | "form-empty"
     | "form-row-label"
+    | "split-folder"
+    | "auto-last"
   nodeId?: string
   edgeId?: string
   path?: { which: PathField; error: ResolveError }
@@ -495,7 +580,8 @@ export function validateGraph(graph: PipelineGraph): GraphIssue[] {
   for (const edge of graph.edges) {
     const source = byId.get(edge.source)
     const target = byId.get(edge.target)
-    if (!isWorkNode(source) || !isWorkNode(target) || source.id === target.id) {
+    const badHandle = edge.sourceHandle && !splitOutputsOf(source).some((o) => o.id === edge.sourceHandle)
+    if (!isWorkNode(source) || !isWorkNode(target) || source.id === target.id || badHandle) {
       issues.push({ level: "error", code: "bad-edge", edgeId: edge.id })
       continue
     }
@@ -525,12 +611,6 @@ export function validateGraph(graph: PipelineGraph): GraphIssue[] {
       const error = checkTemplate(segments, PATH_SCOPE[which])
       if (error) issues.push({ level: "error", code: "bad-path", nodeId: n.id, path: { which, error } })
     }
-    // Папки без маски ролика общие у всех роликов — файлы смешаются.
-    const perRun = n.kind === "action" ? [d.paths.final] : [d.paths.work, d.paths.final]
-    if (perRun.some((segments) => segments.length > 0 && !isPerRun(segments))) {
-      issues.push({ level: "warning", code: "path-shared", nodeId: n.id })
-    }
-
     if ((n.kind === "tool" || n.kind === "form") && d.executors.length === 0) {
       issues.push({ level: "warning", code: "no-executors", nodeId: n.id })
     }
@@ -542,6 +622,20 @@ export function validateGraph(graph: PipelineGraph): GraphIssue[] {
       if (n.data.rows.length === 0) issues.push({ level: "warning", code: "form-empty", nodeId: n.id })
       // Название строки — префикс имени файла: без него файлы не разобрать по местам.
       else if (rowsHaveEmptyLabel(n.data.rows)) issues.push({ level: "error", code: "form-row-label", nodeId: n.id })
+    }
+    // Автоприёмка последнего этапа: упади автоматика — сообщить некому, ролик
+    // не сдастся. Последний этап завершает человек.
+    if (n.kind === "auto" && n.data.autoApprove && !valid.some((e) => e.source === n.id)) {
+      issues.push({ level: "error", code: "auto-last", nodeId: n.id })
+    }
+    if (n.kind === "action" && n.data.action === "split") {
+      // Имя выхода — подпапка финала: пустое, со слэшем или повтор сложат
+      // файлы разных выходов в одно место.
+      const folders = [...splitOutputsOf(n).map((o) => o.folder.trim()), restFolderOf(n)]
+      const keys = folders.map((f) => f.toLowerCase())
+      if (folders.some((f) => !f || f.includes("/") || f === "." || f === "..") || new Set(keys).size !== keys.length) {
+        issues.push({ level: "error", code: "split-folder", nodeId: n.id })
+      }
     }
   }
   return issues
@@ -578,7 +672,7 @@ export function structureSignature(graph: PipelineGraph): string {
       const { executors: _e, reviewers: _r, watchers: _w, ...rest } = n.data
       return { id: n.id, kind: n.kind, ...rest, name: rest.name.trim() }
     })
-  const edges = graph.edges.map((e) => `${e.source}>${e.target}`).sort()
+  const edges = graph.edges.map((e) => `${e.source}>${e.target}${e.sourceHandle ? `:${e.sourceHandle}` : ""}`).sort()
   return JSON.stringify({ nodes, edges })
 }
 

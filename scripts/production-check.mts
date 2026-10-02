@@ -140,12 +140,12 @@ eq("круг нельзя", canConnect(g, { source: action.id, target: form.id }
 eq("со «Стартом» связей нет", canConnect(g, { source: start.id, target: form.id }), false)
 eq("связь со «Стартом» в графе — ошибка", codes({ ...g, edges: [...g.edges, { id: "x", source: start.id, target: form.id }] }).includes("error:bad-edge"), true)
 eq(
-  "папка без маски ролика — предупреждение",
+  "папка без маски ролика — не предупреждение: пути задаёт регламент",
   codes({
     ...g,
     nodes: g.nodes.map((n) => (n.id === tool.id && n.kind === "tool" ? { ...n, data: { ...n.data, paths: { ...n.data.paths, work: ["work"] } } } : n)),
   }).includes("warning:path-shared"),
-  true,
+  false,
 )
 eq(
   "строка формы без названия — ошибка",

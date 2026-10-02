@@ -4,11 +4,17 @@ import { findProjectById } from "@/lib/repositories/projects"
 import { copySingleFile, loadCopySource } from "@/lib/storage/copy"
 import { writeEnsureFolderPath } from "@/lib/storage/write-path"
 import { insertSystem } from "./chat"
+import { extensionFits } from "@/lib/tools/element/site-form"
+import { fileTypeDictionary } from "./uploads"
 import {
+  edgeSubfolder,
+  fileFitsOutput,
   isWorkNode,
   lastStages,
   orderedStages,
   predecessors,
+  restFolderOf,
+  splitOutputsOf,
   upgradeGraph,
   type PipelineGraph,
   type WorkNode,
@@ -298,6 +304,30 @@ export function relativeFolder(root: string, folderPath: string): string {
 const join = (...parts: string[]) => parts.filter(Boolean).join("/")
 
 /**
+ * Что этап получает от предыдущего: финал целиком, а после «Разделить» —
+ * подпапку выхода, по которому идёт связь. Подпапка пустая — весь финал
+ * действия, со всеми подпапками.
+ */
+export async function inputFrom(
+  graph: PipelineGraph,
+  prevId: string,
+  nodeId: string,
+  prev: { paths: StepPaths | null } | undefined,
+): Promise<{ root: string; files: FolderFile[] } | null> {
+  const projectId = prev?.paths?.projectId
+  const final = prev?.paths?.final
+  if (!projectId || !final) return null
+  const edge = graph.edges.find((e) => e.source === prevId && e.target === nodeId)
+  const sub = edge ? edgeSubfolder(graph, edge) : null
+  if (sub) {
+    const root = join(final, sub)
+    const files = await listTree(projectId, root)
+    if (files.length > 0) return { root, files }
+  }
+  return { root: final, files: await listTree(projectId, final) }
+}
+
+/**
  * Скопировать файлы в проект, раскладывая по `base/<относительный путь>`.
  * Автор копии — автор оригинала: в статистике файл остаётся за тем, кто его сделал.
  */
@@ -365,18 +395,18 @@ export async function copyInputs(
   const sources = await Promise.all(
     Object.keys(inputs).map(async (prevId) => {
       const prev = steps.get(prevId)
-      const files = await listTree(prev?.paths?.projectId, prev?.paths?.final)
-      return { prevId, prev, files }
+      const input = await inputFrom(ctx.graph, prevId, step.nodeId, prev)
+      return { prevId, prev, root: input?.root ?? "", files: input?.files ?? [] }
     }),
   )
   const total = sources.reduce((sum, s) => sum + s.files.length, 0)
   let copied = 0
-  for (const { prevId, prev, files } of sources) {
-    if (!prev?.paths?.projectId || !prev.paths.final || files.length === 0) continue
+  for (const { prevId, prev, root, files } of sources) {
+    if (!prev?.paths?.projectId || files.length === 0) continue
     const base = total > 1 ? join(inputs[prevId], folderName) : inputs[prevId]
     const ids = await copyTree({
       sourceProjectId: prev.paths.projectId,
-      root: prev.paths.final,
+      root,
       files,
       destProjectId: step.paths.projectId,
       base,
@@ -449,23 +479,42 @@ export async function afterOpen(runId: string, stepIds: string[], actorId: strin
 }
 
 /**
- * Действие «копировать»: финалы предыдущих этапов — в финальную папку действия,
- * со структурой, и этап принят. Людей и чата у действия нет.
+ * Действие: финалы предыдущих этапов — в финальную папку действия, со
+ * структурой, и этап принят. «Разделить» раскладывает их по подпапкам выходов
+ * (подошедший под несколько — в каждую), не подошедшее никуда — в «остальное».
+ * Людей и чата у действия нет.
  */
 async function runAction(ctx: RunContext, node: WorkNode, step: StepState, actorId: string | null): Promise<string[]> {
   const steps = await runSteps(ctx.runId)
-  if (step.paths?.projectId && step.paths.final) {
+  const destProjectId = step.paths?.projectId
+  const final = step.paths?.final
+  if (destProjectId && final) {
+    const split = node.kind === "action" && node.data.action === "split" ? node : null
+    const outputs = splitOutputsOf(node)
+    const fileTypes = split ? await fileTypeDictionary() : {}
+    const fits = (types: string[], name: string) => extensionFits({ fileTypes }, types, name)
     for (const prevId of predecessors(ctx.graph, node.id)) {
-      const prev = steps.get(prevId)
-      if (!prev?.paths?.projectId || !prev.paths.final) continue
-      await copyTree({
-        sourceProjectId: prev.paths.projectId,
-        root: prev.paths.final,
-        files: await listTree(prev.paths.projectId, prev.paths.final),
-        destProjectId: step.paths.projectId,
-        base: step.paths.final,
-        actorId,
-      })
+      const input = await inputFrom(ctx.graph, prevId, node.id, steps.get(prevId))
+      const sourceProjectId = steps.get(prevId)?.paths?.projectId
+      if (!input || !sourceProjectId) continue
+      const copy = (files: FolderFile[], base: string) =>
+        files.length > 0
+          ? copyTree({ sourceProjectId, root: input.root, files, destProjectId, base, actorId })
+          : Promise.resolve([])
+      if (!split) {
+        await copy(input.files, final)
+        continue
+      }
+      const placed = new Set<string>()
+      for (const output of outputs) {
+        const files = input.files.filter((f) => fileFitsOutput(output, f.name, fits))
+        files.forEach((f) => placed.add(f.id))
+        await copy(files, join(final, output.folder.trim()))
+      }
+      await copy(
+        input.files.filter((f) => !placed.has(f.id)),
+        join(final, restFolderOf(split)),
+      )
     }
   }
   const opened = await withTransaction(async (client) => {

@@ -2,7 +2,7 @@ import { query, withTransaction } from "@/lib/db"
 import { approveStep } from "./approval"
 import { insertSystem } from "./chat"
 import { type AutoEntry, type StepPaths } from "./flow"
-import { upgradeGraph } from "./graph"
+import { successors, upgradeGraph } from "./graph"
 
 /**
  * Автоматика и конвейер — docs/PRODUCTION_PLAN.md §3.0.
@@ -79,10 +79,18 @@ async function resolveOutFiles(projectId: string, paths: string[]): Promise<stri
 }
 
 export async function syncAutoSteps(): Promise<void> {
-  const { rows } = await query<{ id: string; nodeId: string; paths: StepPaths; graph: unknown }>(
-    `SELECT rs.id, rs.node_id AS "nodeId", rs.paths, v.graph
+  const { rows } = await query<{
+    id: string
+    runId: string
+    ownerUserId: string
+    nodeId: string
+    paths: StepPaths
+    graph: unknown
+  }>(
+    `SELECT rs.id, rs.run_id AS "runId", p.owner_user_id AS "ownerUserId", rs.node_id AS "nodeId", rs.paths, v.graph
        FROM production_run_steps rs
        JOIN production_runs r ON r.id = rs.run_id
+       JOIN production_pipelines p ON p.id = r.pipeline_id
        JOIN production_pipeline_versions v ON v.pipeline_id = r.pipeline_id AND v.version = r.pipeline_version
       WHERE rs.status = 'ready' AND r.status = 'active'
         AND rs.paths ? 'auto' AND NOT (rs.paths->'auto' ? 'results')`,
@@ -91,7 +99,8 @@ export async function syncAutoSteps(): Promise<void> {
     const auto = step.paths.auto!
     const projectId = step.paths.projectId
     if (!projectId || auto.entries.length === 0) continue
-    const node = upgradeGraph(step.graph).nodes.find((n) => n.id === step.nodeId)
+    const graph = upgradeGraph(step.graph)
+    const node = graph.nodes.find((n) => n.id === step.nodeId)
     if (node?.kind !== "auto") continue
 
     const tasks = await Promise.all(auto.entries.map((entry) => taskFor(projectId, entry, auto.since)))
@@ -113,6 +122,22 @@ export async function syncAutoSteps(): Promise<void> {
             name: task.name,
           })
         }
+        // Этап без проверяющего-человека: его чат никто не читает — об ошибке
+        // узнают в чатах следующих этапов, со списком к кому обратиться.
+        const failed = fresh.filter((task) => task.status === "failed")
+        if (failed.length > 0 && node.data.reviewers.length === 0) {
+          const next = successors(graph, node.id)
+          const people = next.length > 0 ? await adminsFor(step.ownerUserId) : []
+          const { rows: nextSteps } = await client.query<{ id: string }>(
+            `SELECT id FROM production_run_steps WHERE run_id = $1 AND node_id = ANY($2::text[])`,
+            [step.runId, next],
+          )
+          for (const nextStep of nextSteps) {
+            await insertSystem(client, nextStep.id, "machine_failed_upstream", { name: node.data.name, people })
+          }
+          // Последний этап: следующих нет — сообщить автору пайплайна.
+          if (next.length === 0) notifyOwnerOfFailure(step, node.data.name, failed.map((task) => task.name))
+        }
         const patch: Record<string, unknown> = { ...auto, notified: [...notified] }
         if (results) patch.results = results
         await client.query(
@@ -128,4 +153,49 @@ export async function syncAutoSteps(): Promise<void> {
       if (!approved.ok) console.error("[production] автоприёмка автоматики не удалась", step.id, approved.reason)
     }
   }
+}
+
+/**
+ * К кому идти, когда автоматика упала: администраторы и владелец команды
+ * автора пайплайна. Команды нет или в ней никого — сам автор.
+ */
+async function adminsFor(ownerUserId: string): Promise<{ id: string; name: string }[]> {
+  const { rows } = await query<{ id: string; name: string }>(
+    `SELECT u.id, COALESCE(NULLIF(TRIM(u.contact_name), ''), NULLIF(TRIM(u.full_name), ''), u.email) AS name
+       FROM users u
+      WHERE u.is_active
+        AND (
+          (u.company_id IS NOT NULL
+            AND u.company_id = (SELECT company_id FROM users WHERE id = $1)
+            AND u.company_role IN ('admin', 'owner'))
+          OR (u.id = $1 AND NOT EXISTS (
+            SELECT 1 FROM users a
+             WHERE a.is_active AND a.company_id IS NOT NULL
+               AND a.company_id = (SELECT company_id FROM users WHERE id = $1)
+               AND a.company_role IN ('admin', 'owner')))
+        )
+      ORDER BY u.company_role = 'owner' DESC, name`,
+    [ownerUserId],
+  )
+  return rows
+}
+
+/**
+ * Заглушка: автоматика — последний этап и без проверяющего упала, а сообщить
+ * некуда. Пока только в лог сервера.
+ * TODO(чаты команды): писать автору пайплайна или в админский чат — что
+ * сломалось, в каком ролике, ссылка (docs/PRODUCTION_PLAN.md §13.2).
+ */
+function notifyOwnerOfFailure(
+  step: { id: string; runId: string; ownerUserId: string },
+  stageName: string,
+  items: string[],
+): void {
+  console.warn("[production] автоматика упала на последнем этапе, сообщить некуда", {
+    ownerUserId: step.ownerUserId,
+    runId: step.runId,
+    stepId: step.id,
+    stage: stageName,
+    items,
+  })
 }

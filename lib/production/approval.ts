@@ -63,6 +63,9 @@ export async function approveStep(input: {
   // Что принимаем — до захвата: отказ не должен оставлять этап принятым.
   let variant: { id: string; name: string } | null = null
   const results = node.kind === "auto" ? step.paths?.auto?.results : undefined
+  // Автоматику принимают только по отчёту машины: без него неизвестно, что
+  // её результат, а папка OUT общая для роликов — целиком её брать нельзя.
+  if (node.kind === "auto" && !results?.length) return { ok: false, reason: "no-variant" }
   const tree = node.kind === "tool" ? [] : results ? await filesById(projectId, results) : await listTree(projectId, work)
   if (node.kind === "tool") {
     const variants = await listFolderFiles(projectId, work)
@@ -121,9 +124,9 @@ export async function approveStep(input: {
     } else {
       await copyTree({
         sourceProjectId: projectId,
-        // Результат обработки может лежать и вне рабочей папки — тогда он
-        // ложится в Final своим путём от корня проекта.
-        root: tree.every((f) => f.folderPath === work || f.folderPath.startsWith(`${work}/`)) ? work : "",
+        // Результаты машины — от общей для всех них папки: ветки `OUT`, в
+        // которые машина их положила, в Final не нужны. Остальное — от рабочей.
+        root: results ? commonFolder(tree.map((f) => f.folderPath)) : work,
         files: tree,
         destProjectId: projectId,
         base: final,
@@ -215,4 +218,20 @@ export async function filesById(projectId: string, ids: string[]): Promise<Folde
     [projectId, ids],
   )
   return rows
+}
+
+/**
+ * Самая глубокая папка, в которой лежат все файлы: `OUT/sep/video` и
+ * `OUT/sep/video/ver1` → `OUT/sep/video`. Сравнение по целым сегментам.
+ */
+export function commonFolder(folders: string[]): string {
+  if (folders.length === 0) return ""
+  let common = folders[0].split("/").filter(Boolean)
+  for (const folder of folders.slice(1)) {
+    const parts = folder.split("/").filter(Boolean)
+    let i = 0
+    while (i < common.length && i < parts.length && common[i] === parts[i]) i++
+    common = common.slice(0, i)
+  }
+  return common.join("/")
 }

@@ -31,7 +31,14 @@ export type ChatMessage = {
   body: string
   attachments: ChatAttachment[]
   /** Для системных — событие и его подробности (имя файла, кто). */
-  event: { type: string; actorName?: string; targetName?: string; name?: string } | null
+  event: {
+    type: string
+    actorName?: string
+    targetName?: string
+    name?: string
+    /** Люди, которых можно упомянуть кликом (администраторы команды). */
+    people?: { id: string; name: string }[]
+  } | null
   mentions: string[]
   replyTo: { id: number; authorName: string | null; body: string } | null
   createdAt: string
@@ -312,7 +319,7 @@ export async function insertSystem(
   client: PoolClient,
   step: { id: string } | string,
   type: string,
-  details: { actorId?: string | null; targetId?: string; name?: string } = {},
+  details: { actorId?: string | null; targetId?: string; name?: string; people?: { id: string; name: string }[] } = {},
 ) {
   const stepId = typeof step === "string" ? step : step.id
   const ids = [details.actorId, details.targetId].filter((x): x is string => Boolean(x))
@@ -331,6 +338,7 @@ export async function insertSystem(
     actorName: details.actorId ? names.get(details.actorId) : undefined,
     targetName: details.targetId ? names.get(details.targetId) : undefined,
     name: details.name,
+    people: details.people,
   }
   await client.query(
     `INSERT INTO production_messages (run_step_id, author_id, kind, body, payload)

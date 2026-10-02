@@ -69,6 +69,7 @@ const config: Config = {
         ws: {
           well: 'hsl(var(--ws-well))',
           panel: 'hsl(var(--ws-panel))',
+          node: 'hsl(var(--ws-node))',
           control: 'hsl(var(--ws-control))',
           raised: 'hsl(var(--ws-raised))',
           hover: 'hsl(var(--ws-hover))',

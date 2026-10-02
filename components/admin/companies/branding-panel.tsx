@@ -1,10 +1,12 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { Check, Loader2, TriangleAlert, Upload, X } from "lucide-react"
+import { Check, TriangleAlert, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { useI18n, tf } from "@/components/account/i18n"
 import { Section } from "@/components/admin/billing/fields"
+import { useFloatingSave } from "@/components/admin/shell/floating-save"
+import { AvatarCropDialog } from "@/components/account/avatar-crop-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -66,12 +68,19 @@ export function CompanyBrandingPanel({
    * или последний раз сохранил, и сервер сверяет переименование именно с ним.
    */
   const savedTitle = useRef(companyTitle)
+  /** Что считается сохранённым — от этого считается, есть ли правка. */
+  const [saved, setSaved] = useState({
+    accent: initial.accent,
+    monogram: initial.monogram ?? "",
+    logoUrl: initial.logoUrl ?? "",
+    domain: initial.domain ?? "",
+  })
   const [accent, setAccent] = useState<AccentValue>(initial.accent)
   const [monogram, setMonogram] = useState(initial.monogram ?? "")
   const [logoUrl, setLogoUrl] = useState(initial.logoUrl ?? "")
   const [domain, setDomain] = useState(initial.domain ?? "")
   const [busy, setBusy] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [cropOpen, setCropOpen] = useState(false)
 
   /**
    * Выбранный файл ждёт сохранения ЗДЕСЬ, а не в хранилище.
@@ -104,10 +113,15 @@ export function CompanyBrandingPanel({
   }
   const readable = contrast.light >= MIN_CONTRAST && contrast.dark >= MIN_CONTRAST
 
-  const pickFile = (file: File) => {
+  /**
+   * Кадр из того же миниредактора, что у аватара пользователя: файл режется в
+   * браузере в квадрат и ждёт сохранения, как и раньше.
+   */
+  const pickCropped = async (blob: Blob) => {
     if (pending) URL.revokeObjectURL(pending.preview)
+    const file = new File([blob], "logo.webp", { type: blob.type || "image/webp" })
     setPending({ file, preview: URL.createObjectURL(file) })
-    if (fileRef.current) fileRef.current.value = ""
+    return true
   }
 
   const clearLogo = () => {
@@ -219,6 +233,7 @@ export function CompanyBrandingPanel({
       setLogoUrl(nextUrl)
       // Сохранённое имя теперь наше: следующая сверка пойдёт от него.
       savedTitle.current = title.trim()
+      setSaved({ accent, monogram, logoUrl: nextUrl, domain })
       toast.success(t.coSaved)
       onSaved()
     } finally {
@@ -226,8 +241,24 @@ export function CompanyBrandingPanel({
     }
   }
 
+  const dirty =
+    title.trim() !== savedTitle.current ||
+    JSON.stringify(accent) !== JSON.stringify(saved.accent) ||
+    monogram !== saved.monogram ||
+    logoUrl !== saved.logoUrl ||
+    domain !== saved.domain ||
+    pending !== null
+
+  useFloatingSave({
+    label: t.brandTitle,
+    dirty,
+    busy,
+    disabled: !readable,
+    onSave: () => void save(),
+  })
+
   return (
-    <Section title={t.brandTitle} description={t.brandSub}>
+    <Section title={t.brandTitle} description={t.brandSub} collapsible>
       {/* Название первым: оно тяжелее остального на этом экране — его видит вся
           компания, а не только тот, кто откроет её страницу. */}
       <div className="max-w-md space-y-1.5">
@@ -346,25 +377,22 @@ export function CompanyBrandingPanel({
             )}
           </span>
 
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) pickFile(file)
-            }}
-          />
           <Button
             variant="outline"
             size="sm"
             disabled={busy}
-            onClick={() => fileRef.current?.click()}
+            onClick={() => setCropOpen(true)}
           >
             <Upload className="mr-2 h-4 w-4" />
-            {t.brandLogoUpload}
+            {pending || logoUrl ? t.brandLogoEdit : t.brandLogoUpload}
           </Button>
+          <AvatarCropDialog
+            open={cropOpen}
+            onClose={() => setCropOpen(false)}
+            onSave={pickCropped}
+            title={t.brandLogo}
+            shape="rounded"
+          />
           {pending || logoUrl ? (
             <Button variant="ghost" size="sm" disabled={busy} onClick={clearLogo}>
               <X className="mr-2 h-4 w-4" />
@@ -377,10 +405,6 @@ export function CompanyBrandingPanel({
         </p>
       </div>
 
-      <Button onClick={() => void save()} disabled={busy || !readable}>
-        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-        {t.saveChanges}
-      </Button>
     </Section>
   )
 }

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import type { NodeProps } from "@xyflow/react"
+import { useEffect, useState } from "react"
+import { useUpdateNodeInternals, type NodeProps } from "@xyflow/react"
 import { Bot, ChevronDown, Download, File, Folder, Loader2, Minus, Plus, X } from "lucide-react"
 import { toast } from "sonner"
 
@@ -12,21 +12,40 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
   createFormRow,
+  createSplitOutput,
+  DEFAULT_FINAL_PATH,
+  DEFAULT_PROJECT,
+  DEFAULT_REST_FOLDER,
   FOLDER_ROW_TYPE,
   isFolderFormRow,
   type FormRow,
   type PipelineNode,
+  type SplitOutput,
   type WorkData,
   type WorkNode,
 } from "@/lib/production/graph"
 import { TOOLS } from "@/lib/tools/registry"
 import { cn } from "@/lib/utils"
 import { useEditor } from "./editor-context"
-import { DaysInput, Divider, FieldLabel, NodeFrame, PathInput, ProjectPicker, RowLabelInput } from "./node-parts"
+import {
+  ChipsInput,
+  DaysInput,
+  Divider,
+  FieldLabel,
+  NodeFrame,
+  OutHandle,
+  PathInput,
+  ProjectPicker,
+  RowLabelInput,
+  SuggestInput,
+  useDraft,
+  type Option,
+} from "./node-parts"
 import { PeoplePicker } from "./people-picker"
 
 /** Данные xyflow-ноды: сама нода графа. Позицию и ширину xyflow держит сам. */
@@ -80,16 +99,23 @@ export function StartNodeView({ data }: Props) {
         <Divider />
         <div className="space-y-1">
           <FieldLabel>{t.productionEdDescription}</FieldLabel>
-          <textarea
-            value={d.description}
-            disabled={readOnly}
-            onChange={(event) => set({ description: event.target.value })}
-            rows={4}
-            className="nodrag nowheel w-full resize-y rounded-md border border-foreground/10 bg-ws-control px-2 py-1.5 text-[12.5px] text-ws-1 outline-none disabled:opacity-60"
-          />
+          <DescriptionInput value={d.description} disabled={readOnly} onChange={(description) => set({ description })} />
         </div>
       </div>
     </NodeFrame>
+  )
+}
+
+function DescriptionInput(props: { value: string; disabled: boolean; onChange: (value: string) => void }) {
+  const [value, setValue] = useDraft(props.value, props.onChange)
+  return (
+    <textarea
+      value={value}
+      disabled={props.disabled}
+      onChange={(event) => setValue(event.target.value)}
+      rows={4}
+      className="nodrag nowheel w-full resize-y rounded-md border border-foreground/10 bg-ws-control px-2 py-1.5 text-[12.5px] text-ws-1 outline-none disabled:opacity-60"
+    />
   )
 }
 
@@ -117,7 +143,14 @@ function WorkTop({ node, executors }: { node: WorkNode; executors: React.ReactNo
           <div className="flex gap-3">
             {executors}
             <div className="min-w-0 flex-1 space-y-1">
-              <PeoplePicker label={t.productionReviewers} value={d.reviewers} onChange={(reviewers) => set({ reviewers })} />
+              <PeoplePicker
+                label={t.productionReviewers}
+                value={d.reviewers}
+                // Проверяющий — люди или автоматика: выбрали человека — автоприёмка снимается.
+                onChange={(reviewers) =>
+                  set(node.kind === "auto" && reviewers.length > 0 ? { reviewers, autoApprove: false } : { reviewers })
+                }
+              />
               {node.kind === "auto" ? <AutoApproveToggle node={node} /> : null}
             </div>
           </div>
@@ -174,17 +207,30 @@ function MachineExecutor() {
   )
 }
 
+/**
+ * Проверяющий «автоматика»: этап принимается сам. Взаимоисключающе с людьми —
+ * галка снимает проверяющих. Последнему этапу нельзя: упади он — сказать
+ * некому, и ролик не сдастся; его завершает человек.
+ */
 function AutoApproveToggle({ node }: { node: Extract<WorkNode, { kind: "auto" }> }) {
   const { t } = useI18n()
-  const { readOnly } = useEditor()
+  const { readOnly, hasNext } = useEditor()
   const set = useWork(node.id)
+  const last = !hasNext(node.id)
+  // Снять уже стоящую галку можно всегда, поставить последнему — нет.
+  const blocked = last && !node.data.autoApprove
   return (
-    <label className="nodrag flex items-center gap-1.5 text-[11.5px] text-ws-3">
+    <label
+      title={last ? t.productionEdAutoLastHint : undefined}
+      className={cn("nodrag flex items-center gap-1.5 text-[11.5px] text-ws-3", blocked && "opacity-50")}
+    >
       <input
         type="checkbox"
-        disabled={readOnly}
+        disabled={readOnly || blocked}
         checked={node.data.autoApprove}
-        onChange={(event) => set<"auto">({ autoApprove: event.target.checked })}
+        onChange={(event) =>
+          set<"auto">(event.target.checked ? { autoApprove: true, reviewers: [] } : { autoApprove: false })
+        }
       />
       {t.productionEdAutomation}
     </label>
@@ -263,7 +309,21 @@ function OpToggle({ value, onChange }: { value: FormRow["op"]; onChange: (op: Fo
  * Типы файла строки — галками: подходит файл любого из отмеченных («видео или
  * картинка»). Последнюю галку не снять: строка без типа ничего не примет.
  */
-function TypesPicker({ value, options, onChange }: { value: string[]; options: string[]; onChange: (types: string[]) => void }) {
+function TypesPicker({
+  value,
+  options,
+  onChange,
+  emptyLabel,
+  wide,
+}: {
+  value: string[]
+  options: string[]
+  onChange: (types: string[]) => void
+  /** Задан — галки можно снять все, пустой список подписан им («любой тип»). */
+  emptyLabel?: string
+  /** Во всю ширину ячейки, а не узким списком у края строки. */
+  wide?: boolean
+}) {
   const { t } = useI18n()
   const { readOnly } = useEditor()
   // Тип из формы программы, которого нет в словаре установки, тоже показываем.
@@ -273,19 +333,36 @@ function TypesPicker({ value, options, onChange }: { value: string[]; options: s
       <DropdownMenuTrigger
         disabled={readOnly}
         title={t.productionEdRowType}
-        className={cn(selectClass, "flex max-w-[45%] items-center gap-1")}
+        className={cn(
+          selectClass,
+          "flex max-w-[45%] items-center gap-1",
+          wide && "w-full max-w-none justify-between",
+        )}
       >
-        <span className="truncate">{value.join(" / ")}</span>
+        <span className={cn("truncate", value.length === 0 && "text-ws-4")}>{value.length === 0 ? emptyLabel : value.join(" / ")}</span>
         <ChevronDown className="h-3 w-3 shrink-0 text-ws-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+        {emptyLabel === undefined ? null : (
+          <>
+            {/* Явный пункт «любой тип»: снимает все галки разом. */}
+            <DropdownMenuCheckboxItem
+              checked={value.length === 0}
+              onSelect={(event) => event.preventDefault()}
+              onCheckedChange={() => onChange([])}
+            >
+              {emptyLabel}
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         {all.map((type) => {
           const checked = value.includes(type)
           return (
             <DropdownMenuCheckboxItem
               key={type}
               checked={checked}
-              disabled={checked && value.length === 1}
+              disabled={checked && value.length === 1 && emptyLabel === undefined}
               onSelect={(event) => event.preventDefault()}
               onCheckedChange={(on) => onChange(on ? [...value, type] : value.filter((v) => v !== type))}
             >
@@ -510,25 +587,242 @@ export function AutoNodeView({ data }: Props) {
   )
 }
 
-/** Действие (§3.0): без людей и без чата. Пока одно — скопировать вход. */
+/**
+ * Действие (§3.0): другой тип — без людей и без чата, поэтому без общего верха
+ * этапа. Сначала выбирают действие, от него зависят поля ниже. Пока одно —
+ * скопировать вход; папка — та же, что у
+ * остальных этапов (по умолчанию папка пайплайна), здесь задают только путь в ней.
+ */
 export function ActionNodeView({ data }: Props) {
   const { t } = useI18n()
   const { readOnly } = useEditor()
   const node = data.node
   const set = useWork(node.id)
   if (node.kind !== "action") return null
+  const d = node.data
   return (
-    <NodeFrame id={node.id} kind="action" kindLabel={t.productionEdKindAction} name={node.data.name} removable onRename={(name) => set({ name })}>
-      <WorkTop node={node} executors={null} />
+    <NodeFrame
+      id={node.id}
+      kind="action"
+      kindLabel={t.productionEdKindAction}
+      name={d.name}
+      removable
+      output={d.action !== "split"}
+      onRename={(name) => set({ name })}
+    >
+      <div className="space-y-2.5 px-3 py-2.5">
+        <select
+          disabled={readOnly}
+          value={d.action}
+          aria-label={t.productionEdAction}
+          className={cn(selectClass, "h-8 w-full text-[12.5px]")}
+          onChange={(event) => {
+            const action = event.target.value as typeof d.action
+            if (action !== "split") return set<"action">({ action })
+            // Путь копирования не виден в «Разделить» — он не должен молча
+            // увести раскладку в чужую папку: стандартные папка и Final.
+            set<"action">({
+              action,
+              project: { ...DEFAULT_PROJECT },
+              paths: { ...d.paths, final: [...DEFAULT_FINAL_PATH] },
+              outputs: d.outputs?.length ? d.outputs : [createSplitOutput()],
+            })
+          }}
+        >
+          <option value="copy">{t.productionEdActionCopy}</option>
+          <option value="split">{t.productionEdActionSplit}</option>
+        </select>
+        {/* Свои настройки у каждого действия. «Разделить» раскладывает в Final
+            по умолчанию — путь у него не правится. */}
+        {d.action === "copy" ? (
+          <div className="space-y-1">
+            <div className="text-[12px] text-ws-3">{t.productionEdCopyTo}</div>
+            <CopyPath node={node} />
+          </div>
+        ) : null}
+      </div>
+      {d.action === "split" ? <SplitOutputs node={node} /> : null}
       <Bottom>
-        <label className="nodrag flex items-center gap-2 text-[12px] text-ws-3">
-          {t.productionEdAction}
-          <select disabled={readOnly} value={node.data.action} className={cn(selectClass, "flex-1")} onChange={() => {}}>
-            <option value="copy">{t.productionEdActionCopy}</option>
-          </select>
-        </label>
-        <p className="text-[11px] text-ws-5">{t.productionEdActionHint}</p>
+        <p className="text-[11px] text-ws-5">{d.action === "split" ? t.productionEdSplitHint : t.productionEdActionHint}</p>
+        {d.action === "copy" ? <p className="text-[11px] text-ws-5">{t.productionEdCopyLastHint}</p> : null}
       </Bottom>
     </NodeFrame>
+  )
+}
+
+/**
+ * Выходы «Разделить»: у каждого — карточка (папка, типы, «содержит»,
+ * «не содержит» — подпись слева, поле справа) и свой хендлер справа. Внизу — «остальное» с основным выходом.
+ */
+function SplitOutputs({ node }: { node: Extract<WorkNode, { kind: "action" }> }) {
+  const { t } = useI18n()
+  const { readOnly, fileTypes, rowNames } = useEditor()
+  const set = useWork(node.id)
+  const updateInternals = useUpdateNodeInternals()
+  const outputs = node.data.outputs ?? []
+  const ids = outputs.map((o) => o.id).join(",")
+  // Хендлеры появились или пропали — xyflow должен перемерить их места.
+  useEffect(() => updateInternals(node.id), [ids, node.id, updateInternals])
+
+  const setOutputs = (next: SplitOutput[]) => set<"action">({ outputs: next })
+  const patch = (id: string, change: Partial<SplitOutput>) =>
+    setOutputs(outputs.map((o) => (o.id === id ? { ...o, ...change } : o)))
+  // Подсказки «содержит» — названия строк форм: они и есть префиксы имён файлов.
+  const labels: Option[] = [...new Set(rowNames.map((r) => r.label.trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b))
+    .map((value) => ({ value }))
+  const folders = outputs.map((o) => o.folder.trim().toLowerCase())
+  const rest = node.data.restFolder ?? DEFAULT_REST_FOLDER
+  const badFolder = (folder: string) => {
+    const f = folder.trim()
+    const key = f.toLowerCase()
+    const used = [...folders, rest.trim().toLowerCase()].filter((x) => x === key).length
+    return !f || f.includes("/") || used > 1
+  }
+
+  return (
+    <div className="border-t border-foreground/10">
+      {outputs.map((output) => (
+        // Карточка выхода во всю ширину ноды — хендлер встаёт на её правую границу.
+        <div key={output.id} className="relative px-3 pt-2.5">
+          <OutHandle id={output.id} />
+          <div className="relative rounded-lg border border-foreground/10 p-2.5 pr-8">
+            {readOnly ? null : (
+              <button
+                type="button"
+                aria-label={t.productionEdSplitRemove}
+                title={t.productionEdSplitRemove}
+                onClick={() => setOutputs(outputs.filter((o) => o.id !== output.id))}
+                className="nodrag absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded text-ws-4 hover:bg-ws-hover hover:text-destructive"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5">
+              <span className="text-[12px] text-ws-3">{t.productionEdSplitFolder}</span>
+              <SuggestInput
+                value={output.folder}
+                onChange={(folder) => patch(output.id, { folder })}
+                options={[...output.types, ...output.contains].map((value) => ({ value }))}
+                placeholder=""
+                invalid={badFolder(output.folder)}
+              />
+              <span className="text-[12px] text-ws-3">{t.productionEdSplitTypes}</span>
+              <TypesPicker
+                value={output.types}
+                options={fileTypes}
+                emptyLabel={t.productionEdSplitAnyType}
+                wide
+                onChange={(types) => patch(output.id, { types })}
+              />
+              <span className="text-[12px] text-ws-3">{t.productionEdSplitContains}</span>
+              <ChipsInput
+                value={output.contains}
+                onChange={(contains) => patch(output.id, { contains })}
+                options={labels}
+                placeholder=""
+              />
+              <span className="text-[12px] text-ws-3">{t.productionEdSplitExcludes}</span>
+              <ChipsInput
+                value={output.excludes}
+                onChange={(excludes) => patch(output.id, { excludes })}
+                options={labels}
+                placeholder=""
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+      {readOnly ? null : (
+        <div className="px-3 py-2">
+          <button
+            type="button"
+            onClick={() => setOutputs([...outputs, createSplitOutput()])}
+            className="nodrag flex h-7 items-center gap-1 rounded-md border border-foreground/10 px-2 text-[12px] text-ws-3 hover:bg-ws-hover hover:text-ws-1"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t.productionEdSplitAdd}
+          </button>
+        </div>
+      )}
+      <div className="relative flex items-center gap-2 border-t border-foreground/10 px-3 py-2.5">
+        <OutHandle />
+        <span className="shrink-0 text-[12px] text-ws-3">{t.productionEdSplitRest}</span>
+        <SuggestInput
+          value={rest}
+          onChange={(restFolder) => set<"action">({ restFolder })}
+          options={[]}
+          placeholder={DEFAULT_REST_FOLDER}
+          invalid={badFolder(rest)}
+        />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Путь копирования одной строкой: первый сегмент — своя папка (проект или
+ * `$pipelineName`), дальше — папки внутри. На каждом уровне подсказываются
+ * уже существующие папки; если путь до уровня с маской — их не узнать.
+ */
+function CopyPath({ node }: { node: Extract<WorkNode, { kind: "action" }> }) {
+  const { t } = useI18n()
+  const { pipelineId, projects } = useEditor()
+  const set = useWork(node.id)
+  const d = node.data
+  // Корневую папку сняли — путь пуст, пока не выберут новую; в данных до
+  // этого остаётся прежняя (папка обязательна), она видна подсказкой в поле.
+  const [cleared, setCleared] = useState(false)
+  const value = cleared ? [] : [d.project.name, ...d.paths.final]
+  const [folders, setFolders] = useState<{ key: string; names: string[] } | null>(null)
+
+  const inside = d.paths.final
+  const key = d.project.id && !inside.some((s) => s.includes("$")) ? `${d.project.id}:${inside.join("/")}` : null
+  useEffect(() => {
+    if (!key || !d.project.id) return
+    let alive = true
+    const params = new URLSearchParams({ projectId: d.project.id, path: inside.join("/") })
+    fetch(`/api/production/pipelines/${pipelineId}/folders?${params}`)
+      .then((r) => (r.ok ? r.json() : { folders: [] }))
+      .then((body: { folders?: string[] }) => alive && setFolders({ key, names: body.folders ?? [] }))
+      .catch(() => alive && setFolders({ key, names: [] }))
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, pipelineId])
+
+  const levelOptions: Option[] | null =
+    value.length === 0
+      ? [{ value: "$pipelineName", hint: t.productionMaskPipeline }, ...projects.map((p) => ({ value: p.name, id: p.id }))]
+      : key && folders?.key === key
+        ? folders.names.map((name) => ({ value: name, id: `folder:${name}` }))
+        : null
+
+  const onChange = (next: string[]) => {
+    const [first, ...rest] = next
+    const rootRemoved = !cleared && next.length === value.length - 1 && next.join("/") === d.paths.final.join("/")
+    if (first === undefined || rootRemoved) {
+      setCleared(true)
+      return set({ paths: { ...d.paths, final: [] } })
+    }
+    setCleared(false)
+    const project =
+      first === d.project.name ? d.project : (() => {
+        const found = projects.find((p) => p.name.toLowerCase() === first.toLowerCase())
+        return found ? { id: found.id, name: found.name } : { id: null, name: first }
+      })()
+    set({ project, paths: { ...d.paths, final: rest } })
+  }
+
+  return (
+    <PathInput
+      value={value}
+      onChange={onChange}
+      firstScope="project"
+      historyKey="copy"
+      placeholder={cleared ? d.project.name : undefined}
+      levelOptions={levelOptions}
+    />
   )
 }

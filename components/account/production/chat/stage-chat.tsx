@@ -58,6 +58,8 @@ export function StageChat({
   const chat = useChat(stepId, tick)
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null)
   const [preview, setPreview] = useState<ChatAttachment | null>(null)
+  /** Упомянуть по клику из системного сообщения — поле ввода подхватит. */
+  const [mention, setMention] = useState<{ id: string; name: string; at: number } | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
 
@@ -128,6 +130,7 @@ export function StageChat({
                 }}
                 onPreview={setPreview}
                 onApprove={(a) => onApproveFile({ id: a.fileId, name: a.name })}
+                onMention={(person) => setMention({ ...person, at: Date.now() })}
               />
             ))}
           </div>
@@ -138,6 +141,7 @@ export function StageChat({
         stepId={stepId}
         members={chat.members}
         replyTo={replyTo}
+        mention={mention}
         onCancelReply={() => setReplyTo(null)}
         onSent={() => {
           setReplyTo(null)
@@ -341,6 +345,8 @@ function systemText(message: ChatMessage, t: Dictionary): string {
       return t.productionSysMachineDone.replace("{name}", e.name ?? "")
     case "machine_failed":
       return t.productionSysMachineFailed.replace("{name}", e.name ?? "")
+    case "machine_failed_upstream":
+      return t.productionSysMachineFailedUpstream.replace("{name}", e.name ?? "")
     case "machine_results":
       return t.productionSysMachineResults.replace("{n}", e.name ?? "")
     case "auto_approved":
@@ -368,6 +374,7 @@ function MessageItem({
   onDelete,
   onPreview,
   onApprove,
+  onMention,
 }: {
   message: ChatMessage
   prev?: ChatMessage
@@ -380,9 +387,38 @@ function MessageItem({
   onDelete: () => void
   onPreview: (a: ChatAttachment) => void
   onApprove: (a: ChatAttachment) => void
+  onMention: (person: { id: string; name: string }) => void
 }) {
   const { t } = useI18n()
   const time = new Date(message.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+
+  // Автоматика до этого этапа упала: заметно, и с кем говорить — кликом.
+  if (message.kind === "system" && message.event?.type === "machine_failed_upstream") {
+    const people = message.event.people ?? []
+    return (
+      <div className="mx-auto max-w-[85%] rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-center text-[12.5px] text-ws-1">
+        <p>
+          {systemText(message, t)} · <span className="text-ws-4">{time}</span>
+        </p>
+        {people.length > 0 ? (
+          <p className="mt-1 flex flex-wrap items-center justify-center gap-1">
+            <span className="text-ws-3">{t.productionSysContactAdmin}</span>
+            {people.map((person) => (
+              <button
+                key={person.id}
+                type="button"
+                title={t.productionChatMentionHint}
+                onClick={() => onMention(person)}
+                className="rounded bg-ws-select/35 px-1.5 py-0.5 text-[12px] text-ws-1 hover:bg-ws-select/60"
+              >
+                @{person.name}
+              </button>
+            ))}
+          </p>
+        ) : null}
+      </div>
+    )
+  }
 
   if (message.kind === "system") {
     return (
@@ -625,12 +661,15 @@ function Composer({
   stepId,
   members,
   replyTo,
+  mention,
   onCancelReply,
   onSent,
 }: {
   stepId: string
   members: ChatMember[]
   replyTo: ChatMessage | null
+  /** Упоминание по клику извне: дописать `@имя` в поле. `at` — чтобы второй клик по тому же сработал. */
+  mention: { id: string; name: string; at: number } | null
   onCancelReply: () => void
   onSent: () => void
 }) {
@@ -642,6 +681,14 @@ function Composer({
   const [sending, setSending] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const textArea = useRef<HTMLTextAreaElement | null>(null)
+
+  useEffect(() => {
+    if (!mention) return
+    setText((current) => (current.includes(`@${mention.name}`) ? current : `${current}${current && !current.endsWith(" ") ? " " : ""}@${mention.name} `))
+    setMentions((list) => (list.some((m) => m.id === mention.id) ? list : [...list, { id: mention.id, name: mention.name }]))
+    textArea.current?.focus()
+  }, [mention])
 
   useEffect(() => {
     void fetch("/api/production/people", { cache: "no-store" })
@@ -790,6 +837,7 @@ function Composer({
           }}
         />
         <textarea
+          ref={textArea}
           value={text}
           rows={1}
           onChange={(e) => setText(e.target.value)}

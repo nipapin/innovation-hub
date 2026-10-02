@@ -5,6 +5,7 @@ import { formStatus, type FormState } from "./form"
 import { fileTypeDictionary } from "./uploads"
 import { canEditStepPeople, hasStepRole, listAddedPeople } from "./step-people"
 import {
+  edgeSubfolder,
   isWorkNode,
   predecessors,
   topologicalOrder,
@@ -529,11 +530,16 @@ export async function getStepView(stepId: string, userId: string): Promise<StepV
   const bySnode = new Map(allSteps.rows.map((s) => [s.nodeId, s]))
   const scheme = buildScheme(step.graph, bySnode)
 
-  // Исходники — FINAL непосредственно предыдущих этапов этого ролика (§4.4).
+  // Исходники — FINAL непосредственно предыдущих этапов этого ролика (§4.4);
+  // после «Разделить» — подпапка выхода, а пустая — весь финал действия.
   const inputs = await Promise.all(
-    predecessors(step.graph, step.nodeId).map((id) => {
+    predecessors(step.graph, step.nodeId).map(async (id) => {
       const prev = bySnode.get(id)
-      return listFolderFiles(prev?.projectId ?? null, prev?.paths?.final)
+      const final = prev?.paths?.final
+      const edge = step.graph.edges.find((e) => e.source === id && e.target === step.nodeId)
+      const sub = final && edge ? edgeSubfolder(step.graph, edge) : null
+      const own = sub ? await listFolderFiles(prev?.projectId ?? null, `${final}/${sub}`) : []
+      return own.length > 0 ? own : listFolderFiles(prev?.projectId ?? null, final)
     }),
   )
   // Скопированный вход лежит в своей папке этапа — показываем его, а не ссылку.

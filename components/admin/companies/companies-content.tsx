@@ -1,12 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Building2, Loader2, LogIn, Plus, Search, Trash2, UserRound } from "lucide-react"
 import { toast } from "sonner"
 import { tf, useI18n } from "@/components/account/i18n"
 import { Section } from "@/components/admin/billing/fields"
 import { AdminPageHeader } from "@/components/admin/shell/admin-page-header"
+import { useAdminCrumb } from "@/components/admin/shell/floating-save"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,6 +33,7 @@ import { CompanySetsPanel } from "@/components/admin/companies/sets-panel"
 import { readCompanyFeatures } from "@/lib/company-features"
 import { readBranding } from "@/lib/branding"
 import { slugify } from "@/lib/slug"
+import { cn } from "@/lib/utils"
 
 /**
  * «Компании» — этап 3 плана docs/COMPANY_ACCOUNTS_PLAN.md.
@@ -177,6 +179,13 @@ export function AdminCompanies({
   }
 
   const selected = companies.find((c) => c.id === selectedId) ?? null
+  useAdminCrumb(
+    selected
+      ? tf(t.companyCrumb, { title: selected.title })
+      : selectedId === PERSONAL
+        ? t.personalRowTitle
+        : null,
+  )
 
   return (
     <div className="space-y-6">
@@ -200,7 +209,13 @@ export function AdminCompanies({
           <button
             type="button"
             onClick={() => setSelectedId(PERSONAL)}
-            className="mb-3 flex w-full items-center gap-3 rounded-lg border border-border/60 px-4 py-3 text-left hover:opacity-80"
+            aria-current={selectedId === PERSONAL ? "true" : undefined}
+            className={cn(
+              "mb-3 flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors",
+              selectedId === PERSONAL
+                ? "border-primary/60 bg-primary/10 ring-1 ring-primary/40"
+                : "border-border/60 hover:bg-accent/40",
+            )}
           >
             <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1">
@@ -222,9 +237,20 @@ export function AdminCompanies({
             {companies.map((company) => (
               <li
                 key={company.id}
-                className="flex flex-wrap items-center gap-3 px-4 py-3"
+                aria-current={selectedId === company.id ? "true" : undefined}
+                className={cn(
+                  "flex flex-wrap items-center gap-3 px-4 py-3 transition-colors first:rounded-t-lg last:rounded-b-lg",
+                  selectedId === company.id
+                    ? "bg-primary/10 shadow-[inset_3px_0_0_hsl(var(--primary))]"
+                    : "hover:bg-accent/30",
+                )}
               >
-                <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <Building2
+                  className={cn(
+                    "h-4 w-4 shrink-0",
+                    selectedId === company.id ? "text-primary" : "text-muted-foreground",
+                  )}
+                />
                 {/* Само название и открывает настройки — отдельной кнопки
                     «Управлять» рядом не было смысла держать: она делала ровно
                     это же. Здесь настоящая <button>, а не строка с onClick,
@@ -477,6 +503,17 @@ function CompanyMembers({
   const [hits, setHits] = useState<UserPick[]>([])
   const [addRole, setAddRole] = useState<CompanyRole>("member")
   const [busy, setBusy] = useState(false)
+  const [filter, setFilter] = useState("")
+
+  const shownMembers = useMemo(() => {
+    const needle = filter.trim().toLowerCase()
+    if (!needle) return members
+    return members.filter(
+      (member) =>
+        member.email.toLowerCase().includes(needle) ||
+        member.fullName.toLowerCase().includes(needle),
+    )
+  }, [members, filter])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -585,6 +622,7 @@ function CompanyMembers({
       title={`${t.companyPeopleTitle} — ${company.title}`}
       description={t.companyPeopleDesc}
       help="companies.people"
+      collapsible
     >
       <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2">
         {t.companyBack}
@@ -597,8 +635,23 @@ function CompanyMembers({
       ) : members.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t.companyEmptyMembers}</p>
       ) : (
+        <>
+        {/* Поиск по своим — отдельно от поля «Добавить человека» ниже: то ищет
+            по всему сайту, а это фильтрует уже вошедших в команду. */}
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder={t.companyMembersFilter}
+            className="pl-9"
+          />
+        </div>
+        {shownMembers.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t.companyMembersNoMatch}</p>
+        ) : (
         <ul className="divide-y divide-border/50 rounded-lg border border-border/60">
-          {members.map((member) => (
+          {shownMembers.map((member) => (
             <li key={member.userId} className="flex flex-wrap items-center gap-3 px-4 py-3">
               <span className="min-w-0 flex-1 truncate text-sm">
                 {member.email}
@@ -631,6 +684,8 @@ function CompanyMembers({
             </li>
           ))}
         </ul>
+        )}
+        </>
       )}
 
       <div className="space-y-2 pt-2">
