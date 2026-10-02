@@ -20,7 +20,13 @@ export type PreviewKind =
   | "markdown"
   | "subtitles"
   | "json"
+  /** `.txt` — текст с разметкой оформления (docs/TEXT_FORMATS_PLAN.md §1). */
+  | "markup"
+  /** `.csv`, `.tsv` — таблица. До шага 3 плана показывается обычным текстом. */
+  | "table"
   | "text"
+  /** Формат знаем, но показать не можем (xlsx): просим скачать. */
+  | "unsupported"
   /** Показать нечем: архив, docx, exe, незнакомое расширение. */
   | "none"
 
@@ -88,10 +94,16 @@ const BY_EXT: Record<string, PreviewKind> = {
 
   json: "json",
 
-  txt: "text",
+  txt: "markup",
+  csv: "table",
+  tsv: "table",
+
+  xlsx: "unsupported",
+
   log: "text",
-  csv: "text",
-  tsv: "text",
+  lrc: "text",
+  toml: "text",
+  env: "text",
   xml: "text",
   yml: "text",
   yaml: "text",
@@ -140,6 +152,8 @@ export function previewKind(file: {
 export function isTextual(kind: PreviewKind): boolean {
   return (
     kind === "text" ||
+    kind === "markup" ||
+    kind === "table" ||
     kind === "json" ||
     kind === "markdown" ||
     kind === "subtitles"

@@ -1,4 +1,5 @@
 import { buildProjectObjectKey, projectObjectPrefix } from "@/lib/s3-config"
+import { isReviewRow } from "@/lib/production/review-folder"
 
 export const CATALOG_FOLDER_NAME = "_catalog"
 export const OPTIONS_FOLDER_NAME = "options"
@@ -108,6 +109,9 @@ export function isServiceCatalogRow(row: {
   isFolder: boolean
 }): boolean {
   if (isOptionsFolderRow(row)) return true
+  // Пометки ревью производства (`<рабочая этапа>/.review`) — тоже служебные:
+  // в дереве проекта и в архивах они мусор (lib/production/review-folder.ts).
+  if (isReviewRow(row)) return true
   const folder = normalizeFolderPath(row.folderPath).toLowerCase()
   return (
     folder === OPTIONS_FOLDER_NAME ||

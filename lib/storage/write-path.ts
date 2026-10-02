@@ -566,6 +566,11 @@ export async function writeNotifyUpload(input: {
   contentHash?: string | null
   eventId?: string
   actor?: StorageActor | null
+  /**
+   * Занятое имя (409) — не повод удалять объект: вызывающий повторит запись тем
+   * же ключом под другим именем (автоместо формы в чате этапа).
+   */
+  keepObjectOnConflict?: boolean
 }): Promise<ProjectFileRecord> {
   // Три канонических сайдкара сайт читает по фиксированному ключу, а presign
   // минтит `{uuid}-{имя}`. Заливка их обычным путём давала второй объект с тем
@@ -688,7 +693,9 @@ export async function writeNotifyUpload(input: {
     // отвергает `validateLogicalName` с кодом 400, до этой ветки дело не доходило,
     // и каждая попытка залить файл с двоеточием в имени оставляла в бакете ещё
     // один мёртвый объект — docs/STORAGE_CLIENT_REQUESTS.md §14.3.
-    if (isDeterministicRejection(error)) await deleteOrphanUpload(input.s3Key)
+    if (isDeterministicRejection(error) && !(input.keepObjectOnConflict && isNameConflict(error))) {
+      await deleteOrphanUpload(input.s3Key)
+    }
     throw error
   }
 }

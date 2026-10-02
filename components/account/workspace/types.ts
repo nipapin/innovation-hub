@@ -307,6 +307,12 @@ export type WorkspaceSource = {
    */
   reprocessUrl?: (projectId: string, fileId: string) => string
   /**
+   * Сохранить правку текстового файла поверх него (presign → PUT → complete).
+   * Пусто — кнопки «Править» в превью нет: у админского источника свой роут не
+   * заведён (docs/TEXT_FORMATS_PLAN.md, шаг 4).
+   */
+  fileContentUrl?: (projectId: string, fileId: string) => string
+  /**
    * Только состояния обработки элементов IN — для опроса, пока что-то идёт.
    * Пусто — отметки обновляются лишь вместе с деревом.
    */

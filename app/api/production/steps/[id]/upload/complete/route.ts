@@ -14,6 +14,8 @@ const schema = z.object({
   sizeBytes: z.number().int().min(0),
   contentType: z.string().min(1).max(200),
   slot: z.object({ rowId: z.string().min(1).max(40), index: z.number().int().min(1).max(999), dir: z.string().max(500) }).optional(),
+  /** Правка вложения: новым файлом в корень рабочей, не поверх и не в форму. */
+  editCopy: z.boolean().optional(),
 })
 
 /** Байты доехали — записать файл в каталог рабочей папки этапа. */
@@ -26,7 +28,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   try {
     const result = await completeChatUpload(guard.access, guard.auth.userId, parsed.data)
     if (result.ok) return NextResponse.json({ file: result.file }, { status: 201 })
-    return NextResponse.json({ message: "Cannot complete.", code: result.reason }, { status: 400 })
+    return NextResponse.json({ message: "Cannot complete.", code: result.reason }, { status: result.reason === "forbidden" ? 403 : 400 })
   } catch (error) {
     if (error instanceof StorageWriteError) {
       return NextResponse.json({ message: error.message }, { status: error.status })

@@ -60,7 +60,7 @@ const FONTS: { id: FontId; label: string; css: (px: number) => string }[] = [
 ]
 const fontOf = (id: FontId) => FONTS.find((f) => f.id === id) ?? FONTS[0]!
 
-const PALETTE = ["#1c1c1e", "#ffffff", "#8e8e93", "#0a84ff", "#ffd60a", "#ff3b30", "#30d158", "#bf5af2"]
+export const PALETTE = ["#1c1c1e", "#ffffff", "#8e8e93", "#0a84ff", "#ffd60a", "#ff3b30", "#30d158", "#bf5af2"]
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
@@ -1002,7 +1002,7 @@ export function ImageEditor({
  * Shift: стрелка и линия — по 45°, прямоугольник, эллипс и размытие — квадрат и
  * круг. `origin` — неподвижная точка.
  */
-function constrain(kind: Obj["kind"], origin: P, p: P): P {
+export function constrain(kind: Obj["kind"], origin: P, p: P): P {
   const dx = p.x - origin.x
   const dy = p.y - origin.y
   if (kind === "arrow" || kind === "line") {
@@ -1012,52 +1012,4 @@ function constrain(kind: Obj["kind"], origin: P, p: P): P {
   }
   const side = Math.max(Math.abs(dx), Math.abs(dy))
   return { x: origin.x + Math.sign(dx || 1) * side, y: origin.y + Math.sign(dy || 1) * side }
-}
-
-/** Правка текста: файл целиком в поле, сохраняется UTF-8 поверх. */
-export function TextEditor({
-  initial,
-  onSave,
-  onCancel,
-}: {
-  initial: string
-  onSave: (blob: Blob) => Promise<void>
-  onCancel: () => void
-}) {
-  const { t } = useI18n()
-  const [text, setText] = useState(initial)
-  const [saving, setSaving] = useState(false)
-  return (
-    <div className="flex flex-col gap-3">
-      <textarea
-        autoFocus
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        spellCheck={false}
-        className="scrollbar-elegant h-[60vh] w-full resize-none rounded-lg border border-foreground/10 bg-ws-control p-3 font-mono text-[13px] text-ws-1 outline-none focus:border-ws-select"
-      />
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel}
-          className="h-8 rounded-[9px] border border-foreground/10 bg-ws-control px-3 text-[13px] text-ws-2 hover:bg-ws-hover">
-          {t.productionEditCancel}
-        </button>
-        <button
-          type="button"
-          disabled={text === initial || saving}
-          onClick={async () => {
-            setSaving(true)
-            try {
-              await onSave(new Blob([text], { type: "text/plain;charset=utf-8" }))
-            } finally {
-              setSaving(false)
-            }
-          }}
-          className="flex h-8 items-center gap-1.5 rounded-[9px] bg-success px-3 text-[13px] font-medium text-background hover:bg-success/90 disabled:opacity-50"
-        >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          {t.productionEditSave}
-        </button>
-      </div>
-    </div>
-  )
 }

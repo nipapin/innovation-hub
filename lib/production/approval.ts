@@ -4,7 +4,7 @@ import { copySingleFile, loadCopySource } from "@/lib/storage/copy"
 import { writeFileDelete } from "@/lib/storage/write-path"
 import { insertSystem } from "./chat"
 import { advanceRun, afterOpen, copyInputs, copyTree, listTree, loadRunContext, type FolderFile } from "./flow"
-import { formStatus } from "./form"
+import { formPlaces, formStatus } from "./form"
 import { isWorkNode } from "./graph"
 import { hasStepRole } from "./step-people"
 import { canSeeStep, listFolderFiles, loadStep, type StepRow } from "./workspace"
@@ -16,8 +16,8 @@ import { canSeeStep, listFolderFiles, loadStep, type StepRow } from "./workspace
  *
  * - «Инструмент» — один вариант: последний из чата или выбранный «⋯ → Принять
  *   этот вариант»;
- * - «Форма» — вся рабочая папка со структурой, и только когда выполнены все
- *   строки формы;
+ * - «Форма» — только файлы, стоящие в местах формы, со структурой папок, и
+ *   только когда выполнены все строки; файлы чата вне формы остаются в рабочей;
  * - «Автоматика» — результаты задач конвейера (`paths.auto.results`, их находит
  *   lib/production/machines.ts); пока их нет — вся рабочая папка со структурой.
  *   С проверяющим «автоматика» этап принимается сам, без человека.
@@ -66,13 +66,22 @@ export async function approveStep(input: {
   // Автоматику принимают только по отчёту машины: без него неизвестно, что
   // её результат, а папка OUT общая для роликов — целиком её брать нельзя.
   if (node.kind === "auto" && !results?.length) return { ok: false, reason: "no-variant" }
-  const tree = node.kind === "tool" ? [] : results ? await filesById(projectId, results) : await listTree(projectId, work)
+  let tree = node.kind === "tool" ? [] : results ? await filesById(projectId, results) : await listTree(projectId, work)
   if (node.kind === "tool") {
     const variants = await listFolderFiles(projectId, work)
     variant = (input.fileId ? variants.find((f) => f.id === input.fileId) : variants[0]) ?? null
     if (!variant) return { ok: false, reason: input.fileId ? "not-a-variant" : "no-variant" }
   } else if (node.kind === "form") {
-    if (!formStatus(node.data.rows, work, tree).complete) return { ok: false, reason: "form-incomplete" }
+    const status = formStatus(node.data.rows, work, tree)
+    if (!status.complete) return { ok: false, reason: "form-incomplete" }
+    // В Final — только то, что стоит в местах формы: узнаётся тем же разбором,
+    // что рисует форму. Остальное остаётся в «Из чата».
+    const placed = new Set(
+      formPlaces(status.state.groups)
+        .filter((p) => p.fileName !== null)
+        .map((p) => `${p.dir ? `${work}/${p.dir}` : work}/${p.fileName}`),
+    )
+    tree = tree.filter((f) => placed.has(`${f.folderPath}/${f.name}`))
   } else if (tree.length === 0) {
     return { ok: false, reason: "no-variant" }
   }

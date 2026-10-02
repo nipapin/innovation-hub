@@ -7,6 +7,7 @@ import {
   Download,
   Eye,
   Maximize2,
+  Pencil,
 } from "lucide-react"
 
 import { tf } from "@/components/account/i18n"
@@ -14,7 +15,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { fileIcon, fileIconClass, fmtDate, fmtSize } from "./format"
 import { isTextual, previewKind } from "./preview-kind"
-import { TextPreview } from "./text-preview"
+import { TextPreview, useTextEdit, type TextEdit } from "./text-preview"
 import type { DriveFile } from "./types"
 import { VideoPreview } from "./video-preview"
 import { useWorkspace } from "./workspace-context"
@@ -35,10 +36,12 @@ function PreviewMedia({
   file,
   url,
   className,
+  edit,
 }: {
   file: DriveFile
   url: string
   className?: string
+  edit?: TextEdit
 }) {
   const { t } = useWorkspace()
   const Icon = fileIcon(file)
@@ -49,10 +52,8 @@ function PreviewMedia({
   // целиком прежде чем показать первый кадр и не перематывается вперёд.
   const mediaUrl = `${url}?inline=1`
 
-  if (isTextual(kind)) {
-    return (
-      <TextPreview file={file} url={url} kind={kind} className={className} />
-    )
+  if (isTextual(kind) || kind === "unsupported") {
+    return <TextPreview file={file} url={url} className={className} edit={edit} />
   }
 
   // Встроенный просмотрщик браузера. Отдельного плеера здесь нет намеренно:
@@ -163,6 +164,7 @@ export function PreviewTab() {
     downloadItem,
     openPreview,
   } = useWorkspace()
+  const edit = useTextEdit(selectedFile)
 
   if (!selectedId || !selectedFile || selectedFile.isFolder) {
     return <EmptyPreview />
@@ -180,6 +182,7 @@ export function PreviewTab() {
           file={file}
           url={url}
           className="rounded-[6px]"
+          edit={edit}
         />
       </div>
 
@@ -196,6 +199,16 @@ export function PreviewTab() {
         <PreviewMeta file={file} className="mt-1.5" />
 
         <div className="mt-2.5 flex shrink-0 flex-col gap-1.5">
+          {edit.canEdit ? (
+            <button
+              type="button"
+              onClick={edit.start}
+              className="flex items-center justify-center gap-2 rounded-[9px] border border-foreground/10 px-3 py-[7px] text-[12.5px] text-ws-2 hover:bg-foreground/5"
+            >
+              <Pencil className="h-4 w-4 shrink-0" />
+              {t.productionEdit}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => openPreview()}
@@ -295,6 +308,7 @@ export function PreviewDialog() {
   usePreviewHotkeys()
 
   const file = selectedFile && !selectedFile.isFolder ? selectedFile : null
+  const edit = useTextEdit(previewOpen ? file : null)
   if (!previewOpen || !file || !selectedId) return null
 
   const url = source.fileUrl(selectedId, file.id)
@@ -338,6 +352,7 @@ export function PreviewDialog() {
             file={file}
             url={url}
             className="rounded-[10px]"
+            edit={edit}
           />
           {many ? (
             <>
@@ -363,14 +378,26 @@ export function PreviewDialog() {
 
         <div className="flex flex-none items-center justify-between gap-4 border-t border-foreground/[0.07] px-5 py-3">
           <p className="truncate text-[11.5px] text-ws-5">{t.previewKeysHint}</p>
-          <button
-            type="button"
-            onClick={() => downloadItem(file)}
-            className="flex shrink-0 items-center gap-2 rounded-[9px] border border-foreground/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-foreground/5"
-          >
-            <Download className="h-4 w-4" />
-            {t.mDownload}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {edit.canEdit ? (
+              <button
+                type="button"
+                onClick={edit.start}
+                className="flex shrink-0 items-center gap-2 rounded-[9px] border border-foreground/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-foreground/5"
+              >
+                <Pencil className="h-4 w-4" />
+                {t.productionEdit}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => downloadItem(file)}
+              className="flex shrink-0 items-center gap-2 rounded-[9px] border border-foreground/10 px-3.5 py-2 text-[13px] text-ws-2 hover:bg-foreground/5"
+            >
+              <Download className="h-4 w-4" />
+              {t.mDownload}
+            </button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

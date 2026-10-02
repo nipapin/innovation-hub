@@ -33,10 +33,14 @@ import {
   normalizeColor,
 } from "@/lib/tools/element/palette"
 import { cn } from "@/lib/utils"
-import { ElementColor, ElementNote, ElementScale } from "./text-marks"
+import { ElementColor, ElementNote, ElementScale } from "./markup-marks"
 
 /**
- * Редактор текста элемента — сильно урезанный Tiptap.
+ * Редактор текста с оформлением — сильно урезанный Tiptap.
+ *
+ * Общий для сайта (docs/TEXT_FORMATS_PLAN.md §3): «Элемент», правка `.txt` в
+ * производстве, дальше — ячейки таблиц. Раньше жил в `workspace/element/`
+ * под именем `ElementTextEditor`; формат при переносе не менялся.
  *
  * Правило отбора жёсткое и взято из плана (§8.1): чего нельзя сделать скриптом в
  * After Effects, того в редакторе быть не должно. Поэтому здесь нет заголовков,
@@ -86,7 +90,7 @@ function ToolButton({
   )
 }
 
-export function ElementTextEditor({
+export function MarkupEditor({
   value,
   onChange,
   loadKey,

@@ -18,6 +18,8 @@ import {
   type Dictionary,
   type Lang,
 } from "@/components/account/i18n"
+import { useDownloadChoice } from "@/components/text-viewer/download-choice"
+import { confirmDiscardEdits } from "@/components/text-viewer/unsaved"
 import type { ExposedOptionChange } from "@/lib/options/apply"
 import type { ExposedOption } from "@/lib/options/types"
 import type { SkippedOption } from "@/lib/options/extract"
@@ -736,7 +738,13 @@ export function WorkspaceProvider({
   /** Опора для Shift-диапазона: последний клик без Shift. */
   const anchorRef = useRef<DriveFile | null>(null)
 
+  /** Активный файл для проверки «уходим ли от него» — без пересоздания selectFile. */
+  const activeRef = useRef<DriveFile | null>(null)
+  activeRef.current = selectedFile
+
   const selectFile = useCallback((file: DriveFile, additive = false) => {
+    // Уход к другому файлу бросает правку текста в превью — сначала спросить.
+    if (file.id !== activeRef.current?.id && !confirmDiscardEdits(t.textUnsavedDiscard)) return
     anchorRef.current = file
     // Дальше человек ведёт сам — прокрутка к присланному файлу больше не нужна.
     setRevealFileId(null)
@@ -746,7 +754,7 @@ export function WorkspaceProvider({
       // повторный Cmd/Ctrl-клик по выделенному — снимает выделение
       return without.length === prev.length ? [...prev, file] : without
     })
-  }, [])
+  }, [t.textUnsavedDiscard])
 
   const selectRange = useCallback((list: DriveFile[], file: DriveFile) => {
     const anchor = anchorRef.current
@@ -836,7 +844,9 @@ export function WorkspaceProvider({
     [selectedFile, selectFile],
   )
 
-  const closePreview = useCallback(() => setPreviewOpen(false), [])
+  const closePreview = useCallback(() => {
+    if (confirmDiscardEdits(t.textUnsavedDiscard)) setPreviewOpen(false)
+  }, [t.textUnsavedDiscard])
 
   // Выделение сбросили (сменили проект, ушли в папку) — окну нечего показывать.
   useEffect(() => {
@@ -1672,16 +1682,24 @@ export function WorkspaceProvider({
     [deleteItems],
   )
 
+  // txt/csv/tsv спрашивают «только текст / как есть» (docs/TEXT_FORMATS_PLAN.md
+  // §3); окно вопроса лежит в разметке провайдера — меню, из которого скачивают,
+  // к этому времени уже закрыто.
+  const { download: downloadWithChoice, dialog: downloadDialog } =
+    useDownloadChoice()
+
   const downloadItem = useCallback(
     (file: DriveFile) => {
       if (!selectedId || file.isFolder) return
-      window.open(
-        sourceRef.current.fileUrl(selectedId, file.id),
-        "_blank",
-        "noopener",
-      )
+      // Без `inline=1` роут отдаёт тело через Next — тот же источник, читается.
+      const url = sourceRef.current.fileUrl(selectedId, file.id)
+      downloadWithChoice({
+        name: file.name,
+        textUrl: url,
+        asIs: () => window.open(url, "_blank", "noopener"),
+      })
     },
-    [selectedId],
+    [selectedId, downloadWithChoice],
   )
 
   const openArchiveDialog = useCallback((target: ArchiveTarget) => {
@@ -2854,6 +2872,7 @@ export function WorkspaceProvider({
           e.target.value = ""
         }}
       />
+      {downloadDialog}
       {children}
     </Ctx.Provider>
   )

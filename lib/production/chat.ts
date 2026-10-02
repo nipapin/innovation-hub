@@ -13,7 +13,7 @@ import { canSeeStep, loadStep, type StepRow } from "./workspace"
  * Вложения лежат в рабочей папке этапа (§2.3) — это и есть варианты.
  */
 
-export const REACTIONS = ["👍", "❤️", "😂", "🔥", "👀", "✅", "❗"] as const
+export const REACTIONS = ["👍", "❤️", "😂", "🔥", "👀", "✅", "💯", "❗"] as const
 
 export type ChatAttachment = {
   fileId: string
@@ -40,11 +40,22 @@ export type ChatMessage = {
     people?: { id: string; name: string }[]
   } | null
   mentions: string[]
+  /** `review_ref` — карточка пометки ревью: клик открывает инструмент на ней (§8). */
+  review: ChatReviewRef | null
   replyTo: { id: number; authorName: string | null; body: string } | null
   createdAt: string
   editedAt: string | null
   deleted: boolean
   reactions: { emoji: string; userIds: string[] }[]
+}
+
+/** Ссылка на пометку ревью в сообщении `review_ref`: файл и id пометки. */
+export type ChatReviewRef = {
+  fileId: string
+  name: string
+  s3Key: string
+  contentType: string
+  commentId: string
 }
 
 export type ChatMember = {
@@ -119,6 +130,9 @@ type MessageRow = {
     attachments?: ChatAttachment[]
     event?: ChatMessage["event"]
     mentions?: string[]
+    /** Процитированный кусок исходного сообщения, если отвечали на выделение. */
+    quote?: string
+    review?: ChatReviewRef
   }
   replyTo: number | null
   createdAt: string
@@ -188,8 +202,13 @@ export async function listMessages(
       attachments: deleted ? [] : (row.payload.attachments ?? []),
       event: row.payload.event ?? null,
       mentions: row.payload.mentions ?? [],
+      review: deleted ? null : (row.payload.review ?? null),
       replyTo: reply
-        ? { id: reply.id, authorName: reply.authorName, body: reply.deletedAt ? "" : reply.body.slice(0, 200) }
+        ? {
+            id: reply.id,
+            authorName: reply.authorName,
+            body: reply.deletedAt ? "" : (row.payload.quote ?? reply.body).slice(0, 200),
+          }
         : null,
       createdAt: row.createdAt,
       editedAt: row.editedAt,
@@ -215,6 +234,8 @@ export async function postMessage(input: {
   body: string
   attachmentIds: string[]
   replyTo?: number
+  /** Выделенный кусок сообщения `replyTo`; только вместе с ним. */
+  quote?: string
   mentions: string[]
 }): Promise<PostResult> {
   const body = input.body.trim()
@@ -237,13 +258,17 @@ export async function postMessage(input: {
     attachments = input.attachmentIds.map((id) => rows.find((r) => r.fileId === id)!)
   }
 
+  let quote: string | undefined
   if (input.replyTo != null) {
-    const { rowCount } = await query(
-      `SELECT 1 FROM production_messages WHERE id = $1 AND run_step_id = $2`,
+    const { rows } = await query<{ body: string }>(
+      `SELECT body FROM production_messages WHERE id = $1 AND run_step_id = $2`,
       [input.replyTo, step.id],
     )
-    if (!rowCount) return { ok: false, reason: "bad-reply" }
-  }
+    if (!rows[0]) return { ok: false, reason: "bad-reply" }
+    // Цитата — только настоящий кусок исходного текста, не произвольная подпись.
+    const q = input.quote?.trim()
+    if (q && q !== rows[0].body.trim() && rows[0].body.includes(q)) quote = q
+  } else if (input.quote) return { ok: false, reason: "bad-reply" }
 
   // Упоминания: участник — уведомление; не-участник из круга автора — приглашение.
   const members = await listMembers(step.id)
@@ -261,7 +286,7 @@ export async function postMessage(input: {
     const { rows } = await client.query<{ id: number }>(
       `INSERT INTO production_messages (run_step_id, author_id, kind, body, payload, reply_to)
        VALUES ($1, $2, 'text', $3, $4::jsonb, $5) RETURNING id::int`,
-      [step.id, input.userId, body, JSON.stringify({ attachments, mentions }), input.replyTo ?? null],
+      [step.id, input.userId, body, JSON.stringify(quote ? { attachments, mentions, quote } : { attachments, mentions }), input.replyTo ?? null],
     )
     // Своё сообщение прочитано автором.
     await client.query(
@@ -305,6 +330,56 @@ async function pushAboutMessage(input: {
       body: `${author}: ${text}`.slice(0, 180),
       url: `/account/production?step=${encodeURIComponent(input.step.id)}`,
     })
+  }
+}
+
+// ─── Пометки ревью ────────────────────────────────────────────────────────
+
+/**
+ * Карточка пометки в чате (§8): от автора пометки, текст пометки, ссылка на
+ * файл и пометку. Как обычное сообщение — прочитано автором, push по
+ * настройкам участников.
+ */
+export async function postReviewRef(input: {
+  access: ChatAccess
+  userId: string
+  body: string
+  review: ChatReviewRef
+}): Promise<number> {
+  const { step } = input.access
+  const id = await withTransaction(async (client) => {
+    if (!input.access.member) await ensureMember(client, step.id, input.userId, "production")
+    const { rows } = await client.query<{ id: number }>(
+      `INSERT INTO production_messages (run_step_id, author_id, kind, body, payload)
+       VALUES ($1, $2, 'review_ref', $3, $4::jsonb) RETURNING id::int`,
+      [step.id, input.userId, input.body, JSON.stringify({ review: input.review })],
+    )
+    await client.query(
+      `UPDATE production_chat_members SET last_read_message_id = GREATEST(last_read_message_id, $3)
+        WHERE run_step_id = $1 AND user_id = $2`,
+      [step.id, input.userId, rows[0].id],
+    )
+    await client.query(`SELECT pg_notify('production_chat', $1)`, [
+      JSON.stringify({ stepId: step.id, type: "message" }),
+    ])
+    return rows[0].id
+  })
+  void pushAboutMessage({ step, authorId: input.userId, body: input.body, attachments: [], mentions: [] }).catch((error) =>
+    console.error("[production] push о пометке не ушёл", error),
+  )
+  return id
+}
+
+/** Пометку удалили — её карточка в чате тоже уходит (как удалённое сообщение). */
+export async function deleteReviewRef(stepId: string, commentId: string): Promise<void> {
+  const { rowCount } = await query(
+    `UPDATE production_messages SET deleted_at = NOW()
+      WHERE run_step_id = $1 AND kind = 'review_ref' AND deleted_at IS NULL
+        AND payload->'review'->>'commentId' = $2`,
+    [stepId, commentId],
+  )
+  if (rowCount) {
+    await query(`SELECT pg_notify('production_chat', $1)`, [JSON.stringify({ stepId, type: "message" })])
   }
 }
 

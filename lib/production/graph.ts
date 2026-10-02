@@ -623,9 +623,10 @@ export function validateGraph(graph: PipelineGraph): GraphIssue[] {
       // Название строки — префикс имени файла: без него файлы не разобрать по местам.
       else if (rowsHaveEmptyLabel(n.data.rows)) issues.push({ level: "error", code: "form-row-label", nodeId: n.id })
     }
-    // Автоприёмка последнего этапа: упади автоматика — сообщить некому, ролик
+    // Автоприёмка последнего этапа (сквозь действия): упади автоматика — сообщить некому, ролик
     // не сдастся. Последний этап завершает человек.
-    if (n.kind === "auto" && n.data.autoApprove && !valid.some((e) => e.source === n.id)) {
+    // Действия после этапа не в счёт: сообщить об ошибке им некому.
+    if (n.kind === "auto" && n.data.autoApprove && nextWorkStages({ ...graph, edges: valid }, n.id).length === 0) {
       issues.push({ level: "error", code: "auto-last", nodeId: n.id })
     }
     if (n.kind === "action" && n.data.action === "split") {
@@ -723,6 +724,35 @@ export function predecessors(graph: PipelineGraph, nodeId: string): string[] {
 
 export function successors(graph: PipelineGraph, nodeId: string): string[] {
   return graph.edges.filter((e) => e.source === nodeId).map((e) => e.target)
+}
+
+/**
+ * Ближайшие этапы-не-действия по ходу графа: действия проходятся насквозь.
+ * Пусто — после этапа работы для людей или автоматики нет (только действия
+ * или ничего): такой этап считается последним для автоприёмки (§13.2).
+ */
+export function nextWorkStages(graph: PipelineGraph, nodeId: string): string[] {
+  return throughActions(graph, nodeId, "forward")
+}
+
+function throughActions(graph: PipelineGraph, nodeId: string, dir: "forward" | "backward"): string[] {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]))
+  const out = new Set<string>()
+  const seen = new Set([nodeId])
+  const stack = [nodeId]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    for (const e of graph.edges) {
+      const [a, b] = dir === "forward" ? [e.source, e.target] : [e.target, e.source]
+      if (a !== id || seen.has(b)) continue
+      seen.add(b)
+      const n = byId.get(b)
+      if (!n) continue
+      if (n.kind === "action") stack.push(b)
+      else out.add(b)
+    }
+  }
+  return [...out]
 }
 
 /** Топологический порядок (Кан). `null` — в графе круг. */

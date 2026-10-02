@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
@@ -25,6 +25,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  RefreshCw,
   RotateCcw,
   Search,
   Trash2,
@@ -33,7 +34,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
-import { tf, useI18n } from "@/components/account/i18n"
+import { useI18n } from "@/components/account/i18n"
 import { typesLabel } from "@/components/account/workspace/element/element-slots"
 import { ResizeGrip } from "@/components/account/resize-grip"
 import { useDragSize } from "@/components/account/use-drag-size"
@@ -51,11 +52,20 @@ import { cn } from "@/lib/utils"
 import { WorkplaceModeSwitch } from "./mode-switch"
 import { NewRunButton } from "./new-run-dialog"
 import { StageChat } from "./chat/stage-chat"
-import { FilePreviewDialog } from "./file-preview-dialog"
+import { FilePreviewDialog, saveOver } from "./file-preview-dialog"
+import { ReviewProvider } from "./review/review-dialog"
+import { FileMenu, editableFile, type FileMenuForm } from "./file-menu"
 import { uploadChatFile } from "./chat/upload"
+import { MarkupFileEditor } from "@/components/text-viewer/plain-editor"
+import { confirmDiscardEdits } from "@/components/text-viewer/unsaved"
+import { TEXT_PREVIEW_LIMIT } from "@/components/account/workspace/preview-kind"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { escapeText } from "@/lib/tools/element/markup"
 import { subfolderName } from "@/lib/tools/element/names"
+import { displaySlotName, formPlaces, type FormPlace } from "@/lib/production/form"
 import { extensionFits, mimeFits } from "@/lib/tools/element/site-form"
-import { canAdd, type Group, type Slot } from "@/lib/tools/element/slots"
+import { type Group, type Slot } from "@/lib/tools/element/slots"
+import { usePersisted } from "./use-persisted"
 
 /**
  * Рабочее место «Производство» — docs/PRODUCTION_PLAN.md §9, шаг 1.8.
@@ -143,6 +153,27 @@ export function ProductionWorkspace() {
   useEffect(() => {
     void loadStep()
   }, [loadStep])
+
+  /** Строки формы, чьи файлы сейчас переименовываются: значок до перечитывания этапа. */
+  const [formPending, setFormPending] = useState<ReadonlySet<string>>(new Set())
+  const formAction = useCallback<FormAction>(
+    async (keys, action, failed) => {
+      setFormPending((prev) => new Set([...prev, ...keys]))
+      try {
+        if (!(await action())) toast.error(failed)
+      } catch {
+        toast.error(failed)
+      } finally {
+        await loadStep()
+        setFormPending((prev) => {
+          const next = new Set(prev)
+          for (const key of keys) next.delete(key)
+          return next
+        })
+      }
+    },
+    [loadStep],
+  )
 
   /**
    * Живое обновление (§7.3): один поток на раздел. Сигнал по открытому этапу —
@@ -310,7 +341,8 @@ export function ProductionWorkspace() {
               </div>
             )
           ) : view ? (
-            <>
+            // Пометки ревью (§8) открываются из меню файла, просмотра и чата этапа.
+            <ReviewProvider stepId={view.id}>
               {/* Верх закреплён: схема и шапка этапа всегда на месте,
                   прокручиваются только файлы и чат. */}
               <SchemeStrip nodes={view.scheme.nodes} edges={view.scheme.edges} currentNodeId={view.nodeId} />
@@ -342,8 +374,15 @@ export function ProductionWorkspace() {
                           : null}
                   </p>
                 ) : null}
-                <FilesPanel view={view} onApproveFile={(file) => void approve(file)} onFilesChanged={() => void loadStep()} />
-                {view.form ? <FormPanel view={view} onChanged={() => void loadStep()} /> : null}
+                <FilesPanel
+                  view={view}
+                  onApproveFile={(file) => void approve(file)}
+                  onFilesChanged={() => void loadStep()}
+                  onFormAction={formAction}
+                />
+                {view.form ? (
+                  <FormPanel view={view} pending={formPending} onAction={formAction} onChanged={() => void loadStep()} />
+                ) : null}
                 {view.hasChat ? (
                   <StageChat
                     key={view.id}
@@ -351,6 +390,24 @@ export function ProductionWorkspace() {
                     tick={liveTick}
                     canApprove={canApprove(view) && view.kind === "tool"}
                     onApproveFile={(file) => void approve(file)}
+                    slotLabels={view.slotLabels}
+                    canEditWork={view.status === "ready" && (view.me.isExecutor || view.me.isOwner)}
+                    formFor={
+                      view.form
+                        ? (fileId) => {
+                            const file = view.files.work.find((f) => f.id === fileId)
+                            if (!file) return null
+                            return {
+                              canEdit: view.status === "ready" && (view.me.isExecutor || view.me.isOwner),
+                              current: placeOf(view, file),
+                              places: formPlaces(view.form!.state.groups),
+                              fileTypes: view.form!.fileTypes,
+                              onPlace: (slot) => void placeFile(view, file, slot, formAction, t),
+                            }
+                          }
+                        : undefined
+                    }
+                    onFilesChanged={() => void loadStep()}
                   />
                 ) : (
                   <p className="flex items-center justify-center gap-2 px-6 py-8 text-[12.5px] text-ws-4">
@@ -359,7 +416,7 @@ export function ProductionWorkspace() {
                   </p>
                 )}
               </div>
-            </>
+            </ReviewProvider>
           ) : (
             <div className="flex flex-1 items-center justify-center text-ws-4">
               {loadingStep || runs === null ? (
@@ -405,7 +462,14 @@ function RunsColumn({
 }) {
   const { t } = useI18n()
   const [query, setQuery] = useState("")
-  const [open, setOpen] = useState<Set<string>>(new Set())
+  // Раскрытые ролики помнит браузер — массивом, Set в JSON не ложится.
+  const [openList, setOpenList] = usePersisted<string[]>("runs-open", [])
+  const open = useMemo(() => new Set(openList), [openList])
+  const setOpen = useCallback(
+    // Последние 200: id сданных роликов иначе копились бы годами.
+    (fn: (prev: Set<string>) => Set<string>) => setOpenList((prev) => [...fn(new Set(prev))].slice(-200)),
+    [setOpenList],
+  )
   const [renaming, setRenaming] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
 
@@ -846,7 +910,7 @@ function SchemeStrip({
   onNodeClick?: (nodeId: string) => void
 }) {
   const { t } = useI18n()
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = usePersisted("scheme-open", true)
   const box = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
 
@@ -1386,24 +1450,30 @@ function FilesPanel({
   view,
   onApproveFile,
   onFilesChanged,
+  onFormAction,
 }: {
   view: StepView
   onApproveFile: (file: StepFile) => void
   onFilesChanged: () => void
+  onFormAction: FormAction
 }) {
   const { t } = useI18n()
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = usePersisted("files-collapsed", false)
   // Принятый этап открывается на FINAL: варианты уже не нужны, нужен результат.
   const [tab, setTab] = useState<FolderTab>(view.status === "approved" ? "final" : "work")
   useEffect(() => {
     setTab(view.status === "approved" ? "final" : "work")
   }, [view.id, view.status])
   const [preview, setPreview] = useState<StepFile | null>(null)
+  /** Превью — только что сделанная копия входа: открыть сразу в правке. */
+  const [editOnOpen, setEditOnOpen] = useState(false)
   const canEditWork = view.status === "ready" && (view.me.isExecutor || view.me.isOwner)
+  // pb-3 обёртки — 12px сверх списка.
+  const fit = useFitBounds(12, { min: 64, max: 520 })
   const height = useDragSize({
     initial: 150,
-    min: 64,
-    max: 520,
+    min: fit.min,
+    max: fit.max,
     axis: "y",
     storageKey: "ffworks-production-files-height",
   })
@@ -1478,7 +1548,9 @@ function FilesPanel({
 
       {collapsed ? null : (
         <>
+          {/* Тянется от одного файла до последнего — пустоты под списком нет. */}
           <div style={{ height: height.size }} className="scrollbar-elegant overflow-y-auto px-3 pb-3 md:px-6">
+            <div ref={fit.ref}>
             {files.length === 0 ? (
               <div className="flex h-full min-h-[40px] items-center justify-center gap-2 text-[12.5px] text-ws-4">
                 {tab === "work" ? <MessageSquare className="h-3.5 w-3.5 shrink-0" /> : null}
@@ -1490,20 +1562,57 @@ function FilesPanel({
                   <FileRow
                     key={file.id}
                     file={file}
+                    labels={view.slotLabels}
                     approved={file.id === view.approvedFileId}
-                    withMenu={tab === "work"}
-                    canApprove={canApprove(view)}
-                    onApprove={() => onApproveFile(file)}
-                    onOpen={() => setPreview(file)}
+                    approve={tab === "work" ? { allowed: canApprove(view), onApprove: () => onApproveFile(file) } : null}
+                    onOpen={() => {
+                      setEditOnOpen(false)
+                      setPreview(file)
+                    }}
+                    onEdit={
+                      tab === "work" && canEditWork && editableFile(file)
+                        ? () => {
+                            setEditOnOpen(true)
+                            setPreview(file)
+                          }
+                        : null
+                    }
+                    form={
+                      tab === "work" && view.form
+                        ? {
+                            canEdit: canEditWork,
+                            current: placeOf(view, file),
+                            places: formPlaces(view.form.state.groups),
+                            fileTypes: view.form.fileTypes,
+                            onPlace: (slot) => void placeFile(view, file, slot, onFormAction, t),
+                          }
+                        : null
+                    }
                   />
                 ))}
               </div>
             )}
+            </div>
           </div>
           <FilePreviewDialog
-            file={preview}
+            file={preview ? { ...preview, name: displaySlotName(preview.name, view.slotLabels).name } : null}
             onClose={() => setPreview(null)}
             edit={tab === "work" && canEditWork ? { stepId: view.id, onSaved: onFilesChanged } : null}
+            editOnOpen={editOnOpen}
+            copyEdit={
+              tab === "in" && canEditWork
+                ? {
+                    stepId: view.id,
+                    onCopied: (copy) => {
+                      // Копия легла в рабочую: показать её там и сразу в правке.
+                      setTab("work")
+                      setEditOnOpen(true)
+                      setPreview({ ...copy, folderPath: "", createdAt: new Date().toISOString(), author: null } as StepFile)
+                      onFilesChanged()
+                    },
+                  }
+                : null
+            }
           />
           <ResizeGrip
             orientation="horizontal"
@@ -1521,21 +1630,28 @@ function FilesPanel({
 
 function FileRow({
   file,
+  labels,
   approved,
-  withMenu,
-  canApprove: allowed,
-  onApprove,
+  approve,
   onOpen,
+  onEdit,
+  form,
 }: {
   file: StepFile
+  /** Названия строк форм: на экране исходное имя, приставка места — бледной меткой. */
+  labels: readonly string[]
   approved: boolean
-  withMenu: boolean
-  canApprove: boolean
-  onApprove: () => void
+  /** «Принять этот вариант» — варианты этапа-инструмента; null — пункта нет. */
+  approve: { allowed: boolean; onApprove: () => void } | null
   /** Встроенный просмотр (и правка, где можно). */
   onOpen: () => void
+  /** «Редактировать» — открыть сразу в правке; null — нельзя. */
+  onEdit: (() => void) | null
+  /** Этап-форма: вместо «Принять этот вариант» — «Поставить в →» (§3.0). */
+  form: FileMenuForm | null
 }) {
-  const { t } = useI18n()
+  const shown = displaySlotName(file.name, labels)
+  const original = shown.name
   const time = new Date(file.createdAt).toLocaleString(undefined, {
     day: "2-digit",
     month: "2-digit",
@@ -1544,42 +1660,33 @@ function FileRow({
   })
   return (
     <div
+      draggable={Boolean(form?.canEdit)}
+      onDragStart={
+        form?.canEdit
+          ? (e) => {
+              e.dataTransfer.setData(STEP_FILE_DRAG, file.id)
+              e.dataTransfer.effectAllowed = "move"
+            }
+          : undefined
+      }
       className={cn(
         "flex items-center gap-3 rounded-lg border px-3 py-2 text-[13px]",
         approved ? "border-success/30 bg-success/10" : "border-foreground/10",
+        form?.canEdit && "cursor-grab",
       )}
     >
       {approved ? <Check className="h-4 w-4 shrink-0 text-success" /> : null}
+      {shown.tag ? <span className="shrink-0 text-[12px] text-ws-5">{shown.tag}</span> : null}
       <button
         type="button"
         onClick={onOpen}
         className="min-w-0 flex-1 truncate text-left font-medium text-ws-1 hover:underline"
       >
-        {file.name}
+        {original}
       </button>
       {file.author ? <span className="shrink-0 text-ws-4">{file.author}</span> : null}
       <span className="shrink-0 tabular-nums text-ws-4">{time}</span>
-      {withMenu ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              title={t.productionFileMenu}
-              aria-label={t.productionFileMenu}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ws-4 hover:bg-ws-hover hover:text-ws-1"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[220px]">
-            <DropdownMenuItem disabled={!allowed} onSelect={onApprove}>
-              <Check className="mr-2 h-4 w-4" />
-              {t.productionApproveThis}
-            </DropdownMenuItem>
-            {!allowed ? <p className="px-2 pb-1.5 text-[11px] text-ws-4">{t.productionApproveHint}</p> : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
+      <FileMenu file={file} labels={labels} onOpen={onOpen} onEdit={onEdit} form={form} approve={approve} />
     </div>
   )
 }
@@ -1589,18 +1696,38 @@ function FileRow({
 /**
  * Форма этапа (§3.0) — как сбор элемента в проекте: карточка на строку, в ней
  * подчёркнутое поле на каждый слот (пусто — тип, потом имя файла), глаз,
- * корзина и «Выбрать»; у строки с `≥` снизу «+». Файл можно бросить прямо на
+ * корзина и «Выбрать»; у строки с `≥` внизу всегда пустое место. Файл можно бросить прямо на
  * поле — на подлёте зона красится по MIME, при броске проверяется расширение по
  * словарю типов конвейера. Занятые места перетаскиваются: номера в именах
  * переписывает сервер. Имя файла даёт сервер: `01 Титры - clip.srt`.
  * Править форму может исполнитель этапа, пока этап открыт.
  */
-function FormPanel({ view, onChanged }: { view: StepView; onChanged: () => void }) {
+function FormPanel({
+  view,
+  pending,
+  onAction,
+  onChanged,
+}: {
+  view: StepView
+  /** Строки (`папка::строка`), чьи файлы сейчас переименовываются. */
+  pending: ReadonlySet<string>
+  onAction: FormAction
+  onChanged: () => void
+}) {
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
-  /** Сколько пустых мест сверх найденных добавили «+» — по строке и папке. */
-  const [extra, setExtra] = useState<Record<string, number>>({})
   const [preview, setPreview] = useState<StepFile | null>(null)
+  /** Свёрнута — видна только шапка с состоянием формы, как у «Файлов». */
+  const [collapsed, setCollapsed] = usePersisted("form-collapsed", false)
+  // Высоту формы тянут, как у «Файлов»: от одной строки до последней.
+  const fit = useFitBounds(0, { min: 80, max: 1200 })
+  const height = useDragSize({
+    initial: 360,
+    min: fit.min,
+    max: fit.max,
+    axis: "y",
+    storageKey: "ffworks-production-form-height",
+  })
   const form = view.form!
   const canEdit = view.status === "ready" && (view.me.isExecutor || view.me.isOwner)
   const sensors = useSensors(
@@ -1615,24 +1742,15 @@ function FormPanel({ view, onChanged }: { view: StepView; onChanged: () => void 
     return view.files.work.find((f) => f.folderPath === folder && f.name === name) ?? null
   }
 
-  const run = async (action: () => Promise<boolean>, failed: string) => {
-    setBusy(true)
-    try {
-      if (!(await action())) toast.error(failed)
-    } finally {
-      setBusy(false)
-      onChanged()
-    }
-  }
-
-  const remove = (file: StepFile) =>
-    run(
+  const remove = (key: string, file: StepFile) =>
+    onAction(
+      [key],
       async () =>
         (await fetch(`/api/production/steps/${view.id}/files/${encodeURIComponent(file.id)}`, { method: "DELETE" })).ok,
       t.productionFormRemoveFailed,
     )
 
-  const reorder = (files: StepFile[]) => (event: DragEndEvent) => {
+  const reorder = (key: string, files: StepFile[]) => (event: DragEndEvent) => {
     const { active, over } = event
     if (!over || active.id === over.id) return
     const from = files.findIndex((f) => f.id === active.id)
@@ -1641,7 +1759,8 @@ function FormPanel({ view, onChanged }: { view: StepView; onChanged: () => void 
     const ordered = [...files]
     const [moved] = ordered.splice(from, 1)
     ordered.splice(to, 0, moved!)
-    void run(
+    void onAction(
+      [key],
       async () =>
         (
           await fetch(`/api/production/steps/${view.id}/form/reorder`, {
@@ -1654,26 +1773,32 @@ function FormPanel({ view, onChanged }: { view: StepView; onChanged: () => void 
     )
   }
 
-  const shrink = (key: string) => setExtra((prev) => ({ ...prev, [key]: Math.max(0, (prev[key] ?? 0) - 1) }))
+  // Файлы «Из чата» вне формы — кандидаты в пустое место (выбор кликом по полю).
+  const loose = view.files.work.filter((f) => f.folderPath === form.work && placeOf(view, f) === null)
+
+  /** Файл из списка «Из чата» брошен на место — как «Поставить в →». */
+  const placeDropped = (fileId: string, slot: SlotRef) => {
+    const file = view.files.work.find((f) => f.id === fileId)
+    if (file) void placeFile(view, file, slot, onAction, t)
+  }
 
   const renderGroups = (groups: Group[], dir: string): React.ReactNode => (
     <div className="flex flex-col gap-3">
       {groups.map((group) => {
         const folder = group.row.types.includes("folder")
-        const key = `${dir}::${group.row.id}`
-        const added = folder ? 0 : (extra[key] ?? 0)
-        const slots: Slot[] = [
-          ...group.slots,
-          ...Array.from({ length: added }, (_, i) => ({
-            rowId: group.row.id,
-            label: group.row.label,
-            index: group.slots.length + i + 1,
-            file: null,
-            folderName: null,
-            groups: [],
-          })),
-        ]
+        const key = slotRowKey(dir, group.row.id)
+        const last = group.slots[group.slots.length - 1]
+        // У «≥» внизу одно пустое место: заполнил — появляется следующее.
+        // Только пока форму можно править: у принятого этапа класть некуда.
+        const slots: Slot[] =
+          canEdit && !folder && group.row.op === ">=" && (!last || last.file)
+            ? [
+                ...group.slots,
+                { rowId: group.row.id, label: group.row.label, index: group.slots.length + 1, file: null, folderName: null, groups: [] },
+              ]
+            : group.slots
         const files = folder ? [] : slots.map((slot) => fileOf(dir, slot.file?.name)).filter((f): f is StepFile => f !== null)
+        const refreshing = pending.has(key)
         return (
           <div key={group.row.id} className="rounded-[10px] border border-foreground/15 p-3">
             <p className="mb-2 text-[13px] text-ws-2">{group.row.label}</p>
@@ -1695,35 +1820,36 @@ function FormPanel({ view, onChanged }: { view: StepView; onChanged: () => void 
                 })}
               </div>
             ) : (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorder(files)}>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorder(key, files)}>
                 <SortableContext items={files.map((f) => f.id)} strategy={verticalListSortingStrategy}>
                   <div className="flex flex-col gap-2">
                     {slots.map((slot) => {
                       const file = fileOf(dir, slot.file?.name)
-                      // Пустое место сверх найденных убирается без запроса; занятое — вместе с файлом.
-                      const isExtra = !slot.file && slot.index > group.slots.length
+                      const ref = { rowId: group.row.id, index: slot.index, dir }
                       return (
                         <SortableSlot
                           key={file?.id ?? `empty-${slot.index}`}
                           id={file?.id ?? `empty-${group.row.id}-${slot.index}`}
-                          draggable={canEdit && Boolean(file) && files.length > 1 && !busy}
+                          draggable={canEdit && Boolean(file) && files.length > 1 && !busy && !refreshing}
                         >
                           <FormSlotRow
                             stepId={view.id}
-                            slot={{ rowId: group.row.id, index: slot.index, dir }}
+                            slot={ref}
                             types={group.row.types}
                             fileTypes={form.fileTypes}
                             name={slot.file?.name ?? null}
+                            labels={view.slotLabels}
                             file={file}
                             canEdit={canEdit}
-                            busy={busy}
+                            busy={busy || refreshing}
+                            refreshing={refreshing && Boolean(file)}
                             onBusy={setBusy}
                             onPreview={setPreview}
-                            onChanged={() => {
-                              if (isExtra) shrink(key)
-                              onChanged()
-                            }}
-                            onRemove={file ? () => void remove(file) : isExtra ? () => shrink(key) : null}
+                            onChanged={onChanged}
+                            onPlace={(fileId) => placeDropped(fileId, ref)}
+                            candidates={file ? [] : loose.filter((f) => extensionFits({ fileTypes: form.fileTypes }, group.row.types, displaySlotName(f.name, view.slotLabels).name))}
+                            // Корзина — только у занятого места; лишнее пустое место уходит само.
+                            onRemove={file ? () => void remove(key, file) : null}
                           />
                         </SortableSlot>
                       )
@@ -1732,20 +1858,6 @@ function FormPanel({ view, onChanged }: { view: StepView; onChanged: () => void 
                 </SortableContext>
               </DndContext>
             )}
-            {canEdit && !folder && canAdd(group.row) ? (
-              <div className="mt-2 flex justify-end">
-                <button
-                  type="button"
-                  title={tf(t.elementAddMore, { label: group.row.label })}
-                  aria-label={tf(t.elementAddMore, { label: group.row.label })}
-                  disabled={busy}
-                  onClick={() => setExtra((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }))}
-                  className="flex h-7 w-7 items-center justify-center rounded-[6px] border border-foreground/20 text-ws-3 hover:border-foreground/40 hover:text-ws-1"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-            ) : null}
           </div>
         )
       })}
@@ -1753,8 +1865,18 @@ function FormPanel({ view, onChanged }: { view: StepView; onChanged: () => void 
   )
 
   return (
-    <section className="shrink-0 border-b border-foreground/[0.07] px-3 py-3 md:px-6">
-      <div className="mb-2 flex items-center gap-2">
+    <section className="relative shrink-0 border-b border-foreground/[0.07] px-3 py-3 md:px-6">
+      <div className={cn("flex items-center gap-2", !collapsed && "mb-2")}>
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          title={collapsed ? t.productionFormExpand : t.productionFormCollapse}
+          aria-label={collapsed ? t.productionFormExpand : t.productionFormCollapse}
+          aria-expanded={!collapsed}
+          className="flex h-6 w-6 items-center justify-center rounded-md text-ws-4 hover:bg-ws-hover hover:text-ws-1"
+        >
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
         <span className="text-[12px] font-semibold uppercase tracking-[1.2px] text-ws-3">{t.productionForm}</span>
         {form.complete ? (
           <span className="flex items-center gap-1 text-[12px] text-success">
@@ -1767,13 +1889,85 @@ function FormPanel({ view, onChanged }: { view: StepView; onChanged: () => void 
           </span>
         ) : null}
       </div>
-      {renderGroups(form.state.groups, "")}
+      {collapsed ? null : (
+        <>
+          <div style={{ height: height.size }} className="scrollbar-elegant overflow-y-auto">
+            <div ref={fit.ref}>{renderGroups(form.state.groups, "")}</div>
+          </div>
+          <ResizeGrip
+            orientation="horizontal"
+            side="bottom"
+            label={t.productionFormResize}
+            dragging={height.dragging}
+            onPointerDown={height.onPointerDown}
+            onKeyDown={height.onKeyDown}
+          />
+        </>
+      )}
       <FilePreviewDialog
-        file={preview}
+        file={preview ? { ...preview, name: displaySlotName(preview.name, view.slotLabels).name } : null}
         onClose={() => setPreview(null)}
         edit={canEdit ? { stepId: view.id, onSaved: onChanged } : null}
       />
     </section>
+  )
+}
+
+/** Место формы: строка, номер и папка от корня рабочей. */
+type SlotRef = { rowId: string; index: number; dir: string }
+
+/** Ключ строки формы для значка перенумерации. */
+function slotRowKey(dir: string, rowId: string): string {
+  return `${dir}::${rowId}`
+}
+
+/** Правка формы со значком «переименовывается» на затронутых строках до перечитывания. */
+type FormAction = (keys: string[], action: () => Promise<boolean>, failed: string) => Promise<void>
+
+/** MIME перетаскивания файла из списка «Из чата» в место формы. */
+const STEP_FILE_DRAG = "application/x-ffworks-step-file"
+
+/** Место, где файл стоит сейчас; null — вне формы. */
+function placeOf(view: StepView, file: StepFile): FormPlace | null {
+  if (!view.form) return null
+  const work = view.form.work
+  return (
+    formPlaces(view.form.state.groups).find(
+      (p) => p.fileName === file.name && (p.dir ? `${work}/${p.dir}` : work) === file.folderPath,
+    ) ?? null
+  )
+}
+
+/**
+ * «Поставить в →», перетаскивание и «Убрать из формы»: имя и папку считает
+ * сервер, прежний файл места уходит в корень рабочей папки.
+ */
+async function placeFile(
+  view: StepView,
+  file: StepFile,
+  slot: SlotRef | null,
+  onAction: FormAction,
+  t: ReturnType<typeof useI18n>["t"],
+) {
+  const from = placeOf(view, file)
+  const keys = [from ? slotRowKey(from.dir, from.rowId) : null, slot ? slotRowKey(slot.dir, slot.rowId) : null].filter(
+    (k): k is string => k !== null,
+  )
+  await onAction(
+    keys,
+    async () => {
+      const res = await fetch(`/api/production/steps/${view.id}/form/place`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId: file.id, slot }),
+      })
+      if (!res.ok && ((await res.json().catch(() => ({}))) as { code?: string }).code === "bad-type") {
+        toast.error(`${t.elementSlotBadType}: ${displaySlotName(file.name, view.slotLabels).name}`)
+        return true
+      }
+      return res.ok
+    },
+    t.productionPlaceFailed,
   )
 }
 
@@ -1800,13 +1994,17 @@ function FormSlotRow({
   types,
   fileTypes,
   name,
+  labels,
   file,
   canEdit,
   busy,
+  refreshing,
   onBusy,
   onPreview,
   onChanged,
+  onPlace,
   onRemove,
+  candidates,
 }: {
   stepId: string
   slot: { rowId: string; index: number; dir: string }
@@ -1814,18 +2012,28 @@ function FormSlotRow({
   fileTypes: Record<string, string[]>
   /** Имя файла в слоте; null — пусто. */
   name: string | null
+  /** Названия строк форм — на экране имя без приставки. */
+  labels: readonly string[]
   file: StepFile | null
   canEdit: boolean
   busy: boolean
+  /** Файлы строки переименовываются — крутится значок. */
+  refreshing: boolean
   onBusy: (value: boolean) => void
   onPreview: (file: StepFile) => void
   onChanged: () => void
+  /** Файл из списка «Из чата» брошен на место. */
+  onPlace: (fileId: string) => void
   /** null — убирать нечего: пустое место, которое требует форма. */
   onRemove: (() => void) | null
+  /** Пустое место: файлы «Из чата» вне формы, подходящие строке по типу. */
+  candidates: StepFile[]
 }) {
   const { t } = useI18n()
   const [over, setOver] = useState<null | "ok" | "bad">(null)
   const [percent, setPercent] = useState<number | null>(null)
+  /** Открыт список файлов «Из чата» для пустого места. */
+  const [picking, setPicking] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const reject = (fileName: string) => {
@@ -1834,11 +2042,11 @@ function FormSlotRow({
     window.setTimeout(() => setOver(null), 2000)
   }
 
-  const accept = async (picked: File) => {
+  const accept = async (picked: File): Promise<boolean> => {
     // Окончательная проверка — по расширению; отказ обязан быть заметным.
     if (!extensionFits({ fileTypes }, types, picked.name)) {
       reject(picked.name)
-      return
+      return false
     }
     onBusy(true)
     setPercent(0)
@@ -1848,9 +2056,11 @@ function FormSlotRow({
       if (file && fresh.name !== file.name) {
         await fetch(`/api/production/steps/${stepId}/files/${encodeURIComponent(file.id)}`, { method: "DELETE" })
       }
+      return true
     } catch (error) {
       if (error instanceof Error && error.message === "bad-type") reject(picked.name)
       else toast.error(t.productionUploadFailed)
+      return false
     } finally {
       setPercent(null)
       onBusy(false)
@@ -1858,9 +2068,78 @@ function FormSlotRow({
     }
   }
 
+  // Строка с типом «text»: поле ввода в пустом месте и «Редактор» (шаг 2 TEXT_FORMATS_PLAN).
+  const textual = canEdit && types.includes("text")
+  const txtFile = file && /\.txt$/i.test(file.name) ? file : null
+  const [draft, setDraft] = useState("")
+  /** Окно редактора: null — закрыто, иначе исходный текст. */
+  const [editing, setEditing] = useState<string | null>(null)
+
+  /** Текст с разметкой — поверх своего .txt или новым файлом по пути загрузки. */
+  const saveText = async (markup: string): Promise<boolean> => {
+    if (txtFile) {
+      onBusy(true)
+      try {
+        await saveOver(stepId, txtFile.id, new Blob([markup], { type: "text/plain" }))
+        return true
+      } catch {
+        toast.error(t.productionFormTextSaveFailed)
+        return false
+      } finally {
+        onBusy(false)
+        onChanged()
+      }
+    }
+    return accept(new File([markup], "text.txt", { type: "text/plain" }))
+  }
+
+  // Набранное в поле — простой текст: экранируем, чтобы < > [ ] \ остались буквами.
+  const commitDraft = async () => {
+    const value = draft.trim()
+    if (!value || busy) return
+    setDraft("")
+    // Не сохранилось — возвращаем набранное, чтобы не потерять.
+    if (!(await saveText(escapeText(value)))) setDraft(value)
+  }
+
+  const openEditor = async () => {
+    if (!txtFile) {
+      // В месте лежит не текст (картинка и т. п.) — сохранение заменит его новым
+      // .txt тем же путём, что и «Выбрать»; спрашиваем до открытия.
+      if (file && !window.confirm(t.productionFormTextReplace)) return
+      setEditing("")
+      return
+    }
+    try {
+      const res = await fetch(`${mediaUrl(txtFile.s3Key)}?raw=1`, { cache: "no-store" })
+      if (!res.ok) throw new Error("load")
+      // Тот же предел, что у просмотра: огромный текст в поле ввода не тянем.
+      const length = Number(res.headers.get("content-length") ?? "")
+      if (Number.isFinite(length) && length > TEXT_PREVIEW_LIMIT) {
+        toast.error(t.productionPreviewTooBig)
+        return
+      }
+      const text = await res.text()
+      if (text.length > TEXT_PREVIEW_LIMIT) {
+        toast.error(t.productionPreviewTooBig)
+        return
+      }
+      setEditing(text)
+    } catch {
+      toast.error(t.productionFormTextLoadFailed)
+    }
+  }
+
+  const shown = name ? displaySlotName(name, labels) : null
+
   const drop = canEdit
     ? {
         onDragOver: (e: React.DragEvent) => {
+          if (e.dataTransfer.types.includes(STEP_FILE_DRAG)) {
+            e.preventDefault()
+            setOver("ok")
+            return
+          }
           if (!e.dataTransfer.types.includes("Files")) return
           e.preventDefault()
           // Во время перетаскивания имя файла скрыто — судим по MIME.
@@ -1868,6 +2147,13 @@ function FormSlotRow({
         },
         onDragLeave: () => setOver(null),
         onDrop: (e: React.DragEvent) => {
+          const fileId = e.dataTransfer.getData(STEP_FILE_DRAG)
+          if (fileId) {
+            e.preventDefault()
+            setOver(null)
+            if (!busy) onPlace(fileId)
+            return
+          }
           if (!e.dataTransfer.types.includes("Files")) return
           e.preventDefault()
           setOver(null)
@@ -1880,21 +2166,86 @@ function FormSlotRow({
   return (
     <div {...drop} className="flex min-w-0 items-center gap-2">
       <div className="relative min-w-0 flex-1">
-        <span
-          className={cn(
-            "block truncate border-b px-1 pb-1 text-[13.5px] transition-colors",
-            percent !== null && "pr-10",
-            over === "ok"
-              ? "border-ws-select text-ws-1"
-              : over === "bad"
-                ? "border-destructive text-destructive"
-                : name
-                  ? "border-foreground/20 text-ws-1"
-                  : "border-foreground/15 text-ws-5",
-          )}
-        >
-          {over === "bad" ? t.elementSlotBadType : (name ?? typesLabel(types, t))}
-        </span>
+        {textual && !name && over === null && percent === null ? (
+          <input
+            value={draft}
+            disabled={busy}
+            placeholder={typesLabel(types, t)}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                void commitDraft()
+              } else if (e.key === "Escape") setDraft("")
+            }}
+            onBlur={() => void commitDraft()}
+            // Иначе SortableSlot ловит нажатие в поле как начало перетаскивания.
+            onPointerDown={(e) => e.stopPropagation()}
+            className="block w-full border-b border-foreground/15 bg-transparent px-1 pb-1 text-[13.5px] text-ws-1 outline-none placeholder:text-ws-5 focus:border-ws-select"
+          />
+        ) : canEdit && !name && over === null && percent === null ? (
+          // Пустое место: клик — список подходящих файлов «Из чата», как «Поставить в →».
+          <Popover open={picking} onOpenChange={setPicking}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                disabled={busy}
+                title={t.productionFormPickHint}
+                className="block w-full truncate border-b border-foreground/15 px-1 pb-1 text-left text-[13.5px] text-ws-5 transition-colors hover:border-foreground/30 hover:text-ws-3 disabled:opacity-50"
+              >
+                {typesLabel(types, t)}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-[320px] p-1">
+              <p className="px-2 pb-1 pt-1.5 text-[11.5px] text-ws-4">{t.productionFormPickTitle}</p>
+              {candidates.length === 0 ? (
+                <p className="px-2 pb-2 text-[12.5px] text-ws-4">{t.productionFormPickEmpty}</p>
+              ) : (
+                <div className="scrollbar-elegant max-h-[280px] overflow-y-auto">
+                  {candidates.map((candidate) => (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        onClick={() => {
+                          setPicking(false)
+                          onPlace(candidate.id)
+                        }}
+                        className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-ws-1 hover:bg-ws-hover"
+                      >
+                        <span className="min-w-0 flex-1 truncate">{displaySlotName(candidate.name, labels).name}</span>
+                        {candidate.author ? <span className="shrink-0 text-[11.5px] text-ws-5">{candidate.author}</span> : null}
+                      </button>
+                  ))}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <span
+            className={cn(
+              "block truncate border-b px-1 pb-1 text-[13.5px] transition-colors",
+              percent !== null && "pr-10",
+              over === "ok"
+                ? "border-ws-select text-ws-1"
+                : over === "bad"
+                  ? "border-destructive text-destructive"
+                  : name
+                    ? "border-foreground/20 text-ws-1"
+                    : "border-foreground/15 text-ws-5",
+            )}
+          >
+            {over === "bad" ? (
+              t.elementSlotBadType
+            ) : shown ? (
+              <>
+                {shown.tag ? <span className="mr-1.5 text-[11.5px] text-ws-5">{shown.tag}</span> : null}
+                {shown.name}
+              </>
+            ) : (
+              typesLabel(types, t)
+            )}
+          </span>
+        )}
         {percent !== null ? (
           <>
             <span
@@ -1908,6 +2259,9 @@ function FormSlotRow({
         ) : null}
       </div>
 
+      {refreshing ? (
+        <RefreshCw aria-label={t.productionFormRenaming} className="h-3.5 w-3.5 shrink-0 animate-spin text-ws-4" />
+      ) : null}
       <button
         type="button"
         title={t.elementPreview}
@@ -1943,6 +2297,16 @@ function FormSlotRow({
           >
             {t.elementChoose}
           </button>
+          {textual ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void openEditor()}
+              className="shrink-0 rounded-[7px] border border-foreground/15 px-2.5 py-1 text-[12.5px] text-ws-2 hover:border-foreground/30 hover:text-ws-1 disabled:opacity-50"
+            >
+              {t.productionFormEditor}
+            </button>
+          ) : null}
           <input
             ref={inputRef}
             type="file"
@@ -1955,6 +2319,55 @@ function FormSlotRow({
           />
         </>
       ) : null}
+      {textual ? (
+        <Dialog
+          open={editing !== null}
+          onOpenChange={(open) => {
+            if (!open && confirmDiscardEdits(t.textUnsavedDiscard)) setEditing(null)
+          }}
+        >
+          {/* Портал всё равно всплывает по дереву React — не даём SortableSlot начать перетаскивание. */}
+          <DialogContent className="flex h-[70vh] max-w-3xl flex-col" onPointerDown={(e) => e.stopPropagation()}>
+            <DialogTitle className="truncate text-[15px]">{shown?.name ?? typesLabel(types, t)}</DialogTitle>
+            <DialogDescription className="sr-only">{t.productionFormEditor}</DialogDescription>
+            {editing !== null ? (
+              <MarkupFileEditor
+                initial={editing}
+                onCancel={() => setEditing(null)}
+                onSave={async (text) => {
+                  if (await saveText(text)) setEditing(null)
+                }}
+              />
+            ) : null}
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   )
+}
+
+/**
+ * Пределы высоты блока по его содержимому: не ниже одного пункта (файла,
+ * строки формы) и не выше последнего — пустоты под списком не бывает.
+ * `extra` — отступы прокручиваемой обёртки сверх содержимого.
+ */
+function useFitBounds(extra: number, fallback: { min: number; max: number }) {
+  // Узел — состоянием, а не ref: блок сворачивают и разворачивают, и
+  // измерение должно начаться заново с новым узлом.
+  const [el, ref] = useState<HTMLDivElement | null>(null)
+  const [bounds, setBounds] = useState(fallback)
+  useEffect(() => {
+    if (!el) return
+    const measure = () => {
+      const max = el.offsetHeight + extra
+      const row = el.firstElementChild?.firstElementChild as HTMLElement | null | undefined
+      const min = Math.min(max, (row?.offsetHeight ?? max) + extra)
+      setBounds((prev) => (prev.min === min && prev.max === max ? prev : { min, max }))
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [el, extra])
+  return { ref, ...bounds }
 }

@@ -37,6 +37,7 @@ const postSchema = z.object({
   body: z.string().max(8000).default(""),
   attachmentIds: z.array(z.string().min(1)).max(20).default([]),
   replyTo: z.number().int().positive().optional(),
+  quote: z.string().max(2000).optional(),
   mentions: z.array(z.string().min(1)).max(50).default([]),
 })
 

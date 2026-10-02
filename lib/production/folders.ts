@@ -1,4 +1,5 @@
 import { query } from "@/lib/db"
+import { REVIEW_FOLDER } from "./review-folder"
 
 /**
  * Подпапки уровня `path` в проекте владельца — для подсказок пути в ноде
@@ -25,5 +26,6 @@ export async function listSubfolders(ownerId: string, projectId: string, path: s
      LIMIT 200`,
     [projectId, parent, like, depth],
   )
-  return rows.map((r) => r.name)
+  // Служебная папка пометок ревью — не место, куда копировать.
+  return rows.map((r) => r.name).filter((name) => name !== REVIEW_FOLDER)
 }

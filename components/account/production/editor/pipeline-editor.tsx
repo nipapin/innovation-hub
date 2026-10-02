@@ -9,6 +9,7 @@ import {
   Controls,
   ReactFlow,
   ReactFlowProvider,
+  SelectionMode,
   applyNodeChanges,
   useReactFlow,
   type FinalConnectionState,
@@ -37,6 +38,7 @@ import {
   type PipelineNode,
   isWorkKind,
   OUT_HANDLE,
+  nextWorkStages,
   shortId,
   splitOutputsOf,
   withLiveHandles,
@@ -252,7 +254,8 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
   // ─── Правки нод ────────────────────────────────────────────────────────
 
   const api: EditorApi = useMemo(() => {
-    const sources = new Set((graph?.edges ?? []).map((e) => e.source))
+    // «Есть следующий» — этап не-действие, достижимый сквозь действия (§13.2).
+    const hasNextWork = (id: string) => Boolean(graph && nextWorkStages(graph, id).length > 0)
     const errorNodes = new Set(
       (loaded?.issues ?? []).filter((i) => i.level === "error" && i.nodeId).map((i) => i.nodeId!),
     )
@@ -284,9 +287,9 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
           edges: g.edges.filter((e) => e.source !== id && e.target !== id),
         })),
       nodeHasError: (id) => errorNodes.has(id),
-      hasNext: (id) => sources.has(id),
+      hasNext: hasNextWork,
     }
-  }, [change, extras, graph?.edges, loaded?.issues, loaded?.pipeline.status, people, pipelineId, readOnly, rowNames])
+  }, [change, extras, graph, loaded?.issues, loaded?.pipeline.status, people, pipelineId, readOnly, rowNames])
 
   // ─── Граф → xyflow ─────────────────────────────────────────────────────
 
@@ -687,6 +690,21 @@ function EditorInner({ pipelineId }: { pipelineId: string }) {
               })
             }}
             onPaneClick={() => setMenu(null)}
+            // Холст двигают колесом мыши или с зажатым пробелом; ЛКМ по пустому
+            // месту — рамка выделения, выделенные ноды тащатся вместе.
+            panOnDrag={[1]}
+            panActivationKeyCode="Space"
+            selectionOnDrag
+            selectionMode={SelectionMode.Partial}
+            // Клик внутри любой из выделенных нод (в т.ч. по полю) снимает
+            // групповое выделение — дальше работа с одной нодой.
+            onNodeClick={(_, node) =>
+              setNodes((ns) =>
+                ns.filter((n) => n.selected).length > 1
+                  ? ns.map((n) => ({ ...n, selected: n.id === node.id }))
+                  : ns,
+              )
+            }
             onMoveStart={() => setMenu(null)}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}

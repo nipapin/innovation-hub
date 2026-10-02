@@ -13,12 +13,14 @@ export async function uploadChatFile(
   signal?: AbortSignal,
   /** Слот формы: файл ляжет в папку слота под именем слота. */
   slot?: { rowId: string; index: number; dir: string },
+  /** Правка вложения: новым файлом в корень рабочей папки, без места в форме. */
+  editCopy?: boolean,
 ): Promise<UploadedFile> {
   const base = `/api/production/steps/${encodeURIComponent(stepId)}/upload`
   const presignRes = await fetch(base, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileName: file.name, contentType: file.type, sizeBytes: file.size, slot }),
+    body: JSON.stringify({ fileName: file.name, contentType: file.type, sizeBytes: file.size, slot, editCopy }),
     signal,
   })
   const presign = (await presignRes.json().catch(() => null)) as
@@ -51,6 +53,7 @@ export async function uploadChatFile(
       sizeBytes: file.size,
       contentType: presign.contentType ?? "application/octet-stream",
       slot,
+      editCopy,
     }),
   })
   const complete = (await completeRes.json().catch(() => null)) as { file?: UploadedFile } | null

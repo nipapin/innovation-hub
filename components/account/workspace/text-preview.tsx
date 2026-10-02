@@ -1,282 +1,164 @@
 "use client"
 
-import { useEffect, useState } from "react"
-
-import { tf } from "@/components/account/i18n"
-import { MarkdownView } from "@/components/markdown/markdown-view"
-import { parseSrt, type SrtCue } from "@/lib/tools/dialog/srt-parse"
-import { formatSrtTc } from "@/lib/tools/dialog/timecode"
-import { cn } from "@/lib/utils"
-import { fmtSize } from "./format"
-import { TEXT_PREVIEW_LIMIT, type PreviewKind } from "./preview-kind"
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react"
+import { toast } from "sonner"
+import { TextFile } from "@/components/text-viewer/text-file"
+import { isTextual, previewKind } from "./preview-kind"
 import type { DriveFile } from "./types"
 import { useWorkspace } from "./workspace-context"
 
+/** Правка текста в превью — что нужно кнопке и самому просмотрщику. */
+export type TextEdit = {
+  /** Кнопку «Редактировать» показывать: право записи и текст прочитался. */
+  canEdit: boolean
+  editing: boolean
+  start: () => void
+  cancel: () => void
+  save: (text: string) => Promise<boolean>
+  setReady: (ready: boolean) => void
+  /** Номер сохранения — в адрес, чтобы просмотрщик перечитал новые байты. */
+  version: number
+}
+
 /**
- * Превью текстовых файлов: обычный текст, JSON, субтитры, Markdown.
- *
- * Содержимое берётся `fetch` по тому же роуту файла, но **без** `inline=1`:
- * с ним роут отвечает редиректом на хранилище, а это чужой источник, и CORS
- * закрыл бы чтение тела. Без него тело идёт через Next, то есть тот же origin
- * (та же причина описана в самом роуте — там так читают `dialog.json`).
- *
- * Отсюда же и предел размера: тело качается целиком, без Range, поэтому лог на
- * сотни мегабайт прокачался бы через сервер и осел в памяти вкладки. За
- * пределом файл не читается вовсе — предлагаем скачать.
+ * Номер сохранения по id файла — общий для всех просмотрщиков страницы.
+ * Вкладка превью и окно держат каждый свой `useTextEdit`; счётчик в модуле
+ * нужен, чтобы сохранение в одном перечитывало и другой. `modifiedAt` из
+ * списка тут не помогает: это время заливки, перезапись его не меняет.
  */
+const savedVersions = new Map<string, number>()
+const versionListeners = new Set<() => void>()
 
-type Loaded =
-  | { kind: "loading" }
-  | { kind: "tooBig" }
-  | { kind: "failed" }
-  | { kind: "ready"; text: string }
+function bumpVersion(fileId: string) {
+  savedVersions.set(fileId, (savedVersions.get(fileId) ?? 0) + 1)
+  for (const listener of versionListeners) listener()
+}
 
-function useFileText(url: string, sizeBytes: number | null): Loaded {
-  const [state, setState] = useState<Loaded>({ kind: "loading" })
+function subscribeVersions(listener: () => void) {
+  versionListeners.add(listener)
+  return () => {
+    versionListeners.delete(listener)
+  }
+}
 
+/**
+ * Правка файла проекта поверх него — шаг 4 docs/TEXT_FORMATS_PLAN.md.
+ *
+ * Право — то же, что у заливки в папку (`can.upload`: роль и источник), плюс
+ * у источника должен быть адрес записи. xlsx сюда не попадает: его вид
+ * `unsupported`, а не текстовый. Сервер проверяет право сам (`editor`).
+ */
+export function useTextEdit(file: DriveFile | null): TextEdit {
+  const { t, can, source, selectedId, refreshDrive } = useWorkspace()
+  const [editing, setEditing] = useState(false)
+  const [ready, setReady] = useState(false)
+  const fileId = file?.id ?? null
+  const version = useSyncExternalStore(
+    subscribeVersions,
+    () => (fileId ? savedVersions.get(fileId) ?? 0 : 0),
+    () => 0,
+  )
+
+  // Другой файл — правка обрывается, отметка готовности сбрасывается.
   useEffect(() => {
-    if (sizeBytes != null && sizeBytes > TEXT_PREVIEW_LIMIT) {
-      setState({ kind: "tooBig" })
-      return
-    }
+    setEditing(false)
+    setReady(false)
+  }, [fileId])
 
-    // Файл переключают стрелками быстрее, чем приходит ответ: без отмены
-    // содержимое предыдущего легло бы поверх текущего.
-    const abort = new AbortController()
-    setState({ kind: "loading" })
+  const writable = Boolean(
+    file &&
+      !file.isFolder &&
+      selectedId &&
+      source.fileContentUrl &&
+      can.upload &&
+      isTextual(previewKind(file)),
+  )
 
-    void (async () => {
+  const save = useCallback(
+    async (text: string) => {
+      if (!fileId || !selectedId || !source.fileContentUrl) return false
       try {
-        const res = await fetch(url, { signal: abort.signal })
-        if (!res.ok) throw new Error(String(res.status))
-
-        // Размер из каталога бывает пустым — у файла, залитого мимо браузера.
-        // Тогда предел проверяется по ответу, до чтения тела.
-        const length = Number(res.headers.get("content-length") ?? "")
-        if (Number.isFinite(length) && length > TEXT_PREVIEW_LIMIT) {
-          setState({ kind: "tooBig" })
-          return
-        }
-
-        const text = await res.text()
-        if (!abort.signal.aborted) setState({ kind: "ready", text })
-      } catch (error) {
-        if ((error as Error)?.name === "AbortError") return
-        setState({ kind: "failed" })
+        await saveOver(
+          source.fileContentUrl(selectedId, fileId),
+          new Blob([text], { type: "text/plain;charset=utf-8" }),
+        )
+        toast.success(t.productionEditSaved)
+        bumpVersion(fileId)
+        setEditing(false)
+        await refreshDrive()
+        return true
+      } catch {
+        toast.error(t.productionEditSaveFailed)
+        return false
       }
-    })()
+    },
+    [fileId, selectedId, source, t, refreshDrive],
+  )
 
-    return () => abort.abort()
-  }, [url, sizeBytes])
-
-  return state
+  return {
+    canEdit: writable && ready && !editing,
+    editing: writable && editing,
+    start: () => setEditing(true),
+    cancel: () => setEditing(false),
+    save,
+    setReady,
+    version,
+  }
 }
 
-/** Общая рамка: подпись сверху, прокручиваемое содержимое под ней. */
-function TextFrame({
-  note,
-  className,
-  children,
-}: {
-  note?: string
-  className?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div
-      className={cn(
-        "flex h-full w-full min-h-0 flex-col overflow-hidden bg-ws-well",
-        className,
-      )}
-    >
-      {note ? (
-        <p className="flex-none border-b border-foreground/[0.07] px-3 py-1.5 text-[11.5px] text-ws-4">
-          {note}
-        </p>
-      ) : null}
-      <div className="min-h-0 flex-1 overflow-auto">{children}</div>
-    </div>
-  )
-}
-
-/** Сообщение вместо содержимого — «пусто», «слишком большой», «не прочитался». */
-function TextNote({ text }: { text: string }) {
-  return (
-    <div className="flex h-full items-center justify-center px-4 text-center text-[12px] text-ws-4">
-      {text}
-    </div>
-  )
+/** presign → PUT в ключ файла → complete; та же пара, что у этапа конвейера. */
+async function saveOver(base: string, blob: Blob): Promise<void> {
+  const presignRes = await fetch(base, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage: "presign", sizeBytes: blob.size }),
+  })
+  const presign = (await presignRes.json().catch(() => null)) as { url?: string; contentType?: string } | null
+  if (!presignRes.ok || !presign?.url) throw new Error("presign")
+  const put = await fetch(presign.url, {
+    method: "PUT",
+    headers: { "Content-Type": presign.contentType ?? blob.type },
+    body: blob,
+  })
+  if (!put.ok) throw new Error("put")
+  const done = await fetch(base, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage: "complete" }),
+  })
+  if (!done.ok) throw new Error("complete")
 }
 
 /**
- * Моноширинный текст с номерами строк.
+ * Превью текстового файла проекта — общий просмотрщик `TextFile`.
  *
- * Номера — отдельной колонкой, а не частью строки: иначе они попадали бы в
- * буфер обмена вместе с текстом, и скопированный кусок лога или CSV пришлось
- * бы чистить руками.
+ * Адрес — роут файла **без** `inline=1`: с ним роут отвечает редиректом на
+ * хранилище, а это чужой источник, и CORS закрыл бы чтение тела. Без него тело
+ * идёт через Next, то есть тот же origin. `v` — сброс кэша: адрес тот же, байты
+ * новые; номер общий для файла, так что перечитывают все его просмотрщики.
  */
-function PlainText({ text }: { text: string }) {
-  const lines = text.split("\n")
-  return (
-    <div className="flex min-w-0 font-mono text-[12px] leading-[1.55]">
-      <div
-        aria-hidden
-        className="flex-none select-none border-r border-foreground/[0.07] px-2 py-2 text-right tabular-nums text-ws-5"
-      >
-        {lines.map((_, i) => (
-          <div key={i}>{i + 1}</div>
-        ))}
-      </div>
-      <pre className="min-w-0 flex-1 whitespace-pre px-3 py-2 text-ws-2">
-        {text}
-      </pre>
-    </div>
-  )
-}
-
-/**
- * Субтитры таблицей: номер, интервал, реплика.
- *
- * Разбирает уже готовый `parseSrt` — он заявлен на оба формата сразу, терпит
- * заголовок WEBVTT, подписи блоков и точку вместо запятой. Не разобралось
- * ничего — показываем файл как обычный текст: пустая таблица вместо непонятного
- * файла ничего не объясняет, а буквами человек хотя бы увидит, что внутри.
- */
-function Subtitles({ cues }: { cues: SrtCue[] }) {
-  return (
-    <table className="w-full border-collapse text-[12px]">
-      <tbody>
-        {cues.map((cue, i) => (
-          <tr
-            key={`${cue.index}-${i}`}
-            className="border-b border-foreground/[0.05] align-top"
-          >
-            <td className="w-10 px-2 py-1.5 text-right tabular-nums text-ws-5">
-              {cue.index}
-            </td>
-            <td className="w-[188px] whitespace-nowrap px-2 py-1.5 font-mono text-[11.5px] tabular-nums text-ws-4">
-              {formatSrtTc(cue.startMs)} → {formatSrtTc(cue.endMs)}
-            </td>
-            <td className="whitespace-pre-wrap px-2 py-1.5 text-ws-2">
-              {cue.text}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
 export function TextPreview({
   file,
   url,
-  kind,
   className,
+  edit,
 }: {
   file: DriveFile
   url: string
-  kind: PreviewKind
   className?: string
+  edit?: TextEdit
 }) {
-  const { t } = useWorkspace()
-  const state = useFileText(url, file.sizeBytes)
-
-  if (state.kind === "loading") {
-    return (
-      <TextFrame className={className}>
-        <TextNote text={t.previewLoading} />
-      </TextFrame>
-    )
-  }
-  if (state.kind === "tooBig") {
-    return (
-      <TextFrame className={className}>
-        <TextNote
-          text={tf(t.previewTextTooBig, { size: fmtSize(file.sizeBytes) })}
-        />
-      </TextFrame>
-    )
-  }
-  if (state.kind === "failed") {
-    return (
-      <TextFrame className={className}>
-        <TextNote text={t.previewTextFailed} />
-      </TextFrame>
-    )
-  }
-
-  const text = state.text
-  if (text.trim() === "") {
-    return (
-      <TextFrame className={className}>
-        <TextNote text={t.previewTextEmpty} />
-      </TextFrame>
-    )
-  }
-
-  if (kind === "markdown") {
-    return (
-      <TextFrame className={className}>
-        {/* Тот же просмотрщик, что и у описания проекта: санитайз обязателен —
-            файл пришёл из хранилища и доверенным содержимым не является. */}
-        <MarkdownView className="px-4 py-3">{text}</MarkdownView>
-      </TextFrame>
-    )
-  }
-
-  if (kind === "subtitles") {
-    const cues = parseSrt(text)
-    if (cues.length > 0) {
-      return (
-        <TextFrame
-          className={className}
-          note={tf(t.previewCues, { count: cues.length })}
-        >
-          <Subtitles cues={cues} />
-        </TextFrame>
-      )
-    }
-    return (
-      <TextFrame
-        className={className}
-        note={tf(t.previewLines, { count: text.split("\n").length })}
-      >
-        <PlainText text={text} />
-      </TextFrame>
-    )
-  }
-
-  if (kind === "json") {
-    // Битый JSON — не повод показать пустоту: это ровно тот случай, когда в файл
-    // и лезут смотреть. Показываем как есть и говорим, что он не разобрался.
-    let pretty: string
-    let broken = false
-    try {
-      pretty = JSON.stringify(JSON.parse(text), null, 2)
-    } catch {
-      pretty = text
-      broken = true
-    }
-    return (
-      <TextFrame
-        className={className}
-        note={
-          broken
-            ? t.previewJsonBroken
-            : tf(t.previewLines, { count: pretty.split("\n").length })
-        }
-      >
-        <PlainText text={pretty} />
-      </TextFrame>
-    )
-  }
-
   return (
-    <TextFrame
+    <TextFile
+      url={edit?.version ? `${url}?v=${edit.version}` : url}
+      name={file.name}
+      mimeType={file.mimeType}
+      sizeBytes={file.sizeBytes}
       className={className}
-      note={tf(t.previewLines, { count: text.split("\n").length })}
-    >
-      <PlainText text={text} />
-    </TextFrame>
+      editing={edit?.editing ?? false}
+      onSave={edit?.save}
+      onCancelEdit={edit?.cancel}
+      onReady={edit?.setReady}
+    />
   )
 }

@@ -33,7 +33,7 @@ import type { DriveFile } from "../types"
 import { useWorkspace } from "../workspace-context"
 import { createElementIO } from "./element-io"
 import { ElementGroups, type ExtraSlots } from "./element-slots"
-import { ElementTextEditor } from "./text-editor"
+import { MarkupEditor } from "@/components/text-viewer/markup-editor"
 import { entriesOf } from "./tree"
 
 /**
@@ -623,7 +623,7 @@ export function ElementDialog() {
                 <Loader2 className="h-5 w-5 animate-spin" />
               </div>
             ) : (
-              <ElementTextEditor
+              <MarkupEditor
                 value={textValue}
                 onChange={setTextValue}
                 loadKey={text?.node?.id ?? text?.slot.index ?? 0}

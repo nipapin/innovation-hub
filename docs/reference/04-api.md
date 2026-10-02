@@ -72,6 +72,7 @@
 | `/api/projects/unread-counts` | GET | user | Непрочитанное по всем проектам одним запросом — для значков. |
 | `/api/projects/[id]/drive` | GET, POST | user | Дерево файлов из Postgres + состояние автоматизации + разобранные параметры. POST создаёт папку. |
 | `/api/projects/[id]/drive/files/[fileId]` | GET, PATCH, DELETE | user | Скачать / переименовать / удалить элемент. |
+| `/api/projects/[id]/drive/files/[fileId]/content` | POST | user (editor) | Сохранить правку поверх файла: `{stage:"presign",sizeBytes}` → PUT по подписи в тот же ключ → `{stage:"complete"}` (`writeNotifyUpload`, журнал `put`, автор — сохранивший). Папки, корзина и канонические сайдкары — отказ. |
 | `/api/projects/[id]/drive/folder-state` | PATCH | user | Тумблер слежения: перезапись `options/folderState.json` + зеркало в Postgres. |
 | `/api/projects/[id]/drive/options` | PATCH | user | Правки параметров, отданных на сайт. Границы и списки проверяются на сервере. |
 | `/api/projects/[id]/description` | GET | user | Развёрнутое описание (`options/description.md`). **Только чтение** — пишет админский роут. |

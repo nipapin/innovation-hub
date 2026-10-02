@@ -4,6 +4,7 @@ import { findProjectById } from "@/lib/repositories/projects"
 import { copySingleFile, loadCopySource } from "@/lib/storage/copy"
 import { writeEnsureFolderPath } from "@/lib/storage/write-path"
 import { insertSystem } from "./chat"
+import { isReviewPath } from "./review-folder"
 import { extensionFits } from "@/lib/tools/element/site-form"
 import { fileTypeDictionary } from "./uploads"
 import {
@@ -279,8 +280,17 @@ export type FolderFile = {
   contentType: string
 }
 
-/** Файлы папки проекта — рекурсивно, с путём, чтобы сохранить структуру при копии. */
-export async function listTree(projectId: string | undefined, folder: string | undefined): Promise<FolderFile[]> {
+/**
+ * Файлы папки проекта — рекурсивно, с путём, чтобы сохранить структуру при копии.
+ * Служебная папка пометок `.review` не входит: это не варианты (форма, финал,
+ * входы следующих этапов её не видят). `withReview` — только для удаления по
+ * сроку хранения.
+ */
+export async function listTree(
+  projectId: string | undefined,
+  folder: string | undefined,
+  opts: { withReview?: boolean } = {},
+): Promise<FolderFile[]> {
   if (!projectId || !folder) return []
   const { rows } = await query<FolderFile>(
     `SELECT id, name, folder_path AS "folderPath", content_type AS "contentType"
@@ -291,7 +301,7 @@ export async function listTree(projectId: string | undefined, folder: string | u
       LIMIT 5000`,
     [projectId, folder, `${folder.replace(/[\\%_]/g, (c) => `\\${c}`)}/%`],
   )
-  return rows
+  return opts.withReview ? rows : rows.filter((r) => !isReviewPath(r.folderPath))
 }
 
 /** Путь файла относительно папки-корня: всё до неё отрезается (§4.4). */

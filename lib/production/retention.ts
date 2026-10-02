@@ -90,7 +90,8 @@ export async function purgeExpired(now = new Date()): Promise<{ runs: number; fi
       const project = await findProjectById(projectId)
       if (!project) continue
       for (const folder of folders) {
-        for (const file of await listTree(projectId, folder)) {
+        // С пометками ревью (`.review` внутри рабочей): они уходят вместе с вариантами.
+        for (const file of await listTree(projectId, folder, { withReview: true })) {
           await writeFileDelete({ storageOwnerId: project.storageOwnerId, projectId, fileId: file.id, deletedBy: null })
           deleted += 1
         }

@@ -2,7 +2,7 @@ import { query, withTransaction } from "@/lib/db"
 import { approveStep } from "./approval"
 import { insertSystem } from "./chat"
 import { type AutoEntry, type StepPaths } from "./flow"
-import { successors, upgradeGraph } from "./graph"
+import { nextWorkStages, upgradeGraph } from "./graph"
 
 /**
  * Автоматика и конвейер — docs/PRODUCTION_PLAN.md §3.0.
@@ -126,7 +126,8 @@ export async function syncAutoSteps(): Promise<void> {
         // узнают в чатах следующих этапов, со списком к кому обратиться.
         const failed = fresh.filter((task) => task.status === "failed")
         if (failed.length > 0 && node.data.reviewers.length === 0) {
-          const next = successors(graph, node.id)
+          // Действия чата не читают — сквозь них к ближайшим этапам с людьми.
+          const next = nextWorkStages(graph, node.id)
           const people = next.length > 0 ? await adminsFor(step.ownerUserId) : []
           const { rows: nextSteps } = await client.query<{ id: string }>(
             `SELECT id FROM production_run_steps WHERE run_id = $1 AND node_id = ANY($2::text[])`,
@@ -135,7 +136,7 @@ export async function syncAutoSteps(): Promise<void> {
           for (const nextStep of nextSteps) {
             await insertSystem(client, nextStep.id, "machine_failed_upstream", { name: node.data.name, people })
           }
-          // Последний этап: следующих нет — сообщить автору пайплайна.
+          // Последний этап (дальше только действия или ничего) — сообщить автору пайплайна.
           if (next.length === 0) notifyOwnerOfFailure(step, node.data.name, failed.map((task) => task.name))
         }
         const patch: Record<string, unknown> = { ...auto, notified: [...notified] }
@@ -181,8 +182,8 @@ async function adminsFor(ownerUserId: string): Promise<{ id: string; name: strin
 }
 
 /**
- * Заглушка: автоматика — последний этап и без проверяющего упала, а сообщить
- * некуда. Пока только в лог сервера.
+ * Заглушка: автоматика без проверяющего упала, а после неё нет этапов, кроме
+ * действий (nextWorkStages пуст), — сообщить в чатах некуда. Пока только в лог сервера.
  * TODO(чаты команды): писать автору пайплайна или в админский чат — что
  * сломалось, в каком ролике, ссылка (docs/PRODUCTION_PLAN.md §13.2).
  */

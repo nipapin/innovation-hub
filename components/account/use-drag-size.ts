@@ -47,6 +47,12 @@ export function useDragSize({
     if (Number.isFinite(parsed)) apply(clamp(parsed))
   }, [storageKey, clamp, apply])
 
+  // Пределы бывают живыми (высота по содержимому): сузились — текущий размер
+  // подтягивается внутрь, иначе ручка сперва «съедала» бы невидимый запас.
+  useEffect(() => {
+    if (sizeRef.current !== clamp(sizeRef.current)) apply(clamp(sizeRef.current))
+  }, [clamp, apply])
+
   const persist = useCallback(() => {
     if (storageKey) window.localStorage.setItem(storageKey, String(sizeRef.current))
   }, [storageKey])
